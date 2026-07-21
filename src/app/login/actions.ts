@@ -56,6 +56,18 @@ export async function loginStep1(formData: FormData): Promise<{ error?: string; 
     return { klant: true }
   }
 
+  // Review-omgeving zonder e-mailconfiguratie: 2FA overslaan als expliciet
+  // uitgezet via env. Zet dezelfde cookies als een geslaagde stap 2, zodat de
+  // middleware toegang geeft. UITZETTEN zodra echte mail is geconfigureerd.
+  if (process.env.LOGIN_2FA_DISABLED === 'true') {
+    const jar = await cookies()
+    const isProd = process.env.NODE_ENV === 'production'
+    const opts = { httpOnly: true, secure: isProd, sameSite: 'lax' as const, path: '/', maxAge: 60 * 60 * 24 * 30 }
+    jar.set(SESSION_COOKIE, data.user.id, opts)
+    jar.set(ACTIVITY_COOKIE, String(Date.now()), opts)
+    return { success: true }
+  }
+
   // Alleen medewerkers: 2FA via mail. Code opslaan, mail fire-and-forget.
   const code = generateCode()
   await admin.from('tfa_codes').insert({
