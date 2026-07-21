@@ -40,18 +40,38 @@ const client = buildClient()
 await client.connect()
 console.log('Verbonden met doel-database.')
 
+// Hervatbaar: houd bij welke migraties al gedraaid zijn, zodat opnieuw draaien
+// veilig is (verse Supabase-projecten initialiseren storage soms iets later).
+await client.query(`create table if not exists _setup_migraties (
+  bestand text primary key, status text not null, gedraaid_op timestamptz default now()
+)`)
+const { rows: gedaan } = await client.query('select bestand from _setup_migraties')
+const alGedaan = new Set(gedaan.map(r => r.bestand))
+
 const files = readdirSync(migrationsDir).filter(f => f.endsWith('.sql')).sort()
 console.log(`${files.length} migraties gevonden. Afspelen…`)
+const AL_AANWEZIG = /already exists|duplicate|already a|multiple primary keys/i
+const STORAGE_ONKLAAR = /relation "storage\.\w+" does not exist/i
 for (const f of files) {
+  if (alGedaan.has(f)) { console.log(`  · ${f} (overgeslagen — al gedaan)`); continue }
   const sql = readFileSync(join(migrationsDir, f), 'utf8')
   try {
     await client.query(sql)
+    await client.query('insert into _setup_migraties(bestand,status) values($1,$2) on conflict(bestand) do update set status=$2', [f, 'ok'])
     console.log(`  ✓ ${f}`)
   } catch (e) {
-    console.error(`  ✗ ${f}: ${e.message}`)
-    console.error('Gestopt. Los dit op en draai opnieuw (idempotent waar mogelijk).')
-    await client.end()
-    process.exit(1)
+    if (AL_AANWEZIG.test(e.message)) {
+      await client.query('insert into _setup_migraties(bestand,status) values($1,$2) on conflict(bestand) do nothing', [f, 'al-aanwezig'])
+      console.log(`  ~ ${f} (was al toegepast)`)
+    } else if (STORAGE_ONKLAAR.test(e.message)) {
+      await client.query('insert into _setup_migraties(bestand,status) values($1,$2) on conflict(bestand) do nothing', [f, 'storage-uitgesteld'])
+      console.log(`  ⧗ ${f} (storage nog niet klaar — bucket wordt later apart aangemaakt)`)
+    } else {
+      console.error(`  ✗ ${f}: ${e.message}`)
+      console.error('Gestopt. Los dit op en draai opnieuw.')
+      await client.end()
+      process.exit(1)
+    }
   }
 }
 

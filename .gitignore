@@ -46,3 +46,6 @@ backups/
 
 # Geëxporteerde klantdata (bevat bedrijfsgegevens; opnieuw te genereren)
 scripts/data/
+
+# Supabase CLI temp
+supabase/.temp/

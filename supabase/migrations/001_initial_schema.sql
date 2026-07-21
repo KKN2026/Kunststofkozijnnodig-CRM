@@ -611,6 +611,13 @@ begin
 end;
 $$ language plpgsql;
 
+-- RLS-helper: administratie_id van de ingelogde gebruiker. In de originele
+-- Rebu-DB ad-hoc aangemaakt (buiten de migraties); hier expliciet opgenomen
+-- zodat een verse setup compleet is. Migratie 051 ALTERt deze functie.
+create or replace function public.get_my_administratie_id()
+returns uuid language sql stable security definer set search_path to 'public'
+as $$ select administratie_id from profielen where id = auth.uid() $$;
+
 -- Triggers voor updated_at
 create trigger set_updated_at before update on administraties for each row execute function update_updated_at();
 create trigger set_updated_at before update on profielen for each row execute function update_updated_at();

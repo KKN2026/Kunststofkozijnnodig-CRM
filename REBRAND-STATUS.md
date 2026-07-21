@@ -12,6 +12,14 @@ De originele Rebu CRM (`~/projects/Rebucrm`) blijft ongewijzigd bestaan.
 - AI-assistent hernoemd van "Vraag aan Rebu" → "AI-assistent". DB-lookups `%Rebu%` → `%Kunststofkozijnnodig%`.
 - Datamigratie-scripts: `scripts/export-zakelijke-klanten.mjs` (gedraaid: **1693 zakelijke relaties + 31 contactpersonen** geëxporteerd naar `scripts/data/`, buiten git) en `scripts/import-zakelijke-klanten.mjs` (klaar voor de nieuwe DB).
 
+## Supabase — GEDAAN (21-07-2026)
+- Nieuw project **kunststofkozijnnodig-crm** (`mjkuwzzqxbvwbekypjqs`, regio eu-west-1) in org Rebukozijnen.
+- Volledig schema opgezet (66 migraties). Ontbrekende helper `get_my_administratie_id()` toegevoegd aan migratie 001. Storage-bucket `email-bijlagen` aangemaakt.
+- Administratie-rij Kunststofkozijnnodig.nl: `e8ce1df5-ae1b-433a-a72b-431c79d909b3`.
+- Geïmporteerd: **1693 zakelijke relaties + 31 contactpersonen**. Geen offertes/facturen/projecten (schone lei).
+- `.env.local` van de fork gevuld met URL + anon/service_role keys + DB-wachtwoord (buiten git).
+- Connectie loopt via de **directe host** `db.<ref>.supabase.co:5432` (de pooler-tenant was nog niet geregistreerd; werkt via IPv6).
+
 ## Nog nodig van jou (blokkeert livegang)
 1. **Juridische gegevens** aparte onderneming — KVK, BTW-nummer, IBAN (staan nu als "nog invullen" in `src/lib/pdf/shared-styles.ts`). Nodig vóór de eerste factuur.
 2. **Nieuw Mollie-account** → `MOLLIE_API_KEY` (+ webhook/redirect worden automatisch de nieuwe app-URL).
