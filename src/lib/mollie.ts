@@ -133,8 +133,8 @@ export async function ensureFactuurBetaalLink(factuurId: string): Promise<{ link
   try {
     // Sanitize de URL — Vercel env vars hebben soms ingebakken \n / spaces
     // waardoor Mollie 'redirect URL invalid' geeft.
-    const rawUrl = (process.env.NEXT_PUBLIC_APP_URL || 'https://rebucrm.vercel.app').trim().replace(/[\r\n\s]+/g, '')
-    const appUrl = rawUrl.startsWith('http') ? rawUrl.replace(/\/$/, '') : 'https://rebucrm.vercel.app'
+    const rawUrl = (process.env.NEXT_PUBLIC_APP_URL || 'https://kunststofkozijnnodig-crm.vercel.app').trim().replace(/[\r\n\s]+/g, '')
+    const appUrl = rawUrl.startsWith('http') ? rawUrl.replace(/\/$/, '') : 'https://kunststofkozijnnodig-crm.vercel.app'
     const payment = await createMolliePayment({
       amount: openstaand,
       description: `Factuur ${f.factuurnummer}`,

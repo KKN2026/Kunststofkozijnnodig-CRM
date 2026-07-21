@@ -68,5 +68,5 @@ export function handleNumberPaste(
 export function getAppUrl(): string {
   const raw = (process.env.NEXT_PUBLIC_APP_URL || '').trim().replace(/[\r\n\s]+/g, '')
   if (raw.startsWith('http')) return raw.replace(/\/$/, '')
-  return 'https://rebucrm.vercel.app'
+  return 'https://kunststofkozijnnodig-crm.vercel.app'
 }
