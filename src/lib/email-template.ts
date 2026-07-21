@@ -1,0 +1,279 @@
+import { getAppUrl } from '@/lib/utils'
+
+export function buildRebuEmailHtml(
+  body: string,
+  ctaLink?: string,
+  ctaLabel?: string,
+  medewerker?: { naam?: string; email?: string; telefoon?: string },
+): string {
+  const baseUrl = getAppUrl()
+  const logoUrl = `${baseUrl}/images/logo-rebu.png`
+
+  // Body kan HTML (uit rich-text-editor) of plain text zijn.
+  // Detecteer HTML en laat het dan ongemoeid (met default font/kleur wrapper).
+  const isHtml = /<(p|br|div|b|i|u|ul|ol|span|font|strong|em)\b/i.test(body)
+  const bodyHtml = isHtml
+    ? `<div style="font-size:15px;line-height:1.65;color:#1f2937;">${body}</div>`
+    : body
+      .split('\n')
+      .map(line => {
+        const l = line.trim()
+        if (l === '') return '<div style="height:10px;line-height:10px;">&nbsp;</div>'
+        const withLinks = l.replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" style="color:#1e40af;text-decoration:underline;">$1</a>')
+        if (/^[-•]\s/.test(l)) {
+          return `<p style="margin:0 0 6px 0;padding-left:18px;position:relative;font-size:15px;line-height:1.65;color:#1f2937;"><span style="position:absolute;left:0;color:#1e40af;font-weight:bold;">•</span>${withLinks.replace(/^[-•]\s/, '')}</p>`
+        }
+        return `<p style="margin:0 0 10px 0;font-size:15px;line-height:1.65;color:#1f2937;">${withLinks}</p>`
+      })
+      .join('\n')
+
+  // Gebruik een <table>-based button met bgcolor-attribuut zodat Outlook,
+  // iOS Mail en webmail-previews (die linear-gradient en box-shadow strippen)
+  // altijd een groene klikbare knop tonen in plaats van een lege witte rechthoek.
+  const ctaBlock = ctaLink ? `
+        <tr>
+          <td align="center" style="padding:4px 40px 32px 40px;">
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto;">
+              <tr>
+                <td bgcolor="#1e40af" align="center" style="background-color:#1e40af;background:#1e40af;background:linear-gradient(135deg,#1e40af 0%,#1e3a8a 100%);border-radius:10px;">
+                  <a href="${ctaLink}" target="_blank" style="display:inline-block;background-color:#1e40af;color:#ffffff !important;padding:14px 40px;text-decoration:none;border-radius:10px;font-weight:600;font-size:15px;letter-spacing:0.2px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;mso-padding-alt:0;">
+                    <!--[if mso]>&nbsp;&nbsp;&nbsp;&nbsp;<![endif]--><span style="color:#ffffff;">${ctaLabel || 'Bekijken'}</span><!--[if mso]>&nbsp;&nbsp;&nbsp;&nbsp;<![endif]-->
+                  </a>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>` : ''
+
+  return `<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <meta name="color-scheme" content="light">
+  <meta name="supported-color-schemes" content="light">
+</head>
+<body style="margin:0;padding:0;background-color:#f1f5f4;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;color:#1f2937;">
+  <div style="display:none;max-height:0;overflow:hidden;">Kunststofkozijnnodig.nl</div>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f1f5f4;padding:40px 16px;">
+    <tr><td align="center">
+      <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;background-color:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 20px rgba(15,23,42,0.06);">
+        <!-- Header met wit logo -->
+        <tr>
+          <td style="background-color:#ffffff;padding:32px 40px 20px 40px;text-align:left;border-bottom:1px solid #f1f5f4;">
+            <img src="${logoUrl}" alt="Kunststofkozijnnodig.nl" width="150" style="display:block;max-width:150px;height:auto;" />
+          </td>
+        </tr>
+        <!-- Groen accent lijntje -->
+        <tr>
+          <td style="height:4px;background:linear-gradient(90deg,#1e40af 0%,#3b82f6 50%,#1e40af 100%);"></td>
+        </tr>
+        <!-- Body -->
+        <tr>
+          <td style="padding:36px 40px 24px 40px;">
+            ${bodyHtml}
+          </td>
+        </tr>
+        ${ctaBlock}
+        <!-- Contact kaart -->
+        <tr>
+          <td style="padding:0 40px 28px 40px;">
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#f8faf9;border-radius:12px;border:1px solid #eff6ff;">
+              <tr>
+                <td style="padding:20px 24px;">
+                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                    <tr>
+                      <td style="vertical-align:top;width:50%;padding-right:12px;">
+                        <p style="margin:0 0 4px 0;font-size:13px;font-weight:700;color:#1e3a5f;letter-spacing:0.3px;">KUNSTSTOFKOZIJNNODIG.NL</p>
+                        <p style="margin:0;font-size:13px;color:#4b5563;line-height:1.6;">
+                          Samsonweg 26F<br>
+                          1521 RM Wormerveer
+                        </p>
+                      </td>
+                      <td style="vertical-align:top;width:50%;padding-left:12px;border-left:2px solid #1e40af;">
+                        ${medewerker?.naam ? `<p style="margin:0 0 4px 0;font-size:13px;font-weight:600;color:#1e3a5f;">${medewerker.naam}</p>` : ''}
+                        <p style="margin:0;font-size:13px;color:#4b5563;line-height:1.8;">
+                          <a href="tel:${(medewerker?.telefoon || '+31658866070').replace(/\s/g, '')}" style="color:#1e40af;text-decoration:none;font-weight:500;">📞 ${medewerker?.telefoon || '+31 6 58 86 60 70'}</a><br>
+                          <a href="mailto:${medewerker?.email || 'info@kunststofkozijnnodig.nl'}" style="color:#1e40af;text-decoration:none;font-weight:500;">✉️ ${medewerker?.email || 'info@kunststofkozijnnodig.nl'}</a><br>
+                          <a href="https://www.kunststofkozijnnodig.nl" style="color:#1e40af;text-decoration:none;font-weight:500;">🌐 www.kunststofkozijnnodig.nl</a>
+                        </p>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+        <!-- Sub-footer: KVK/BTW/IBAN -->
+        <tr>
+          <td style="background-color:#f8faf9;padding:14px 40px;border-top:1px solid #eff6ff;">
+            <p style="margin:0;font-size:11px;color:#6b7280;text-align:center;letter-spacing:0.2px;">
+              KVK 907 204 74 · BTW NL 865 427 926 B01 · IBAN NL80 INGB 0675 6102 73
+            </p>
+          </td>
+        </tr>
+      </table>
+      <!-- Footer tagline -->
+      <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;margin-top:16px;">
+        <tr><td style="text-align:center;padding:0 16px;">
+          <p style="margin:0;font-size:11px;color:#9ca3af;">Kunststofkozijnnodig.nl · Kwaliteitskozijnen direct van de leverancier</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`
+}
+
+// Dedicated factuurmail: header + banner-kop + nette gegevensbox + prominente
+// betaalknop. Indeling geïnspireerd op een nette boekingsbevestiging, geheel
+// in Kunststofkozijnnodig.nl-huisstijl (groen #1e40af).
+export function buildFactuurEmailHtml(opts: {
+  body: string
+  factuurnummer: string
+  factuurdatum?: string | null
+  vervaldatum?: string | null
+  bedrag: number
+  betaalLink?: string
+  betaalBedrag?: number
+  medewerker?: { naam?: string; email?: string; telefoon?: string }
+}): string {
+  const baseUrl = getAppUrl()
+  const logoUrl = `${baseUrl}/images/logo-rebu.png`
+  const euro = (n: number) => new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR' }).format(n || 0)
+  const datumNL = (d?: string | null) => d ? new Date(d).toLocaleDateString('nl-NL') : '—'
+
+  // Body → HTML (zelfde detectie als buildRebuEmailHtml).
+  const isHtml = /<(p|br|div|b|i|u|ul|ol|span|font|strong|em)\b/i.test(opts.body)
+  const bodyHtml = isHtml
+    ? `<div style="font-size:15px;line-height:1.65;color:#1f2937;">${opts.body}</div>`
+    : opts.body.split('\n').map(line => {
+        const l = line.trim()
+        if (l === '') return '<div style="height:10px;line-height:10px;">&nbsp;</div>'
+        return `<p style="margin:0 0 10px 0;font-size:15px;line-height:1.65;color:#1f2937;">${l}</p>`
+      }).join('\n')
+
+  const detailRow = (label: string, value: string, opt?: { emphasis?: boolean; topBorder?: boolean }) => `
+                  <tr>
+                    <td style="padding:9px 0;font-size:14px;color:#6b7280;${opt?.topBorder ? 'border-top:1px solid #eff6ff;padding-top:13px;' : ''}">${label}</td>
+                    <td style="padding:9px 0;font-size:${opt?.emphasis ? '16px' : '14px'};font-weight:${opt?.emphasis ? '700' : '600'};color:${opt?.emphasis ? '#1e3a5f' : '#1f2937'};text-align:right;${opt?.topBorder ? 'border-top:1px solid #eff6ff;padding-top:13px;' : ''}">${value}</td>
+                  </tr>`
+
+  const betaalBlock = opts.betaalLink ? `
+        <tr>
+          <td align="center" style="padding:8px 40px 8px 40px;">
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto;">
+              <tr>
+                <td bgcolor="#1e40af" align="center" style="background-color:#1e40af;background:linear-gradient(135deg,#1e40af 0%,#1e3a8a 100%);border-radius:10px;">
+                  <a href="${opts.betaalLink}" target="_blank" style="display:inline-block;background-color:#1e40af;color:#ffffff !important;padding:16px 52px;text-decoration:none;border-radius:10px;font-weight:700;font-size:16px;letter-spacing:0.2px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;">
+                    <!--[if mso]>&nbsp;&nbsp;&nbsp;<![endif]--><span style="color:#ffffff;">Klik om te betalen</span><!--[if mso]>&nbsp;&nbsp;&nbsp;<![endif]-->
+                  </a>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+        <tr>
+          <td align="center" style="padding:10px 40px 30px 40px;">
+            <p style="margin:0;font-size:12px;color:#9ca3af;line-height:1.6;">Liever zelf overmaken? IBAN NL80 INGB 0675 6102 73 t.n.v. Kunststofkozijnnodig.nl,<br>o.v.v. ${opts.factuurnummer}</p>
+          </td>
+        </tr>` : `
+        <tr><td style="padding:0 40px 20px 40px;"></td></tr>`
+
+  return `<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <meta name="color-scheme" content="light">
+  <meta name="supported-color-schemes" content="light">
+</head>
+<body style="margin:0;padding:0;background-color:#f1f5f4;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;color:#1f2937;">
+  <div style="display:none;max-height:0;overflow:hidden;">Factuur ${opts.factuurnummer} — Kunststofkozijnnodig.nl</div>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f1f5f4;padding:40px 16px;">
+    <tr><td align="center">
+      <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;background-color:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 20px rgba(15,23,42,0.06);">
+        <!-- Header -->
+        <tr>
+          <td style="background-color:#ffffff;padding:32px 40px 20px 40px;text-align:left;border-bottom:1px solid #f1f5f4;">
+            <img src="${logoUrl}" alt="Kunststofkozijnnodig.nl" width="150" style="display:block;max-width:150px;height:auto;" />
+          </td>
+        </tr>
+        <tr><td style="height:4px;background:linear-gradient(90deg,#1e40af 0%,#3b82f6 50%,#1e40af 100%);"></td></tr>
+        <!-- Banner-kop -->
+        <tr>
+          <td style="padding:28px 40px 4px 40px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#eff6ff;border-left:4px solid #1e40af;border-radius:6px;">
+              <tr><td style="padding:14px 18px;font-size:17px;font-weight:700;color:#1e3a5f;">Factuur ${opts.factuurnummer}</td></tr>
+            </table>
+          </td>
+        </tr>
+        <!-- Body -->
+        <tr>
+          <td style="padding:24px 40px 8px 40px;">
+            ${bodyHtml}
+          </td>
+        </tr>
+        <!-- Gegevensbox -->
+        <tr>
+          <td style="padding:8px 40px 20px 40px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f8faf9;border:1px solid #eff6ff;border-radius:12px;">
+              <tr>
+                <td style="padding:20px 24px;">
+                  <p style="margin:0 0 10px 0;font-size:13px;font-weight:700;color:#1e3a5f;letter-spacing:0.3px;text-transform:uppercase;">Factuurgegevens</p>
+                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                    ${detailRow('Factuurnummer', opts.factuurnummer)}
+                    ${detailRow('Factuurdatum', datumNL(opts.factuurdatum))}
+                    ${detailRow('Vervaldatum', datumNL(opts.vervaldatum))}
+                    ${detailRow('Factuurbedrag', euro(opts.bedrag), { emphasis: true, topBorder: true })}
+                  </table>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+        ${betaalBlock}
+        <!-- Contact kaart -->
+        <tr>
+          <td style="padding:0 40px 28px 40px;">
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#f8faf9;border-radius:12px;border:1px solid #eff6ff;">
+              <tr>
+                <td style="padding:20px 24px;">
+                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                    <tr>
+                      <td style="vertical-align:top;width:50%;padding-right:12px;">
+                        <p style="margin:0 0 4px 0;font-size:13px;font-weight:700;color:#1e3a5f;letter-spacing:0.3px;">KUNSTSTOFKOZIJNNODIG.NL</p>
+                        <p style="margin:0;font-size:13px;color:#4b5563;line-height:1.6;">Samsonweg 26F<br>1521 RM Wormerveer</p>
+                      </td>
+                      <td style="vertical-align:top;width:50%;padding-left:12px;border-left:2px solid #1e40af;">
+                        ${opts.medewerker?.naam ? `<p style="margin:0 0 4px 0;font-size:13px;font-weight:600;color:#1e3a5f;">${opts.medewerker.naam}</p>` : ''}
+                        <p style="margin:0;font-size:13px;color:#4b5563;line-height:1.8;">
+                          <a href="tel:${(opts.medewerker?.telefoon || '+31658866070').replace(/\s/g, '')}" style="color:#1e40af;text-decoration:none;font-weight:500;">📞 ${opts.medewerker?.telefoon || '+31 6 58 86 60 70'}</a><br>
+                          <a href="mailto:${opts.medewerker?.email || 'info@kunststofkozijnnodig.nl'}" style="color:#1e40af;text-decoration:none;font-weight:500;">✉️ ${opts.medewerker?.email || 'info@kunststofkozijnnodig.nl'}</a><br>
+                          <a href="https://www.kunststofkozijnnodig.nl" style="color:#1e40af;text-decoration:none;font-weight:500;">🌐 www.kunststofkozijnnodig.nl</a>
+                        </p>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+        <tr>
+          <td style="background-color:#f8faf9;padding:14px 40px;border-top:1px solid #eff6ff;">
+            <p style="margin:0;font-size:11px;color:#6b7280;text-align:center;letter-spacing:0.2px;">KVK 907 204 74 · BTW NL 865 427 926 B01 · IBAN NL80 INGB 0675 6102 73</p>
+          </td>
+        </tr>
+      </table>
+      <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;margin-top:16px;">
+        <tr><td style="text-align:center;padding:0 16px;">
+          <p style="margin:0;font-size:11px;color:#9ca3af;">Kunststofkozijnnodig.nl · Kwaliteitskozijnen direct van de leverancier</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`
+}

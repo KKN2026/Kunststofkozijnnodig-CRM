@@ -1,0 +1,610 @@
+import { ImapFlow } from 'imapflow'
+import { simpleParser } from 'mailparser'
+import { createAdminClient } from '@/lib/supabase/admin'
+
+export function createImapClient() {
+  return new ImapFlow({
+    host: process.env.IMAP_HOST || 'imap.gmail.com',
+    port: parseInt(process.env.IMAP_PORT || '993'),
+    secure: true,
+    auth: {
+      user: process.env.SMTP_USER || '',
+      pass: process.env.SMTP_PASS || '',
+    },
+    logger: false,
+  })
+}
+
+interface ParsedEmail {
+  message_id: string | null
+  in_reply_to: string | null
+  reference_ids: string[]
+  van_email: string
+  van_naam: string | null
+  aan_email: string
+  onderwerp: string | null
+  body_text: string | null
+  body_html: string | null
+  datum: string
+  imap_uid: number
+}
+
+function parseAddress(addr: { address?: string; name?: string } | { address?: string; name?: string }[] | undefined): { email: string; naam: string | null } {
+  if (!addr) return { email: '', naam: null }
+  const first = Array.isArray(addr) ? addr[0] : addr
+  return { email: first?.address || '', naam: first?.name || null }
+}
+
+export type EmailClassificatie = 'offerte_aanvraag' | 'offerte_reactie' | 'onzeker' | 'irrelevant'
+
+const IRRELEVANT_AFZENDER_PREFIXES = [
+  'no-reply@', 'noreply@', 'mailer-daemon@', 'notifications@', 'bounce@',
+  'auto-', 'donotreply@', 'no_reply@',
+]
+
+const IRRELEVANT_DOMEINEN = [
+  'mailchimp.com', 'sendgrid.net', 'facebookmail.com', 'linkedin.com',
+  'amazonses.com', 'mandrillapp.com', 'mailgun.org', 'constantcontact.com',
+  'hubspot.com', 'sendinblue.com', 'brevo.com', 'mailerlite.com',
+]
+
+const IRRELEVANT_ONDERWERP_KEYWORDS = [
+  'newsletter', 'nieuwsbrief', 'unsubscribe', 'uitschrijven',
+  'afwezigbericht', 'out of office', 'auto-reply', 'autoreply',
+  'automatic reply', 'automatisch antwoord', 'delivery status',
+  'mailer-daemon', 'failure notice', 'undeliverable',
+]
+
+const PRODUCT_KEYWORDS = [
+  'kozijn', 'kozijnen', 'raam', 'ramen', 'deur', 'deuren',
+  'schuifpui', 'voordeur', 'achterdeur', 'dakkapel',
+  'glas', 'beglazing', 'dubbel glas', 'triple glas',
+  'draaikiepraam', 'vouwwand', 'openslaande', 'tuindeur',
+  'rolluik', 'screen', 'zonwering',
+]
+
+const INTENT_KEYWORDS = [
+  'offerte', 'prijsopgave', 'aanvraag', 'prijs', 'kosten',
+  'prijsindicatie', 'kostenplaatje', 'begroting', 'calculatie',
+]
+
+const MATERIAAL_SERVICE_KEYWORDS = [
+  'kunststof', 'pvc', 'aluminium', 'hout', 'hr++', 'hr+',
+  'triple', 'dubbel', 'montage', 'vervangen', 'plaatsen',
+  'renovatie', 'nieuwbouw', 'verbouwing', 'isolatie',
+]
+
+export function classifyEmail(
+  onderwerp: string | null,
+  vanEmail: string,
+  inReplyTo: string | null,
+  hasOfferteMatch: boolean,
+  hasRelatieMatch: boolean,
+): EmailClassificatie {
+  const sub = (onderwerp || '').toLowerCase()
+  const email = vanEmail.toLowerCase()
+  const domein = email.split('@')[1] || ''
+
+  // 1. Irrelevant check
+  if (IRRELEVANT_AFZENDER_PREFIXES.some(p => email.startsWith(p) || email.includes(p))) {
+    return 'irrelevant'
+  }
+  if (IRRELEVANT_DOMEINEN.some(d => domein === d || domein.endsWith('.' + d))) {
+    return 'irrelevant'
+  }
+  if (IRRELEVANT_ONDERWERP_KEYWORDS.some(kw => sub.includes(kw))) {
+    return 'irrelevant'
+  }
+
+  // 2. Offerte reactie: matcht bestaande offerte
+  if (hasOfferteMatch) {
+    return 'offerte_reactie'
+  }
+
+  // 3. Offerte aanvraag: product + intent keywords
+  const isReply = sub.startsWith('re:') || sub.startsWith('fw:') || sub.startsWith('fwd:') || !!inReplyTo
+  const hasProduct = PRODUCT_KEYWORDS.some(kw => sub.includes(kw))
+  const hasIntent = INTENT_KEYWORDS.some(kw => sub.includes(kw))
+  const hasMateriaal = MATERIAAL_SERVICE_KEYWORDS.some(kw => sub.includes(kw))
+
+  if (hasProduct && hasIntent) return 'offerte_aanvraag'
+  if (hasIntent && !isReply) return 'offerte_aanvraag'
+  if (hasProduct && hasMateriaal) return 'offerte_aanvraag'
+
+  // 4. Onzeker: partial match or unknown sender
+  if (hasProduct || hasIntent || hasMateriaal) return 'onzeker'
+  if (!hasRelatieMatch) return 'onzeker'
+
+  // Known relatie but no recognizable pattern
+  return 'onzeker'
+}
+
+// Folders die we NIET syncen — bulk/junk noise
+const SKIP_FOLDERS = ['spam', 'junk', 'trash', 'prullenbak', 'deleted items', 'drafts', 'concepten']
+function shouldSyncFolder(path: string, specialUse?: string): boolean {
+  const p = path.toLowerCase()
+  if (SKIP_FOLDERS.some(s => p.includes(s))) return false
+  if (specialUse && ['\\trash','\\junk','\\drafts'].includes(specialUse.toLowerCase())) return false
+  return true
+}
+
+// Track per email de folder waarin hij gevonden is
+type ParsedEmailWithFolder = ParsedEmail & { _folder: string }
+
+export async function syncEmails(administratieId: string) {
+  const supabase = createAdminClient()
+
+  let { data: syncState } = await supabase
+    .from('email_sync_state')
+    .select('*')
+    .eq('administratie_id', administratieId)
+    .maybeSingle()
+
+  if (!syncState) {
+    const { data: newState } = await supabase
+      .from('email_sync_state')
+      .insert({ administratie_id: administratieId, laatste_uid: 0 })
+      .select()
+      .single()
+    syncState = newState
+  }
+
+  await supabase
+    .from('email_sync_state')
+    .update({ status: 'syncing', updated_at: new Date().toISOString() })
+    .eq('administratie_id', administratieId)
+
+  const client = createImapClient()
+  const newEmails: ParsedEmailWithFolder[] = []
+  const folderUids: Record<string, number> = (syncState?.folder_uids as Record<string, number>) || {}
+  // Backward compat: legacy INBOX laatste_uid
+  if (!folderUids['INBOX'] && syncState?.laatste_uid) folderUids['INBOX'] = syncState.laatste_uid
+
+  try {
+    await client.connect()
+
+    // Lijst alle folders
+    const folders: Array<{ path: string; specialUse?: string }> = []
+    try {
+      const list = await client.list()
+      for (const f of list) {
+        const path = (f as unknown as { path?: string; name?: string }).path || (f as unknown as { name?: string }).name || ''
+        if (!path) continue
+        const specialUse = (f as unknown as { specialUse?: string }).specialUse
+        if (shouldSyncFolder(path, specialUse)) folders.push({ path, specialUse })
+      }
+    } catch {
+      folders.push({ path: 'INBOX' })
+    }
+    // Zorg dat INBOX in elk geval erbij zit
+    if (!folders.some(f => f.path.toLowerCase() === 'inbox')) folders.unshift({ path: 'INBOX' })
+
+    const MAX_PER_RUN = 150 // voorkom timeout op Vercel (60s hard limit)
+    for (const folder of folders) {
+      if (newEmails.length >= MAX_PER_RUN) break
+      let lock
+      try {
+        lock = await client.getMailboxLock(folder.path)
+      } catch {
+        continue // folder niet selectable
+      }
+      try {
+        const laatsteUid = folderUids[folder.path] || 0
+        const isFirstSync = laatsteUid === 0
+
+        let uids: number[] = []
+        try {
+          if (isFirstSync) {
+            const sinceDate = new Date()
+            sinceDate.setDate(sinceDate.getDate() - 30)
+            uids = await client.search({ since: sinceDate }, { uid: true }) as number[]
+          } else {
+            uids = await client.search({ uid: `${laatsteUid + 1}:*` }, { uid: true }) as number[]
+            uids = uids.filter(uid => uid > laatsteUid)
+          }
+        } catch {
+          uids = []
+        }
+        if (uids.length === 0) { lock.release(); continue }
+
+        // Pak eerste N uids om timeout te voorkomen — volgende cron-run pakt de rest
+        const remaining = MAX_PER_RUN - newEmails.length
+        if (uids.length > remaining) uids = uids.slice(0, remaining)
+
+        const uidRange = uids.join(',')
+        try {
+          for await (const message of client.fetch(uidRange, {
+            envelope: true,
+            uid: true,
+            headers: ['references', 'in-reply-to'],
+          }, { uid: true })) {
+            const envelope = message.envelope
+            if (!envelope) continue
+            const from = parseAddress(envelope.from as { address?: string; name?: string }[])
+            const to = parseAddress(envelope.to as { address?: string; name?: string }[])
+            const referenceIds: string[] = []
+            if (message.headers) {
+              const headerStr = message.headers.toString()
+              const refMatch = headerStr.match(/^References:\s*([\s\S]*?)(?=\r?\n\S|\r?\n\r?\n|$)/mi)
+              if (refMatch) {
+                const refs = refMatch[1].match(/<[^>]+>/g)
+                if (refs) referenceIds.push(...refs)
+              }
+            }
+            newEmails.push({
+              message_id: envelope.messageId || null,
+              in_reply_to: envelope.inReplyTo || null,
+              reference_ids: referenceIds,
+              van_email: from.email,
+              van_naam: from.naam,
+              aan_email: to.email,
+              onderwerp: envelope.subject || null,
+              body_text: null,
+              body_html: null,
+              datum: envelope.date ? new Date(envelope.date).toISOString() : new Date().toISOString(),
+              imap_uid: message.uid,
+              _folder: folder.path,
+            })
+            if (message.uid > (folderUids[folder.path] || 0)) folderUids[folder.path] = message.uid
+          }
+        } catch (err) {
+          console.error('Fetch folder', folder.path, 'error:', err)
+        }
+      } finally {
+        lock.release()
+      }
+    }
+
+    await client.logout()
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : 'Onbekende fout'
+    await supabase
+      .from('email_sync_state')
+      .update({ status: 'error', error_bericht: errorMsg, updated_at: new Date().toISOString() })
+      .eq('administratie_id', administratieId)
+    throw error
+  }
+
+  // Process and store new emails — batch approach for speed
+  let maxUid = syncState?.laatste_uid || 0
+  const isFirstSync = (syncState?.laatste_uid || 0) === 0
+
+  // All "our" email addresses for direction detection
+  const onzeAdressen = new Set([
+    (process.env.SMTP_USER || '').toLowerCase(),
+    'info@kunststofkozijnnodig.nl',
+    'nick@kunststofkozijnnodig.nl',
+    'n.burgers@kunststofkozijnnodig.nl',
+    'verkoop@kunststofkozijnnodig.nl',
+  ].filter(Boolean))
+
+  // Pre-load all relaties for fast email matching
+  const { data: alleRelaties } = await supabase
+    .from('relaties')
+    .select('id, email')
+    .eq('administratie_id', administratieId)
+  const relatieEmailMap = new Map<string, string>()
+  for (const r of alleRelaties || []) {
+    if (r.email) relatieEmailMap.set(r.email.toLowerCase(), r.id)
+  }
+
+  // Pre-check which emails match an offerte by subject (OFF-xxx pattern)
+  const offerteMatchSet = new Set<number>()
+  for (const email of newEmails) {
+    if (email.onderwerp && /OFF-\d+/i.test(email.onderwerp)) {
+      offerteMatchSet.add(email.imap_uid)
+    }
+  }
+
+  // Pre-load meest recente actieve verkoopkans per relatie voor project_id matching
+  const relatieIds = [...new Set([...relatieEmailMap.values()])]
+  const relatieProjectMap = new Map<string, string>()
+  if (relatieIds.length > 0) {
+    const { data: actieveProjecten } = await supabase
+      .from('projecten')
+      .select('id, relatie_id')
+      .eq('administratie_id', administratieId)
+      .eq('status', 'actief')
+      .in('relatie_id', relatieIds)
+      .order('created_at', { ascending: false })
+    for (const p of actieveProjecten || []) {
+      // Alleen de eerste (meest recente) per relatie opslaan
+      if (!relatieProjectMap.has(p.relatie_id)) {
+        relatieProjectMap.set(p.relatie_id, p.id)
+      }
+    }
+  }
+
+  // Build insert batch
+  const inserts = newEmails.map(email => {
+    const richting = onzeAdressen.has(email.van_email.toLowerCase()) ? 'uitgaand' : 'inkomend'
+    const matchEmail = richting === 'inkomend' ? email.van_email : email.aan_email
+    const relatieId = relatieEmailMap.get(matchEmail.toLowerCase()) || null
+
+    const labels: string[] = []
+    let verwerkt = isFirstSync
+
+    // Classify inkomende emails
+    if (richting === 'inkomend') {
+      const classificatie = classifyEmail(
+        email.onderwerp,
+        email.van_email,
+        email.in_reply_to,
+        offerteMatchSet.has(email.imap_uid),
+        !!relatieId,
+      )
+      labels.push(classificatie)
+
+      if (!isFirstSync) {
+        // irrelevant emails are auto-verwerkt
+        if (classificatie === 'irrelevant') verwerkt = true
+      }
+    }
+
+    if (email.imap_uid > maxUid) maxUid = email.imap_uid
+
+    // Match project_id via relatie
+    const matchedProjectId = relatieId ? (relatieProjectMap.get(relatieId) || null) : null
+
+    return {
+      administratie_id: administratieId,
+      message_id: email.message_id,
+      in_reply_to: email.in_reply_to,
+      reference_ids: email.reference_ids,
+      van_email: email.van_email,
+      van_naam: email.van_naam,
+      aan_email: email.aan_email,
+      onderwerp: email.onderwerp,
+      body_text: email.body_text,
+      body_html: email.body_html,
+      datum: email.datum,
+      richting,
+      relatie_id: relatieId,
+      offerte_id: null as string | null,
+      project_id: matchedProjectId,
+      labels,
+      imap_uid: email.imap_uid,
+      imap_folder: (email as ParsedEmailWithFolder)._folder || 'INBOX',
+      gelezen: richting === 'uitgaand',
+      verwerkt,
+    }
+  })
+
+  // Insert emails in batches, skip duplicates
+  if (inserts.length > 0) {
+    const batchSize = 50
+    for (let i = 0; i < inserts.length; i += batchSize) {
+      const batch = inserts.slice(i, i + batchSize)
+      // Filter out emails with message_ids that already exist
+      const messageIds = batch.map(e => e.message_id).filter(Boolean)
+      let existingIds = new Set<string>()
+      if (messageIds.length > 0) {
+        const { data: existing } = await supabase
+          .from('emails')
+          .select('message_id')
+          .eq('administratie_id', administratieId)
+          .in('message_id', messageIds)
+        existingIds = new Set((existing || []).map(e => e.message_id))
+      }
+      const newBatch = batch.filter(e => !e.message_id || !existingIds.has(e.message_id))
+      if (newBatch.length > 0) {
+        await supabase.from('emails').insert(newBatch)
+      }
+    }
+  }
+
+  // Only process new emails for tasks on incremental syncs (not first sync)
+  if (!isFirstSync) {
+    for (const email of newEmails) {
+      const richting = onzeAdressen.has(email.van_email.toLowerCase()) ? 'uitgaand' : 'inkomend'
+      if (richting !== 'inkomend') continue
+
+      const relatieId = relatieEmailMap.get(email.van_email.toLowerCase()) || null
+      const classificatie = classifyEmail(
+        email.onderwerp,
+        email.van_email,
+        email.in_reply_to,
+        offerteMatchSet.has(email.imap_uid),
+        !!relatieId,
+      )
+
+      // irrelevant & onzeker: no automatic actions (onzeker waits for triage)
+      if (classificatie === 'irrelevant' || classificatie === 'onzeker') continue
+
+      const offerteId = await matchEmailToOfferte(email.onderwerp, email.in_reply_to, administratieId, supabase)
+      await processNewEmail(email, classificatie, administratieId, relatieId, offerteId, supabase)
+    }
+  }
+
+  // Update sync state: laatste_uid blijft de INBOX uid (backward compat), folder_uids houdt alle folders bij
+  await supabase
+    .from('email_sync_state')
+    .update({
+      laatste_uid: folderUids['INBOX'] || maxUid,
+      folder_uids: folderUids,
+      laatste_sync: new Date().toISOString(),
+      status: 'idle',
+      error_bericht: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('administratie_id', administratieId)
+
+  return { synced: newEmails.length }
+}
+
+// Fetch email body on-demand by IMAP UID (in gespecificeerde folder)
+export async function fetchEmailBody(imapUid: number, folder: string = 'INBOX'): Promise<{ text: string | null; html: string | null }> {
+  const client = createImapClient()
+  let text: string | null = null
+  let html: string | null = null
+
+  try {
+    await client.connect()
+    const lock = await client.getMailboxLock(folder)
+    try {
+      const msg = await client.fetchOne(String(imapUid), { source: true }, { uid: true }) as { source?: Buffer } | false
+      if (msg && 'source' in msg && msg.source) {
+        const parsed = await simpleParser(msg.source)
+        text = parsed.text || null
+        html = (typeof parsed.html === 'string' ? parsed.html : null)
+      }
+    } finally {
+      lock.release()
+    }
+    await client.logout()
+  } catch {
+    // Ignore — body loading is best-effort
+  }
+
+  return { text, html }
+}
+
+// Fetch email attachments on-demand by IMAP UID (in folder)
+export async function fetchEmailAttachments(imapUid: number, folder: string = 'INBOX'): Promise<{ filename: string; contentType: string; size: number; data: string }[]> {
+  const client = createImapClient()
+  const attachments: { filename: string; contentType: string; size: number; data: string }[] = []
+
+  try {
+    await client.connect()
+    const lock = await client.getMailboxLock(folder)
+    try {
+      const msg = await client.fetchOne(String(imapUid), { source: true }, { uid: true }) as { source?: Buffer } | false
+      if (msg && 'source' in msg && msg.source) {
+        const source = msg.source.toString()
+
+        // Find boundary from Content-Type header
+        const boundaryMatch = source.match(/Content-Type:\s*multipart\/mixed[^]*?boundary="?([^\s";]+)"?/i)
+        if (boundaryMatch) {
+          const boundary = boundaryMatch[1]
+          const parts = source.split('--' + boundary)
+
+          for (const part of parts) {
+            // Look for attachment parts (Content-Disposition: attachment)
+            const dispositionMatch = part.match(/Content-Disposition:\s*attachment[^]*?filename="?([^";\r\n]+)"?/i)
+            if (!dispositionMatch) continue
+
+            const filename = dispositionMatch[1].trim()
+            const contentTypeMatch = part.match(/Content-Type:\s*([^\s;\r\n]+)/i)
+            const contentType = contentTypeMatch?.[1] || 'application/octet-stream'
+            const encodingMatch = part.match(/Content-Transfer-Encoding:\s*(\S+)/i)
+            const encoding = encodingMatch?.[1]?.toLowerCase() || ''
+
+            // Extract body after double newline
+            const bodyStart = part.indexOf('\r\n\r\n')
+            if (bodyStart === -1) continue
+            let body = part.substring(bodyStart + 4).trim()
+
+            // Remove trailing boundary markers
+            const endBoundary = body.indexOf('--' + boundary)
+            if (endBoundary !== -1) body = body.substring(0, endBoundary).trim()
+
+            let data: string
+            if (encoding === 'base64') {
+              data = body.replace(/\s/g, '')
+            } else {
+              data = Buffer.from(body).toString('base64')
+            }
+
+            const size = Math.ceil(data.length * 3 / 4)
+            attachments.push({ filename, contentType, size, data })
+          }
+        }
+      }
+    } finally {
+      lock.release()
+    }
+    await client.logout()
+  } catch {
+    // Attachment loading is best-effort
+  }
+
+  return attachments
+}
+
+async function matchEmailToOfferte(
+  onderwerp: string | null,
+  inReplyTo: string | null,
+  administratieId: string,
+  supabase: ReturnType<typeof createAdminClient>
+): Promise<string | null> {
+  if (onderwerp) {
+    const match = onderwerp.match(/OFF-\d+/i)
+    if (match) {
+      const { data } = await supabase
+        .from('offertes')
+        .select('id')
+        .eq('administratie_id', administratieId)
+        .ilike('offertenummer', match[0])
+        .limit(1)
+        .maybeSingle()
+      if (data?.id) return data.id
+    }
+  }
+
+  if (inReplyTo) {
+    const { data } = await supabase
+      .from('emails')
+      .select('offerte_id')
+      .eq('administratie_id', administratieId)
+      .eq('message_id', inReplyTo)
+      .not('offerte_id', 'is', null)
+      .limit(1)
+      .maybeSingle()
+    if (data?.offerte_id) return data.offerte_id
+  }
+
+  return null
+}
+
+async function matchMedewerkerByEmail(
+  aanEmail: string,
+  administratieId: string,
+  supabase: ReturnType<typeof createAdminClient>
+): Promise<{ id: string; profiel_id: string | null } | null> {
+  if (!aanEmail) return null
+  const { data } = await supabase
+    .from('medewerkers')
+    .select('id, profiel_id')
+    .eq('administratie_id', administratieId)
+    .ilike('email', aanEmail.trim())
+    .eq('actief', true)
+    .maybeSingle()
+  return data || null
+}
+
+async function processNewEmail(
+  email: ParsedEmail,
+  classificatie: EmailClassificatie,
+  administratieId: string,
+  relatieId: string | null,
+  offerteId: string | null,
+  supabase: ReturnType<typeof createAdminClient>
+) {
+  // toegewezenMedewerker werd alleen gebruikt voor auto-taak aanmaak — die is
+  // weggehaald. matchMedewerkerByEmail blijft staan voor evt. toekomstig gebruik.
+  if (classificatie === 'offerte_aanvraag') {
+    // Geen automatische relatie-aanmaak meer. Onbekende afzenders blijven
+    // zonder gekoppelde relatie staan; een medewerker maakt zelf een klant
+    // aan vanuit de email-inbox (createRelatieFromEmail). Bestaat de relatie
+    // al, dan is hij bij de batch-insert al gekoppeld via relatie_id.
+    if (relatieId) {
+      await supabase
+        .from('emails')
+        .update({ relatie_id: relatieId, verwerkt: true })
+        .eq('administratie_id', administratieId)
+        .eq('message_id', email.message_id)
+    }
+
+    // Geen automatische taak aanmaken — taak ontstaat pas wanneer een
+    // medewerker de e-mail expliciet aan zichzelf/iemand toewijst via de
+    // email-inbox UI (assignEmailToMedewerker).
+  } else if (classificatie === 'offerte_reactie' && offerteId) {
+    await supabase
+      .from('emails')
+      .update({ verwerkt: true, offerte_id: offerteId })
+      .eq('administratie_id', administratieId)
+      .eq('message_id', email.message_id)
+    // Geen automatische taak aanmaken bij offerte-reacties — medewerker
+    // wijst zelf toe via email-inbox als opvolging nodig is.
+  }
+}

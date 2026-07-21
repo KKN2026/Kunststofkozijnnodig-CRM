@@ -1,0 +1,32 @@
+{
+  "git": {
+    "deploymentEnabled": false
+  },
+  "regions": ["dub1"],
+  "crons": [
+    {
+      "path": "/api/email/sync",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/snelstart/sync",
+      "schedule": "*/30 * * * *"
+    },
+    {
+      "path": "/api/admin/backup-db",
+      "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/cron/cleanup-concept-state",
+      "schedule": "0 4 * * *"
+    },
+    {
+      "path": "/api/cron/check-mollie-payments",
+      "schedule": "0 */2 * * *"
+    },
+    {
+      "path": "/api/cron/vrije-uren-rapport",
+      "schedule": "0 7 1 * *"
+    }
+  ]
+}

@@ -1,0 +1,338 @@
+import { NextResponse } from 'next/server'
+import { renderToBuffer } from '@react-pdf/renderer'
+import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { OfferteDocument, KozijnElement } from '@/lib/pdf/offerte-template'
+import { parseLeverancierPdfText } from '@/lib/pdf-parser'
+
+export const dynamic = 'force-dynamic'
+
+function normalizeName(name: string): string {
+  // Normaliseer: 'Deur 008', 'DEUR 008', 'Element 008' → allemaal '008' voor matching
+  // zodat labels van de Aluplast/Aluprof parser ('Deur X') en de prijzen-meta
+  // ('Element X') toch bij elkaar vinden.
+  return name
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase()
+    .replace(/^(deur|element|gekoppeld\s+element|merk|positie)\s+0*/, '')
+}
+
+export async function GET(
+  _request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params
+  const url = new URL(_request.url)
+  const debug = url.searchParams.get('debug') === '1'
+  const hidePrices = url.searchParams.get('hidePrices') === '1'
+  const supabase = await createClient()
+
+  const { data: offerte, error } = await supabase
+    .from('offertes')
+    .select('*, relatie:relaties(*), regels:offerte_regels(*)')
+    .eq('id', id)
+    .single()
+
+  if (error || !offerte) {
+    return NextResponse.json({ error: 'Offerte niet gevonden' }, { status: 404 })
+  }
+
+  try {
+    const supabaseAdmin = createAdminClient()
+    let kozijnElementen: KozijnElement[] | undefined
+    let leverancierTotaal: number | undefined
+
+    const { data: leverancierDoc } = await supabaseAdmin
+      .from('documenten')
+      .select('*')
+      .eq('entiteit_type', 'offerte_leverancier')
+      .eq('entiteit_id', id)
+      .maybeSingle()
+
+    if (leverancierDoc) {
+      try {
+        // Parse leverancier PDF for element prices/specs
+        const { parsePdfBuffer: pdfParse } = await import('@/lib/pdf-extract')
+        const { data: pdfFile } = await supabaseAdmin.storage
+          .from('documenten')
+          .download(leverancierDoc.storage_path)
+
+        let elementData: ReturnType<typeof parseLeverancierPdfText>['elementen'] = []
+        let leverancierTotaalRaw = 0
+
+        if (pdfFile) {
+          const pdfBuffer = Buffer.from(await pdfFile.arrayBuffer())
+          const parsed = await pdfParse(pdfBuffer)
+          const parsedPdf = parseLeverancierPdfText(parsed.text)
+          elementData = parsedPdf.elementen
+          leverancierTotaalRaw = parsedPdf.totaal
+        }
+
+        // Load tekening metadata + marge data
+        const { data: metaDoc } = await supabaseAdmin
+          .from('documenten')
+          .select('*')
+          .eq('entiteit_type', 'offerte_leverancier_data')
+          .eq('entiteit_id', id)
+          .maybeSingle()
+
+        let tekeningData: { naam: string; tekeningPath: string; pageIndex?: number; totalPages?: number }[] = []
+        let margePercentage = 0
+        let perElementMarges: Record<string, number> = {}
+        let savedPrijzen: Record<string, { prijs: number; hoeveelheid: number }> = {}
+
+        if (metaDoc) {
+          const rawMeta = JSON.parse(metaDoc.storage_path)
+          if (Array.isArray(rawMeta)) {
+            tekeningData = rawMeta
+          } else {
+            tekeningData = rawMeta.tekeningen || []
+            margePercentage = rawMeta.margePercentage || 0
+            perElementMarges = rawMeta.marges || {}
+            savedPrijzen = rawMeta.prijzen || {}
+          }
+        }
+
+        // Also load prices saved at PDF upload time (most reliable source)
+        if (Object.keys(savedPrijzen).length === 0) {
+          const { data: parsedDoc } = await supabaseAdmin
+            .from('documenten')
+            .select('*')
+            .eq('entiteit_type', 'offerte_leverancier_parsed')
+            .eq('entiteit_id', id)
+            .maybeSingle()
+          if (parsedDoc) {
+            try {
+              const parsedData = JSON.parse(parsedDoc.storage_path)
+              savedPrijzen = parsedData.prijzen || {}
+            } catch { /* ignore */ }
+          }
+        }
+
+        // Download tekening images and group by element name
+        const elementTekeningen = new Map<string, { url: string; pageIndex: number; totalPages: number }[]>()
+        const elementOrder: string[] = []
+
+        for (const tekening of tekeningData) {
+          const { data: imgFile } = await supabaseAdmin.storage
+            .from('documenten')
+            .download(tekening.tekeningPath)
+
+          let tekeningUrl = ''
+          if (imgFile) {
+            const imgBuffer = Buffer.from(await imgFile.arrayBuffer())
+            const mime = /\.jpe?g$/i.test(tekening.tekeningPath) ? 'image/jpeg' : 'image/png'
+            tekeningUrl = `data:${mime};base64,${imgBuffer.toString('base64')}`
+          }
+
+          const pageIndex = tekening.pageIndex ?? 0
+          const totalPages = tekening.totalPages ?? 1
+
+          if (!elementTekeningen.has(tekening.naam)) {
+            elementTekeningen.set(tekening.naam, [])
+            elementOrder.push(tekening.naam)
+          }
+          elementTekeningen.get(tekening.naam)!.push({ url: tekeningUrl, pageIndex, totalPages })
+        }
+
+        // Helper: find matching parsed element by exact or normalized name.
+        // BELANGRIJK: leverancier-PDF's (Aluprof, Reynaers e.a.) renderen vaak
+        // hetzelfde element twee keer (binnen-aanzicht + buiten-aanzicht), elk
+        // met dezelfde prijs. Daardoor heeft elementData soms 2 entries met
+        // dezelfde naam. Bij een match markeren we ALLE entries met die naam
+        // als used — anders pikt de fallback-loop verderop de duplicate op en
+        // verschijnt het element dubbel in het TOTAALOVERZICHT (en wordt het
+        // totaal verdubbeld).
+        const usedParsedIndices = new Set<number>()
+        function findParsedElement(naam: string) {
+          let idx = elementData.findIndex((e, i) => !usedParsedIndices.has(i) && e.naam === naam)
+          let matchedNormalized: string | null = null
+          if (idx === -1) {
+            const normalized = normalizeName(naam)
+            idx = elementData.findIndex((e, i) => !usedParsedIndices.has(i) && normalizeName(e.naam) === normalized)
+            if (idx >= 0) matchedNormalized = normalized
+          } else {
+            matchedNormalized = normalizeName(elementData[idx].naam)
+          }
+          if (idx >= 0) {
+            usedParsedIndices.add(idx)
+            // Markeer alle duplicate-name entries (zelfde normalized name) ook
+            // als used zodat de fallback-loop ze niet opnieuw als nieuw element
+            // toevoegt.
+            if (matchedNormalized) {
+              for (let i = 0; i < elementData.length; i++) {
+                if (i === idx) continue
+                if (normalizeName(elementData[i].naam) === matchedNormalized) {
+                  usedParsedIndices.add(i)
+                }
+              }
+            }
+            return elementData[idx]
+          }
+          return null
+        }
+
+        // Helper: find marge for element by exact or normalized name
+        function findMarge(naam: string): number {
+          if (perElementMarges[naam] !== undefined) return perElementMarges[naam]
+          const normalized = normalizeName(naam)
+          for (const [key, val] of Object.entries(perElementMarges)) {
+            if (normalizeName(key) === normalized) return val
+          }
+          return margePercentage
+        }
+
+        // Helper: find saved price by exact or normalized name
+        function findSavedPrijs(naam: string): { prijs: number; hoeveelheid: number } | null {
+          if (savedPrijzen[naam]) return savedPrijzen[naam]
+          const normalized = normalizeName(naam)
+          for (const [key, val] of Object.entries(savedPrijzen)) {
+            if (normalizeName(key) === normalized) return val
+          }
+          return null
+        }
+
+        // Helper: build KozijnElement from tekening name + optional parsed data
+        function buildElement(
+          naam: string,
+          pages: { url: string; pageIndex: number; totalPages: number }[] | undefined,
+          parsed: typeof elementData[0] | null,
+        ): KozijnElement {
+          const marge = findMarge(naam)
+          // Handmatige override uit de wizard wint van de (her-geparste)
+          // AI-prijs. Zonder deze volgorde zou een verkeerd geparseerde
+          // AI-prijs in de PDF blijven staan, ook nadat de gebruiker hem
+          // in de wizard had bijgesteld.
+          const saved = findSavedPrijs(naam)
+          const inkoopPrijs = saved?.prijs ?? parsed?.prijs ?? 0
+          const hoeveelheid = saved?.hoeveelheid ?? parsed?.hoeveelheid ?? 1
+          const verkoopPrijs = marge > 0
+            ? Math.round(inkoopPrijs * (1 + marge / 100) * 100) / 100
+            : inkoopPrijs
+
+          return {
+            naam: parsed?.naam || naam,
+            hoeveelheid,
+            systeem: parsed?.systeem || '',
+            kleur: parsed?.kleur || '',
+            afmetingen: parsed?.afmetingen || '',
+            type: parsed?.type || '',
+            prijs: verkoopPrijs,
+            glasType: parsed?.glasType || '',
+            beslag: parsed?.beslag || '',
+            uwWaarde: parsed?.uwWaarde || '',
+            drapirichting: parsed?.drapirichting || '',
+            dorpel: parsed?.dorpel || '',
+            sluiting: parsed?.sluiting || '',
+            scharnieren: parsed?.scharnieren || '',
+            gewicht: parsed?.gewicht || '',
+            omtrek: parsed?.omtrek || '',
+            paneel: parsed?.paneel || '',
+            commentaar: parsed?.commentaar || '',
+            hoekverbinding: parsed?.hoekverbinding || '',
+            montageGaten: parsed?.montageGaten || '',
+            afwatering: parsed?.afwatering || '',
+            scharnierenKleur: parsed?.scharnierenKleur || '',
+            lakKleur: parsed?.lakKleur || '',
+            sluitcilinder: parsed?.sluitcilinder || '',
+            aantalSleutels: parsed?.aantalSleutels || '',
+            gelijksluitend: parsed?.gelijksluitend || '',
+            krukBinnen: parsed?.krukBinnen || '',
+            krukBuiten: parsed?.krukBuiten || '',
+            tekeningUrl: pages?.[0]?.url || '',
+            tekeningUrls: pages,
+          }
+        }
+
+        kozijnElementen = []
+
+        if (elementOrder.length > 0) {
+          // PRIMARY PATH: build from tekening metadata, enrich with parsed data
+          for (const naam of elementOrder) {
+            const pages = elementTekeningen.get(naam)!
+            const parsed = findParsedElement(naam)
+            kozijnElementen.push(buildElement(naam, pages, parsed))
+          }
+
+          // Also add any parsed elements that had no tekening match.
+          // Dedupe op normalized name zodat duplicates uit de leverancier-PDF
+          // (binnen/buiten-aanzicht met dezelfde naam) niet alsnog dubbel
+          // toegevoegd worden.
+          const reedsToegevoegd = new Set(kozijnElementen.map(k => normalizeName(k.naam)))
+          for (let i = 0; i < elementData.length; i++) {
+            if (!usedParsedIndices.has(i)) {
+              const el = elementData[i]
+              const norm = normalizeName(el.naam)
+              if (reedsToegevoegd.has(norm)) continue
+              reedsToegevoegd.add(norm)
+              kozijnElementen.push(buildElement(el.naam, undefined, el))
+            }
+          }
+        } else if (elementData.length > 0) {
+          // FALLBACK: no tekeningen at all, use parsed elements directly.
+          // Dedupe ook hier, zelfde reden.
+          const reedsToegevoegd = new Set<string>()
+          for (const el of elementData) {
+            const norm = normalizeName(el.naam)
+            if (reedsToegevoegd.has(norm)) continue
+            reedsToegevoegd.add(norm)
+            kozijnElementen.push(buildElement(el.naam, undefined, el))
+          }
+        }
+
+        // Debug: return JSON with all data instead of PDF
+        if (debug) {
+          return NextResponse.json({
+            leverancierTotaalRaw,
+            parsedElementCount: elementData.length,
+            parsedElements: elementData.map(e => ({ naam: e.naam, prijs: e.prijs, hoeveelheid: e.hoeveelheid })),
+            tekeningCount: tekeningData.length,
+            tekeningNames: elementOrder,
+            savedPrijzen,
+            perElementMarges,
+            margePercentage,
+            kozijnElementen: kozijnElementen?.map(e => ({ naam: e.naam, prijs: e.prijs, hoeveelheid: e.hoeveelheid })),
+          })
+        }
+
+        // Calculate leverancier totaal with marge applied
+        if (leverancierTotaalRaw > 0) {
+          if (Object.keys(perElementMarges).length > 0 && kozijnElementen.length > 0) {
+            leverancierTotaal = kozijnElementen.reduce((sum, e) => sum + e.prijs * e.hoeveelheid, 0)
+          } else {
+            leverancierTotaal = margePercentage > 0
+              ? Math.round(leverancierTotaalRaw * (1 + margePercentage / 100) * 100) / 100
+              : leverancierTotaalRaw
+          }
+        }
+      } catch (parseErr) {
+        console.error('Error parsing leverancier data:', parseErr)
+      }
+    }
+
+    const offerteData = {
+      ...offerte,
+      kozijnElementen,
+      leverancierTotaal,
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const buffer = await renderToBuffer(OfferteDocument({ offerte: offerteData, hidePrices }) as any)
+    const uint8 = new Uint8Array(buffer)
+    const suffix = hidePrices ? '-zonder-prijzen' : ''
+
+    return new NextResponse(uint8, {
+      headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `inline; filename="Offerte-${offerte.offertenummer}${suffix}.pdf"`,
+        // Geen cache: na een save moet de PDF direct de nieuwe prijzen tonen,
+        // niet een eerder gegenereerde versie uit browser/CDN-cache.
+        'Cache-Control': 'no-store, no-cache, must-revalidate',
+      },
+    })
+  } catch (err) {
+    console.error('PDF generation error:', err)
+    return NextResponse.json({ error: 'PDF generatie mislukt' }, { status: 500 })
+  }
+}
