@@ -14,8 +14,11 @@ ALTER TABLE relaties ADD CONSTRAINT relaties_type_check
 -- Google Place ID voor leads
 ALTER TABLE relaties ADD COLUMN IF NOT EXISTS google_place_id text;
 
--- Profielen: collega's zien binnen administratie (zodat gebruikersbeheer werkt)
+-- Profielen: collega's zien binnen administratie (zodat gebruikersbeheer werkt).
+-- Gebruikt de SECURITY DEFINER-functie get_my_administratie_id() i.p.v. een
+-- subquery op profielen zelf — dat laatste veroorzaakt "infinite recursion
+-- detected in policy for relation profielen" (in Rebu ad-hoc zo gepatcht).
 CREATE POLICY "profielen_select_administratie" ON profielen
   FOR SELECT USING (
-    administratie_id IN (SELECT administratie_id FROM profielen WHERE id = auth.uid())
+    administratie_id = get_my_administratie_id()
   );
