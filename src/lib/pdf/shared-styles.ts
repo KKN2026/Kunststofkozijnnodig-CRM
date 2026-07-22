@@ -12,8 +12,6 @@ export const COLORS = {
   textLight: '#6B7280',
 }
 
-// LET OP: KVK, BTW en IBAN zijn nog niet bekend voor de aparte onderneming
-// Kunststofkozijnnodig.nl — vul deze in vóór de eerste factuur de deur uit gaat.
 export const COMPANY = {
   naam: 'Kunststofkozijnnodig.nl',
   adres: 'Samsonweg 26F',
@@ -22,9 +20,9 @@ export const COMPANY = {
   telefoon: '+31 6 58 86 60 70',
   email: 'info@kunststofkozijnnodig.nl',
   website: 'www.kunststofkozijnnodig.nl',
-  btw: 'BTW nog invullen',
-  kvk: 'KvK nog invullen',
-  iban: 'IBAN nog invullen',
+  btw: 'NL 869 595 313 B01',
+  kvk: '42075957',
+  iban: 'NL69 INGB 0119 2791 93',
 }
 
 export const sharedStyles = StyleSheet.create({

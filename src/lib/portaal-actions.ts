@@ -706,7 +706,7 @@ Bijgevoegd treft u de factuur aan voor ${factuurVolledig.onderwerp || factuurVol
 - Vervaldatum: ${vervaldatumFormatted}
 
 ${betaalSectie}
-IBAN: NL80 INGB 0675 6102 73
+IBAN: NL69 INGB 0119 2791 93
 T.n.v. Kunststofkozijnnodig.nl
 O.v.v. ${factuurVolledig.factuurnummer}
 

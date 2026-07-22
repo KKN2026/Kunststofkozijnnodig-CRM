@@ -109,7 +109,7 @@ export function buildRebuEmailHtml(
         <tr>
           <td style="background-color:#f8faf9;padding:14px 40px;border-top:1px solid #eff6ff;">
             <p style="margin:0;font-size:11px;color:#6b7280;text-align:center;letter-spacing:0.2px;">
-              KVK 907 204 74 · BTW NL 865 427 926 B01 · IBAN NL80 INGB 0675 6102 73
+              KVK 42075957 · BTW NL 869 595 313 B01 · IBAN NL69 INGB 0119 2791 93
             </p>
           </td>
         </tr>
@@ -176,7 +176,7 @@ export function buildFactuurEmailHtml(opts: {
         </tr>
         <tr>
           <td align="center" style="padding:10px 40px 30px 40px;">
-            <p style="margin:0;font-size:12px;color:#9ca3af;line-height:1.6;">Liever zelf overmaken? IBAN NL80 INGB 0675 6102 73 t.n.v. Kunststofkozijnnodig.nl,<br>o.v.v. ${opts.factuurnummer}</p>
+            <p style="margin:0;font-size:12px;color:#9ca3af;line-height:1.6;">Liever zelf overmaken? IBAN NL69 INGB 0119 2791 93 t.n.v. Kunststofkozijnnodig.nl,<br>o.v.v. ${opts.factuurnummer}</p>
           </td>
         </tr>` : `
         <tr><td style="padding:0 40px 20px 40px;"></td></tr>`
@@ -263,7 +263,7 @@ export function buildFactuurEmailHtml(opts: {
         </tr>
         <tr>
           <td style="background-color:#f8faf9;padding:14px 40px;border-top:1px solid #eff6ff;">
-            <p style="margin:0;font-size:11px;color:#6b7280;text-align:center;letter-spacing:0.2px;">KVK 907 204 74 · BTW NL 865 427 926 B01 · IBAN NL80 INGB 0675 6102 73</p>
+            <p style="margin:0;font-size:11px;color:#6b7280;text-align:center;letter-spacing:0.2px;">KVK 42075957 · BTW NL 869 595 313 B01 · IBAN NL69 INGB 0119 2791 93</p>
           </td>
         </tr>
       </table>

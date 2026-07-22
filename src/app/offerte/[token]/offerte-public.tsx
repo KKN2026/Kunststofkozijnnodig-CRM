@@ -205,7 +205,7 @@ export function OffertePublic({ offerte, token }: { offerte: Offerte; token: str
         {/* Footer */}
         <div className="mt-12 text-center pb-8">
           <div className="w-16 h-0.5 mx-auto mb-4" style={{ backgroundColor: '#1e40af' }} />
-          <p className="text-xs text-gray-400">Kunststofkozijnnodig.nl | KVK: 907 204 74 | BTW: NL 865 427 926 B01</p>
+          <p className="text-xs text-gray-400">Kunststofkozijnnodig.nl | KVK: 42075957 | BTW: NL 869 595 313 B01</p>
           <p className="text-xs text-gray-400">Samsonweg 26F, 1521 RM Wormerveer | +31 6 58 86 60 70 | info@kunststofkozijnnodig.nl</p>
         </div>
       </div>
