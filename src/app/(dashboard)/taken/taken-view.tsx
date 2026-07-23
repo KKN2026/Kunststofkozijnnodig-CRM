@@ -93,7 +93,7 @@ function getColumns(
             type="checkbox"
             checked={row.original.status === 'afgerond'}
             readOnly
-            className="h-4 w-4 rounded border-gray-300 text-[#1e40af] focus:ring-[#1e40af] cursor-pointer pointer-events-none"
+            className="h-4 w-4 rounded border-gray-300 text-[#5fab16] focus:ring-[#5fab16] cursor-pointer pointer-events-none"
           />
         </div>
       ),
@@ -131,7 +131,7 @@ function getColumns(
             type="date"
             value={isoValue}
             onChange={(e) => onDeadlineChange(row.original.id, e.target.value || null)}
-            className={`bg-transparent border-0 p-0 text-sm focus:outline-none focus:ring-1 focus:ring-[#1e40af] rounded cursor-pointer ${kleur} ${!d ? 'text-gray-400' : ''}`}
+            className={`bg-transparent border-0 p-0 text-sm focus:outline-none focus:ring-1 focus:ring-[#5fab16] rounded cursor-pointer ${kleur} ${!d ? 'text-gray-400' : ''}`}
             style={{ minWidth: '110px' }}
           />
           {tijd && <span className={`ml-1 ${kleur}`}>{tijd}</span>}
@@ -162,7 +162,7 @@ function getColumns(
             <select
               value={huidigeId}
               onChange={(e) => onMedewerkerChange(row.original.id, e.target.value || null)}
-              className={`bg-transparent border-0 p-0 pr-1 text-sm rounded cursor-pointer focus:outline-none focus:ring-1 focus:ring-[#1e40af] hover:text-[#1e40af] ${huidigeId ? 'text-gray-700' : 'text-gray-400'}`}
+              className={`bg-transparent border-0 p-0 pr-1 text-sm rounded cursor-pointer focus:outline-none focus:ring-1 focus:ring-[#5fab16] hover:text-[#5fab16] ${huidigeId ? 'text-gray-700' : 'text-gray-400'}`}
             >
               <option value="">– Niemand –</option>
               {alleMedewerkers.map(m => (
@@ -470,14 +470,14 @@ export function TakenView({ taken, isAdmin, currentUserId, alleMedewerkers = [] 
               onClick={() => setActiveTabPersist(tab.key)}
               className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 transition-colors -mb-px ${
                 activeTab === tab.key
-                  ? 'border-[#1e40af] text-[#1e40af]'
+                  ? 'border-[#5fab16] text-[#5fab16]'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
             >
               <Icon className="h-4 w-4" />
               {tab.label}
               <span className={`ml-1 text-xs px-1.5 py-0.5 rounded-full ${
-                activeTab === tab.key ? 'bg-[#1e40af]/10 text-[#1e40af]' : 'bg-gray-100 text-gray-500'
+                activeTab === tab.key ? 'bg-[#5fab16]/10 text-[#5fab16]' : 'bg-gray-100 text-gray-500'
               }`}>
                 {tab.count}
               </span>
@@ -498,7 +498,7 @@ export function TakenView({ taken, isAdmin, currentUserId, alleMedewerkers = [] 
                 type="button"
                 disabled={!dropdownId}
                 onClick={() => dropdownId && setFilterMedewerkerPersist(geselecteerd ? '' : dropdownId)}
-                className={`text-left px-4 py-3 transition-colors ${geselecteerd ? 'bg-[#1e40af] text-white' : 'bg-white hover:bg-gray-50'} ${!dropdownId ? 'cursor-default' : ''}`}
+                className={`text-left px-4 py-3 transition-colors ${geselecteerd ? 'bg-[#5fab16] text-white' : 'bg-white hover:bg-gray-50'} ${!dropdownId ? 'cursor-default' : ''}`}
               >
                 <p className={`text-xs truncate ${geselecteerd ? 'text-white/80' : 'text-gray-500'}`}>{c.naam}</p>
                 <p className={`text-xl font-bold mt-0.5 ${geselecteerd ? 'text-white' : 'text-gray-900'}`}>{c.aantal}</p>
@@ -517,7 +517,7 @@ export function TakenView({ taken, isAdmin, currentUserId, alleMedewerkers = [] 
           <select
             value={filterMedewerker}
             onChange={(e) => setFilterMedewerkerPersist(e.target.value)}
-            className="px-3 py-1.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#1e40af] focus:border-transparent"
+            className="px-3 py-1.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#5fab16] focus:border-transparent"
           >
             <option value="">Alle medewerkers</option>
             {medewerkers.map(([id, naam]) => (
@@ -527,9 +527,9 @@ export function TakenView({ taken, isAdmin, currentUserId, alleMedewerkers = [] 
         )}
 
         {filterLabel && (
-          <span className="inline-flex items-center gap-1.5 bg-[#1e40af]/10 text-[#1e40af] text-sm font-medium px-3 py-1.5 rounded-full">
+          <span className="inline-flex items-center gap-1.5 bg-[#5fab16]/10 text-[#5fab16] text-sm font-medium px-3 py-1.5 rounded-full">
             {filterLabel}
-            <Link href="/taken" className="hover:bg-[#1e40af]/20 rounded-full p-0.5 transition-colors">
+            <Link href="/taken" className="hover:bg-[#5fab16]/20 rounded-full p-0.5 transition-colors">
               <X className="h-3.5 w-3.5" />
             </Link>
           </span>
@@ -607,7 +607,7 @@ export function TakenView({ taken, isAdmin, currentUserId, alleMedewerkers = [] 
                       type="button"
                       disabled={beslisBezig}
                       onClick={() => setBeslisModus('factureer')}
-                      className="flex items-center justify-center gap-2 rounded-md bg-[#1e40af] text-white px-4 py-2.5 text-sm font-medium hover:bg-[#1e3a8a] disabled:opacity-60 transition-colors"
+                      className="flex items-center justify-center gap-2 rounded-md bg-[#5fab16] text-white px-4 py-2.5 text-sm font-medium hover:bg-[#4e8f12] disabled:opacity-60 transition-colors"
                     >
                       <ThumbsUp className="h-4 w-4" />
                       Offerte gewonnen → factureren
@@ -639,7 +639,7 @@ export function TakenView({ taken, isAdmin, currentUserId, alleMedewerkers = [] 
                       type="button"
                       disabled={beslisBezig}
                       onClick={() => handleGewonnen('volledig')}
-                      className="w-full text-left p-3 rounded-lg border-2 border-gray-200 hover:border-[#1e40af] hover:bg-emerald-50/40 disabled:opacity-60 transition-all"
+                      className="w-full text-left p-3 rounded-lg border-2 border-gray-200 hover:border-[#5fab16] hover:bg-emerald-50/40 disabled:opacity-60 transition-all"
                     >
                       <p className="font-medium text-sm">100% factureren</p>
                       <p className="text-xs text-gray-500">1 factuur · {formatCurrency(totaalIncl)}</p>
@@ -648,7 +648,7 @@ export function TakenView({ taken, isAdmin, currentUserId, alleMedewerkers = [] 
                       type="button"
                       disabled={beslisBezig}
                       onClick={() => handleGewonnen('split', 70)}
-                      className="w-full text-left p-3 rounded-lg border-2 border-gray-200 hover:border-[#1e40af] hover:bg-emerald-50/40 disabled:opacity-60 transition-all"
+                      className="w-full text-left p-3 rounded-lg border-2 border-gray-200 hover:border-[#5fab16] hover:bg-emerald-50/40 disabled:opacity-60 transition-all"
                     >
                       <p className="font-medium text-sm">70% / 30% splitsen</p>
                       <p className="text-xs text-gray-500">Aanbetaling {formatCurrency(totaalIncl * 0.7)} · restbetaling {formatCurrency(totaalIncl * 0.3)} (concept)</p>
@@ -662,7 +662,7 @@ export function TakenView({ taken, isAdmin, currentUserId, alleMedewerkers = [] 
                           max={99}
                           value={customSplitPercentage}
                           onChange={(e) => setCustomSplitPercentage(Math.min(99, Math.max(1, parseInt(e.target.value) || 50)))}
-                          className="w-20 px-3 py-2 border border-gray-300 rounded-md text-sm text-right focus:outline-none focus:ring-2 focus:ring-[#1e40af]"
+                          className="w-20 px-3 py-2 border border-gray-300 rounded-md text-sm text-right focus:outline-none focus:ring-2 focus:ring-[#5fab16]"
                         />
                         <span className="text-xs text-gray-500 flex-1">% / {100 - customSplitPercentage}% · {formatCurrency(totaalIncl * customSplitPercentage / 100)} + {formatCurrency(totaalIncl * (100 - customSplitPercentage) / 100)}</span>
                         <Button size="sm" disabled={beslisBezig} onClick={() => handleGewonnen('split', customSplitPercentage)}>Factureren</Button>
@@ -687,7 +687,7 @@ export function TakenView({ taken, isAdmin, currentUserId, alleMedewerkers = [] 
                                   const v = Math.min(98, Math.max(1, parseInt(e.target.value) || 0))
                                   setSplit3Percentages(prev => { const next = [...prev] as [number, number, number]; next[i] = v; return next })
                                 }}
-                                className="w-full px-2 py-2 border border-gray-300 rounded-md text-sm text-center focus:outline-none focus:ring-2 focus:ring-[#1e40af]"
+                                className="w-full px-2 py-2 border border-gray-300 rounded-md text-sm text-center focus:outline-none focus:ring-2 focus:ring-[#5fab16]"
                               />
                             ))}
                           </div>

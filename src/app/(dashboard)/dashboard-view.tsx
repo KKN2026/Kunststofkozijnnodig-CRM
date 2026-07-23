@@ -272,7 +272,7 @@ function KlantNaam({ id, naam, className = '' }: { id: string | null | undefined
   }
   return (
     <span className="inline-flex items-center gap-1.5">
-      <Link href={`/relatiebeheer/${id}`} className={`hover:text-[#1e40af] hover:underline ${isVoormalig ? 'text-gray-400' : ''} ${className}`}>
+      <Link href={`/relatiebeheer/${id}`} className={`hover:text-[#5fab16] hover:underline ${isVoormalig ? 'text-gray-400' : ''} ${className}`}>
         {naam}
       </Link>
       {isVoormalig && <VoormaligMarker />}
@@ -331,7 +331,7 @@ function Section({ title, icon: Icon, iconColor, count, children, defaultOpen, l
             <Link
               href={linkHref}
               onClick={(e) => e.stopPropagation()}
-              className="text-xs font-medium text-[#1e40af] hover:underline items-center gap-1 hidden sm:flex"
+              className="text-xs font-medium text-[#5fab16] hover:underline items-center gap-1 hidden sm:flex"
             >
               {linkLabel || 'Bekijk alle'} <ArrowRight className="h-3 w-3" />
             </Link>
@@ -530,7 +530,7 @@ export function DashboardView({ data }: { data: DashboardData | null }) {
   }
   const activeDoel = doelenItems[doelenTab]
   const doelenPercentage = activeDoel.doel > 0 ? Math.round((activeDoel.omzet / activeDoel.doel) * 100) : 0
-  const doelenBarColor = doelenPercentage >= 100 ? 'bg-[#1e40af]' : doelenPercentage >= 80 ? 'bg-green-500' : doelenPercentage >= 50 ? 'bg-amber-500' : 'bg-red-500'
+  const doelenBarColor = doelenPercentage >= 100 ? 'bg-[#5fab16]' : doelenPercentage >= 80 ? 'bg-green-500' : doelenPercentage >= 50 ? 'bg-amber-500' : 'bg-red-500'
 
   // Omzetdoelen widget (reused on mobile + desktop sidebar)
   const omzetdoelenWidget = (
@@ -538,7 +538,7 @@ export function DashboardView({ data }: { data: DashboardData | null }) {
       <div className="px-4 sm:px-5 py-3 border-b border-gray-100 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <div className="h-7 w-7 rounded-lg bg-emerald-50 flex items-center justify-center">
-            <Target className="h-3.5 w-3.5 text-[#1e40af]" />
+            <Target className="h-3.5 w-3.5 text-[#5fab16]" />
           </div>
           <h3 className="text-sm font-semibold text-gray-900">Omzetdoelen</h3>
         </div>
@@ -548,7 +548,7 @@ export function DashboardView({ data }: { data: DashboardData | null }) {
               key={tab}
               onClick={() => setDoelenTab(tab)}
               className={`px-2.5 py-1 text-[11px] rounded-md font-medium transition-colors ${
-                doelenTab === tab ? 'bg-[#1e40af] text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100'
+                doelenTab === tab ? 'bg-[#5fab16] text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100'
               }`}
             >
               {tab.charAt(0).toUpperCase() + tab.slice(1)}
@@ -572,7 +572,7 @@ export function DashboardView({ data }: { data: DashboardData | null }) {
         ) : (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <span className={`text-3xl font-bold tracking-tight ${doelenPercentage >= 100 ? 'text-[#1e40af]' : doelenPercentage >= 80 ? 'text-green-600' : doelenPercentage >= 50 ? 'text-amber-500' : 'text-red-500'}`}>
+              <span className={`text-3xl font-bold tracking-tight ${doelenPercentage >= 100 ? 'text-[#5fab16]' : doelenPercentage >= 80 ? 'text-green-600' : doelenPercentage >= 50 ? 'text-amber-500' : 'text-red-500'}`}>
                 {doelenPercentage}%
               </span>
               <span className="text-xs text-gray-400">{activeDoel.label}doel {new Date().getFullYear()}</span>
@@ -610,7 +610,7 @@ export function DashboardView({ data }: { data: DashboardData | null }) {
           </p>
         </div>
         <Link href="/offertes/nieuw" className="shrink-0">
-          <Button className="bg-[#1e40af] hover:bg-[#1e3a8a] shadow-sm">
+          <Button className="bg-[#5fab16] hover:bg-[#4e8f12] shadow-sm">
             <FileText className="h-4 w-4 mr-1.5" />
             <span className="hidden sm:inline">Nieuwe offerte</span>
             <span className="sm:hidden">Nieuw</span>
@@ -643,7 +643,7 @@ export function DashboardView({ data }: { data: DashboardData | null }) {
         {/* Omzet — klik toont exact de facturen waaruit dit bedrag is opgebouwd */}
         <Link href={`/facturatie?periode=${new Date().toISOString().slice(0, 7)}`} className="block group">
           <div className="relative bg-white rounded-2xl border border-gray-100 p-6 group-hover:border-gray-200 group-hover:shadow-sm transition-all overflow-hidden">
-            <div className="absolute top-0 left-0 h-1 w-full bg-gradient-to-r from-[#1e40af] to-emerald-400" />
+            <div className="absolute top-0 left-0 h-1 w-full bg-gradient-to-r from-[#5fab16] to-emerald-400" />
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">Omzet deze maand</p>
@@ -664,7 +664,7 @@ export function DashboardView({ data }: { data: DashboardData | null }) {
                 </div>
               </div>
               <div className="h-12 w-12 rounded-full bg-emerald-50 flex items-center justify-center shrink-0">
-                <DollarSign className="h-5 w-5 text-[#1e40af]" />
+                <DollarSign className="h-5 w-5 text-[#5fab16]" />
               </div>
             </div>
           </div>
@@ -800,7 +800,7 @@ export function DashboardView({ data }: { data: DashboardData | null }) {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-0.5">
                             <KlantNaam id={r.relatie_id} naam={r.relatie_bedrijfsnaam} className="text-sm font-medium text-gray-900" />
-                            <Link href={`/facturatie/${r.factuur_id}`} onClick={(e) => e.stopPropagation()} className="text-xs text-[#1e40af] hover:underline">
+                            <Link href={`/facturatie/${r.factuur_id}`} onClick={(e) => e.stopPropagation()} className="text-xs text-[#5fab16] hover:underline">
                               {r.factuurnummer}
                             </Link>
                           </div>
@@ -818,7 +818,7 @@ export function DashboardView({ data }: { data: DashboardData | null }) {
                         </div>
                         <Button
                           size="sm"
-                          className="h-8 text-xs bg-[#1e40af] hover:bg-[#1e3a8a] shadow-sm shrink-0"
+                          className="h-8 text-xs bg-[#5fab16] hover:bg-[#4e8f12] shadow-sm shrink-0"
                           onClick={(e) => handleSnelVersturen(e, r.factuur_id)}
                           disabled={versturenLoading === r.factuur_id}
                         >
@@ -855,7 +855,7 @@ export function DashboardView({ data }: { data: DashboardData | null }) {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-0.5">
                             <KlantNaam id={c.relatie_id} naam={c.relatie_bedrijfsnaam} className="text-sm font-medium text-gray-900" />
-                            <Link href={`/facturatie/${c.id}`} onClick={(e) => e.stopPropagation()} className="text-xs text-[#1e40af] hover:underline">
+                            <Link href={`/facturatie/${c.id}`} onClick={(e) => e.stopPropagation()} className="text-xs text-[#5fab16] hover:underline">
                               {c.factuurnummer}
                             </Link>
                           </div>
@@ -869,7 +869,7 @@ export function DashboardView({ data }: { data: DashboardData | null }) {
                         </div>
                         <Button
                           size="sm"
-                          className="h-8 text-xs bg-[#1e40af] hover:bg-[#1e3a8a] shadow-sm shrink-0"
+                          className="h-8 text-xs bg-[#5fab16] hover:bg-[#4e8f12] shadow-sm shrink-0"
                           onClick={(e) => handleSnelVersturen(e, c.id)}
                           disabled={versturenLoading === c.id}
                         >
@@ -893,7 +893,7 @@ export function DashboardView({ data }: { data: DashboardData | null }) {
 
           {/* 1. Geaccepteerde offertes */}
           <div id="geaccepteerd" className="scroll-mt-20">
-            <Section title="Geaccepteerde offertes" icon={CheckSquare} iconColor="bg-emerald-50 text-[#1e40af]" count={data.geaccepteerdeOffertes.length} linkHref="/offertes" linkLabel="Alle offertes" accentColor="bg-emerald-100 text-emerald-700" defaultOpen>
+            <Section title="Geaccepteerde offertes" icon={CheckSquare} iconColor="bg-emerald-50 text-[#5fab16]" count={data.geaccepteerdeOffertes.length} linkHref="/offertes" linkLabel="Alle offertes" accentColor="bg-emerald-100 text-emerald-700" defaultOpen>
               {/* Desktop tabel */}
               <table className="w-full hidden md:table">
                 <thead>
@@ -909,13 +909,13 @@ export function DashboardView({ data }: { data: DashboardData | null }) {
                     <tr key={o.id} className="border-t border-gray-50 hover:bg-emerald-50/30 transition-colors">
                       <td className="px-5 py-3 text-sm font-medium text-gray-900"><KlantNaam id={o.relatie_id} naam={o.relatie_bedrijfsnaam} /></td>
                       <td className="px-3 py-3">
-                        <Link href={`/offertes/${o.id}`} className="text-sm text-[#1e40af] hover:underline font-medium">{o.offertenummer}</Link>
+                        <Link href={`/offertes/${o.id}`} className="text-sm text-[#5fab16] hover:underline font-medium">{o.offertenummer}</Link>
                         <div className="text-[10px] text-gray-400 mt-0.5">{formatDateShort(o.datum)}</div>
                       </td>
                       <td className="px-3 py-3 text-sm text-right font-semibold text-gray-900">{formatCurrency(o.totaal)}</td>
                       <td className="px-5 py-3 text-right">
                         <div className="flex items-center justify-end gap-1.5">
-                          <Button size="sm" className="h-7 text-xs bg-[#1e40af] hover:bg-[#1e3a8a] shadow-sm" onClick={() => setFactuurDialogOfferte({ id: o.id, totaal: o.totaal })} disabled={factuurLoading === o.id}>
+                          <Button size="sm" className="h-7 text-xs bg-[#5fab16] hover:bg-[#4e8f12] shadow-sm" onClick={() => setFactuurDialogOfferte({ id: o.id, totaal: o.totaal })} disabled={factuurLoading === o.id}>
                             {factuurLoading === o.id ? 'Bezig...' : 'Factuur maken'}
                           </Button>
                           <button title="Verbergen (al afgehandeld zonder factuur)" onClick={() => handleVerbergGeaccepteerd(o.id)} disabled={factuurLoading === o.id} className="h-7 w-7 inline-flex items-center justify-center rounded text-gray-400 hover:text-gray-700 hover:bg-gray-100 disabled:opacity-50 transition-colors">
@@ -934,13 +934,13 @@ export function DashboardView({ data }: { data: DashboardData | null }) {
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
                         <p className="text-sm font-medium text-gray-900 truncate"><KlantNaam id={o.relatie_id} naam={o.relatie_bedrijfsnaam} /></p>
-                        <Link href={`/offertes/${o.id}`} className="text-xs text-[#1e40af] font-medium">{o.offertenummer}</Link>
+                        <Link href={`/offertes/${o.id}`} className="text-xs text-[#5fab16] font-medium">{o.offertenummer}</Link>
                         <span className="text-xs text-gray-400 ml-2">{formatDateShort(o.datum)}</span>
                       </div>
                       <p className="text-sm font-semibold text-gray-900 shrink-0">{formatCurrency(o.totaal)}</p>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Button size="sm" className="flex-1 h-8 text-xs bg-[#1e40af] hover:bg-[#1e3a8a]" onClick={() => setFactuurDialogOfferte({ id: o.id, totaal: o.totaal })} disabled={factuurLoading === o.id}>
+                      <Button size="sm" className="flex-1 h-8 text-xs bg-[#5fab16] hover:bg-[#4e8f12]" onClick={() => setFactuurDialogOfferte({ id: o.id, totaal: o.totaal })} disabled={factuurLoading === o.id}>
                         {factuurLoading === o.id ? 'Bezig...' : 'Factuur maken'}
                       </Button>
                       <button title="Verbergen (al afgehandeld zonder factuur)" onClick={() => handleVerbergGeaccepteerd(o.id)} disabled={factuurLoading === o.id} className="h-8 w-9 inline-flex items-center justify-center rounded border border-gray-200 text-gray-400 hover:text-gray-700 hover:bg-gray-50 disabled:opacity-50 transition-colors">
@@ -980,19 +980,19 @@ export function DashboardView({ data }: { data: DashboardData | null }) {
                         <td className="px-5 py-3">
                           <div className="text-sm font-medium text-gray-900">
                             {f.relatie_id ? (
-                              <Link href={`/relatiebeheer/${f.relatie_id}`} className="hover:text-[#1e40af] hover:underline">{f.relatie_bedrijfsnaam}</Link>
+                              <Link href={`/relatiebeheer/${f.relatie_id}`} className="hover:text-[#5fab16] hover:underline">{f.relatie_bedrijfsnaam}</Link>
                             ) : f.relatie_bedrijfsnaam}
                           </div>
                           {verkoopkansLabel && (
                             <div className="text-xs text-gray-500 mt-0.5 truncate max-w-[220px]">
                               {f.verkoopkans_naam && f.project_id ? (
-                                <Link href={`/projecten/${f.project_id}`} className="hover:text-[#1e40af] hover:underline">{f.verkoopkans_naam}</Link>
+                                <Link href={`/projecten/${f.project_id}`} className="hover:text-[#5fab16] hover:underline">{f.verkoopkans_naam}</Link>
                               ) : verkoopkansLabel}
                             </div>
                           )}
                         </td>
                         <td className="px-3 py-3">
-                          <Link href={`/facturatie/${f.id}`} className="text-sm text-[#1e40af] hover:underline font-medium">{f.factuurnummer}</Link>
+                          <Link href={`/facturatie/${f.id}`} className="text-sm text-[#5fab16] hover:underline font-medium">{f.factuurnummer}</Link>
                           {typeLabel && (
                             <div className="mt-0.5"><span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-semibold ${typeColor}`}>{typeLabel}</span></div>
                           )}
@@ -1043,7 +1043,7 @@ export function DashboardView({ data }: { data: DashboardData | null }) {
                             <p className="text-xs text-gray-500 truncate">{f.verkoopkans_naam || f.onderwerp}</p>
                           )}
                           <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                            <span className="text-xs text-[#1e40af] font-medium">{f.factuurnummer}</span>
+                            <span className="text-xs text-[#5fab16] font-medium">{f.factuurnummer}</span>
                             {typeLabel && <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-semibold ${typeColor}`}>{typeLabel}</span>}
                             <Badge status={f.status} />
                             {dagen !== null && <DagenPill dagen={dagen} isOver={!!isVervallen} />}
@@ -1075,7 +1075,7 @@ export function DashboardView({ data }: { data: DashboardData | null }) {
                     <tr key={o.id} className="border-t border-gray-50 hover:bg-orange-50/20 transition-colors">
                       <td className="px-5 py-3 text-sm font-medium text-gray-900"><KlantNaam id={o.relatie_id} naam={o.relatie_bedrijfsnaam} /></td>
                       <td className="px-3 py-3">
-                        <Link href={`/orders/${o.id}`} className="text-sm text-[#1e40af] hover:underline font-medium">{o.ordernummer}</Link>
+                        <Link href={`/orders/${o.id}`} className="text-sm text-[#5fab16] hover:underline font-medium">{o.ordernummer}</Link>
                         <div className="text-[10px] text-gray-400 mt-0.5">{formatDateShort(o.datum)}</div>
                       </td>
                       <td className="px-3 py-3 text-sm text-right font-semibold text-gray-900">{formatCurrency(o.totaal)}</td>
@@ -1094,7 +1094,7 @@ export function DashboardView({ data }: { data: DashboardData | null }) {
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
                         <p className="text-sm font-medium text-gray-900 truncate"><KlantNaam id={o.relatie_id} naam={o.relatie_bedrijfsnaam} /></p>
-                        <Link href={`/orders/${o.id}`} className="text-xs text-[#1e40af] font-medium">{o.ordernummer}</Link>
+                        <Link href={`/orders/${o.id}`} className="text-xs text-[#5fab16] font-medium">{o.ordernummer}</Link>
                         <span className="text-xs text-gray-400 ml-2">{formatDateShort(o.datum)}</span>
                       </div>
                       <p className="text-sm font-semibold text-gray-900 shrink-0">{formatCurrency(o.totaal)}</p>
@@ -1189,7 +1189,7 @@ export function DashboardView({ data }: { data: DashboardData | null }) {
                   <tr key={o.id} className="border-t border-gray-50 hover:bg-gray-50/50 transition-colors">
                     <td className="px-5 py-3 text-sm font-medium text-gray-900"><KlantNaam id={o.relatie_id} naam={o.relatie_bedrijfsnaam} /></td>
                     <td className="px-3 py-3">
-                      <Link href={`/offertes/${o.id}`} className="text-sm text-[#1e40af] hover:underline font-medium">{o.offertenummer}</Link>
+                      <Link href={`/offertes/${o.id}`} className="text-sm text-[#5fab16] hover:underline font-medium">{o.offertenummer}</Link>
                       {o.project_naam && <span className="text-[11px] text-gray-400 ml-1.5">{o.project_naam}</span>}
                     </td>
                     <td className="px-3 py-3 text-sm text-right font-semibold text-gray-900">{formatCurrency(o.totaal)}</td>
@@ -1197,7 +1197,7 @@ export function DashboardView({ data }: { data: DashboardData | null }) {
                       <DagenPill dagen={o.dagen_open} isOver={false} />
                     </td>
                     <td className="px-5 py-3 text-right">
-                      <Link href={`/offertes/${o.id}`}><Button size="sm" variant="ghost" className="h-7 text-xs text-[#1e40af] hover:bg-emerald-50">Opvolgen</Button></Link>
+                      <Link href={`/offertes/${o.id}`}><Button size="sm" variant="ghost" className="h-7 text-xs text-[#5fab16] hover:bg-emerald-50">Opvolgen</Button></Link>
                     </td>
                   </tr>
                 ))}
@@ -1210,7 +1210,7 @@ export function DashboardView({ data }: { data: DashboardData | null }) {
                     <div className="min-w-0">
                       <p className="text-sm font-medium text-gray-900 truncate">{o.relatie_bedrijfsnaam}</p>
                       <div className="flex items-center gap-2 mt-0.5">
-                        <span className="text-xs text-[#1e40af] font-medium">{o.offertenummer}</span>
+                        <span className="text-xs text-[#5fab16] font-medium">{o.offertenummer}</span>
                         <DagenPill dagen={o.dagen_open} isOver={false} />
                       </div>
                     </div>
@@ -1239,7 +1239,7 @@ export function DashboardView({ data }: { data: DashboardData | null }) {
                   return (
                     <tr key={l.id} className="border-t border-gray-50 hover:bg-gray-50/50 transition-colors">
                       <td className="px-5 py-3 text-sm font-medium text-gray-900"><KlantNaam id={l.relatie_id} naam={l.relatie_bedrijfsnaam} /></td>
-                      <td className="px-3 py-3"><Link href={`/orders/${l.id}`} className="text-sm text-[#1e40af] hover:underline font-medium">{l.ordernummer}</Link></td>
+                      <td className="px-3 py-3"><Link href={`/orders/${l.id}`} className="text-sm text-[#5fab16] hover:underline font-medium">{l.ordernummer}</Link></td>
                       <td className="px-3 py-3">
                         {l.definitief && l.leverdatum ? (
                           <>
@@ -1271,7 +1271,7 @@ export function DashboardView({ data }: { data: DashboardData | null }) {
                             }`}>
                               {l.restbetaling.status === 'concept' ? 'Nog versturen' : l.restbetaling.status === 'verzonden' ? 'Verzonden' : l.restbetaling.status === 'betaald' ? 'Betaald' : 'Vervallen'}
                             </span>
-                            <span className="text-xs text-gray-400 group-hover:text-[#1e40af]">{formatCurrency(l.restbetaling.totaal)}</span>
+                            <span className="text-xs text-gray-400 group-hover:text-[#5fab16]">{formatCurrency(l.restbetaling.totaal)}</span>
                           </Link>
                         ) : (
                           <span className="text-xs text-gray-300">-</span>
@@ -1293,7 +1293,7 @@ export function DashboardView({ data }: { data: DashboardData | null }) {
                         <div className="min-w-0">
                           <p className="text-sm font-medium text-gray-900 truncate">{l.relatie_bedrijfsnaam}</p>
                           <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                            <span className="text-xs text-[#1e40af] font-medium">{l.ordernummer}</span>
+                            <span className="text-xs text-[#5fab16] font-medium">{l.ordernummer}</span>
                             {l.definitief && l.leverdatum ? (
                               <>
                                 <span className="text-xs text-gray-400">{formatDateShort(l.leverdatum)}</span>
@@ -1351,7 +1351,7 @@ export function DashboardView({ data }: { data: DashboardData | null }) {
                       <td className="px-3 py-3 text-sm text-gray-600 max-w-[260px]">
                         {o.project_naam ? (
                           o.project_id ? (
-                            <Link href={`/projecten/${o.project_id}`} className="hover:text-[#1e40af] hover:underline truncate block">{o.project_naam}</Link>
+                            <Link href={`/projecten/${o.project_id}`} className="hover:text-[#5fab16] hover:underline truncate block">{o.project_naam}</Link>
                           ) : (
                             <span className="truncate block">{o.project_naam}</span>
                           )
@@ -1359,7 +1359,7 @@ export function DashboardView({ data }: { data: DashboardData | null }) {
                           <span className="text-gray-300">{o.onderwerp || '—'}</span>
                         )}
                       </td>
-                      <td className="px-3 py-3"><Link href={`/orders/${o.id}`} className="text-sm text-[#1e40af] hover:underline font-medium">{o.ordernummer}</Link></td>
+                      <td className="px-3 py-3"><Link href={`/orders/${o.id}`} className="text-sm text-[#5fab16] hover:underline font-medium">{o.ordernummer}</Link></td>
                       <td className="px-3 py-3 text-sm text-right font-semibold text-gray-900">{formatCurrency(o.totaal)}</td>
                       <td className="px-5 py-3 text-right">
                         <Button size="sm" variant="secondary" className="h-7 text-xs" onClick={() => setPlanning({ order: o, mode: 'indicatief' })}>
@@ -1379,7 +1379,7 @@ export function DashboardView({ data }: { data: DashboardData | null }) {
                         {o.project_naam && (
                           <p className="text-xs text-gray-500 truncate">{o.project_naam}</p>
                         )}
-                        <Link href={`/orders/${o.id}`} className="text-xs text-[#1e40af] font-medium">{o.ordernummer}</Link>
+                        <Link href={`/orders/${o.id}`} className="text-xs text-[#5fab16] font-medium">{o.ordernummer}</Link>
                       </div>
                       <p className="text-sm font-semibold text-gray-900 shrink-0">{formatCurrency(o.totaal)}</p>
                     </div>
@@ -1419,7 +1419,7 @@ export function DashboardView({ data }: { data: DashboardData | null }) {
                   return (
                     <tr key={t.id} className="border-t border-gray-50 hover:bg-gray-50/50 cursor-pointer transition-colors" onClick={() => router.push(`/taken/${t.id}`)}>
                       <td className="px-3 py-3 text-center">
-                        <input type="checkbox" className="h-4 w-4 rounded border-gray-300 text-[#1e40af] focus:ring-[#1e40af] cursor-pointer" onClick={(e) => handleCompleteTaak(t.id, e)} readOnly checked={false} />
+                        <input type="checkbox" className="h-4 w-4 rounded border-gray-300 text-[#5fab16] focus:ring-[#5fab16] cursor-pointer" onClick={(e) => handleCompleteTaak(t.id, e)} readOnly checked={false} />
                       </td>
                       <td className="px-3 py-3 text-sm font-medium text-gray-900">{t.titel}</td>
                       {toonToegewezen && <td className="px-3 py-3 text-sm text-gray-500">{t.toegewezen_naam || '-'}</td>}
@@ -1437,7 +1437,7 @@ export function DashboardView({ data }: { data: DashboardData | null }) {
                       <td className="px-5 py-3"><Badge status={t.prioriteit} /></td>
                       <td className="px-3 py-3 text-right">
                         <div className="flex items-center gap-1 justify-end">
-                          <button onClick={(e) => handleEditTaak(t.id, e)} className="p-1 text-gray-400 hover:text-[#1e40af]" title="Bewerken"><Pencil className="h-3.5 w-3.5" /></button>
+                          <button onClick={(e) => handleEditTaak(t.id, e)} className="p-1 text-gray-400 hover:text-[#5fab16]" title="Bewerken"><Pencil className="h-3.5 w-3.5" /></button>
                           <button onClick={(e) => handleDeleteTaak(t.id, e)} className="p-1 text-gray-400 hover:text-red-500" title="Verwijderen"><Trash2 className="h-3.5 w-3.5" /></button>
                         </div>
                       </td>
@@ -1451,7 +1451,7 @@ export function DashboardView({ data }: { data: DashboardData | null }) {
                 const deadlineDagen = t.deadline ? dagenVerschil(t.deadline) : null
                 return (
                   <div key={t.id} className="px-4 py-3 cursor-pointer active:bg-gray-50 flex items-start gap-3" onClick={() => router.push(`/taken/${t.id}`)}>
-                    <input type="checkbox" className="h-4 w-4 rounded border-gray-300 text-[#1e40af] focus:ring-[#1e40af] cursor-pointer mt-0.5 shrink-0" onClick={(e) => handleCompleteTaak(t.id, e)} readOnly checked={false} />
+                    <input type="checkbox" className="h-4 w-4 rounded border-gray-300 text-[#5fab16] focus:ring-[#5fab16] cursor-pointer mt-0.5 shrink-0" onClick={(e) => handleCompleteTaak(t.id, e)} readOnly checked={false} />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
@@ -1465,7 +1465,7 @@ export function DashboardView({ data }: { data: DashboardData | null }) {
                         </div>
                         <div className="shrink-0 text-right flex items-center gap-1">
                           <Badge status={t.prioriteit} />
-                          <button onClick={(e) => handleEditTaak(t.id, e)} className="p-1 text-gray-400 hover:text-[#1e40af]"><Pencil className="h-3.5 w-3.5" /></button>
+                          <button onClick={(e) => handleEditTaak(t.id, e)} className="p-1 text-gray-400 hover:text-[#5fab16]"><Pencil className="h-3.5 w-3.5" /></button>
                           <button onClick={(e) => handleDeleteTaak(t.id, e)} className="p-1 text-gray-400 hover:text-red-500"><Trash2 className="h-3.5 w-3.5" /></button>
                         </div>
                       </div>
@@ -1514,11 +1514,11 @@ export function DashboardView({ data }: { data: DashboardData | null }) {
                               value={editNotitieText}
                               onChange={e => setEditNotitieText(e.target.value)}
                               rows={3}
-                              className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-[#1e40af]"
+                              className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-[#5fab16]"
                             />
                             <div className="flex gap-2 justify-end">
                               <button onClick={() => { setEditNotitieId(null); setEditNotitieText('') }} className="text-xs text-gray-500 hover:text-gray-700 px-2 py-1">Annuleren</button>
-                              <button onClick={() => handleSaveNotitie(n)} className="text-xs text-white bg-[#1e40af] hover:bg-[#1e3a8a] px-3 py-1 rounded">Opslaan</button>
+                              <button onClick={() => handleSaveNotitie(n)} className="text-xs text-white bg-[#5fab16] hover:bg-[#4e8f12] px-3 py-1 rounded">Opslaan</button>
                             </div>
                           </div>
                         ) : (
@@ -1527,7 +1527,7 @@ export function DashboardView({ data }: { data: DashboardData | null }) {
                       </div>
                       {editNotitieId !== n.id && (
                         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                          <button onClick={(e) => startEditNotitie(n, e)} className="p-1 text-gray-400 hover:text-[#1e40af]" title="Bewerken"><Pencil className="h-3.5 w-3.5" /></button>
+                          <button onClick={(e) => startEditNotitie(n, e)} className="p-1 text-gray-400 hover:text-[#5fab16]" title="Bewerken"><Pencil className="h-3.5 w-3.5" /></button>
                           <button onClick={(e) => handleDeleteNotitieDashboard(n.id, e)} className="p-1 text-gray-400 hover:text-red-500" title="Verwijderen"><Trash2 className="h-3.5 w-3.5" /></button>
                         </div>
                       )}
@@ -1573,7 +1573,7 @@ export function DashboardView({ data }: { data: DashboardData | null }) {
                           )}
                           <div className="w-full flex flex-col items-center justify-end h-36">
                             <div
-                              className={`w-full max-w-[28px] rounded-t-md transition-all ${isLast ? 'bg-[#1e40af]' : 'bg-[#1e40af]/30 group-hover:bg-[#1e40af]/70'}`}
+                              className={`w-full max-w-[28px] rounded-t-md transition-all ${isLast ? 'bg-[#5fab16]' : 'bg-[#5fab16]/30 group-hover:bg-[#5fab16]/70'}`}
                               style={{ height: `${Math.max(pct, d.bedrag > 0 ? 4 : 0)}%` }}
                             />
                           </div>
@@ -1607,11 +1607,11 @@ export function DashboardView({ data }: { data: DashboardData | null }) {
             <h3 className="text-lg font-semibold mb-1">Offerte factureren</h3>
             <p className="text-sm text-gray-500 mb-5">Hoe wilt u deze offerte factureren?</p>
             <div className="space-y-3">
-              <button onClick={() => handleConvertToFactuur(factuurDialogOfferte.id, 'volledig')} disabled={!!factuurLoading} className="w-full text-left p-4 rounded-xl border-2 border-gray-200 hover:border-[#1e40af] hover:bg-emerald-50/30 transition-all active:scale-[0.99]">
+              <button onClick={() => handleConvertToFactuur(factuurDialogOfferte.id, 'volledig')} disabled={!!factuurLoading} className="w-full text-left p-4 rounded-xl border-2 border-gray-200 hover:border-[#5fab16] hover:bg-emerald-50/30 transition-all active:scale-[0.99]">
                 <p className="font-medium text-gray-900">100% factureren</p>
                 <p className="text-sm text-gray-500 mt-0.5">{formatCurrency(factuurDialogOfferte.totaal)}</p>
               </button>
-              <button onClick={() => handleConvertToFactuur(factuurDialogOfferte.id, 'split', 70)} disabled={!!factuurLoading} className="w-full text-left p-4 rounded-xl border-2 border-gray-200 hover:border-[#1e40af] hover:bg-emerald-50/30 transition-all active:scale-[0.99]">
+              <button onClick={() => handleConvertToFactuur(factuurDialogOfferte.id, 'split', 70)} disabled={!!factuurLoading} className="w-full text-left p-4 rounded-xl border-2 border-gray-200 hover:border-[#5fab16] hover:bg-emerald-50/30 transition-all active:scale-[0.99]">
                 <p className="font-medium text-gray-900">70% / 30% splitsen</p>
                 <p className="text-sm text-gray-500 mt-0.5">{formatCurrency(factuurDialogOfferte.totaal * 0.7)} + {formatCurrency(factuurDialogOfferte.totaal * 0.3)}</p>
               </button>
@@ -1619,10 +1619,10 @@ export function DashboardView({ data }: { data: DashboardData | null }) {
                 <p className="font-medium text-gray-900 mb-3">Eigen percentage (2 termijnen)</p>
                 <div className="flex items-center gap-3">
                   <div className="flex items-center gap-2 flex-1">
-                    <input type="number" min="1" max="99" value={customSplitPercentage} onChange={(e) => setCustomSplitPercentage(Math.min(99, Math.max(1, parseInt(e.target.value) || 50)))} className="w-20 px-3 py-2 border border-gray-200 rounded-lg text-sm text-right focus:outline-none focus:ring-2 focus:ring-[#1e40af] focus:border-transparent" />
+                    <input type="number" min="1" max="99" value={customSplitPercentage} onChange={(e) => setCustomSplitPercentage(Math.min(99, Math.max(1, parseInt(e.target.value) || 50)))} className="w-20 px-3 py-2 border border-gray-200 rounded-lg text-sm text-right focus:outline-none focus:ring-2 focus:ring-[#5fab16] focus:border-transparent" />
                     <span className="text-sm text-gray-500">/ {100 - customSplitPercentage}%</span>
                   </div>
-                  <Button size="sm" className="bg-[#1e40af] hover:bg-[#1e3a8a]" onClick={() => handleConvertToFactuur(factuurDialogOfferte.id, 'split', customSplitPercentage)} disabled={!!factuurLoading}>OK</Button>
+                  <Button size="sm" className="bg-[#5fab16] hover:bg-[#4e8f12]" onClick={() => handleConvertToFactuur(factuurDialogOfferte.id, 'split', customSplitPercentage)} disabled={!!factuurLoading}>OK</Button>
                 </div>
               </div>
               {(() => {
@@ -1650,7 +1650,7 @@ export function DashboardView({ data }: { data: DashboardData | null }) {
                               return next
                             })
                           }}
-                          className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm text-center focus:outline-none focus:ring-2 focus:ring-[#1e40af] focus:border-transparent"
+                          className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm text-center focus:outline-none focus:ring-2 focus:ring-[#5fab16] focus:border-transparent"
                         />
                       ))}
                     </div>
@@ -1659,7 +1659,7 @@ export function DashboardView({ data }: { data: DashboardData | null }) {
                         ? `${formatCurrency(totaal * p1 / 100)} + ${formatCurrency(totaal * p2 / 100)} + ${formatCurrency(totaal * p3 / 100)}`
                         : `Som: ${som}% — moet 100% zijn`}
                     </p>
-                    <Button size="sm" className="w-full bg-[#1e40af] hover:bg-[#1e3a8a]" onClick={() => handleConvertToFactuur(factuurDialogOfferte.id, 'split3', 0, split3Percentages)} disabled={!!factuurLoading || !valid}>
+                    <Button size="sm" className="w-full bg-[#5fab16] hover:bg-[#4e8f12]" onClick={() => handleConvertToFactuur(factuurDialogOfferte.id, 'split3', 0, split3Percentages)} disabled={!!factuurLoading || !valid}>
                       Maak 3 facturen
                     </Button>
                   </div>
@@ -1680,13 +1680,13 @@ export function DashboardView({ data }: { data: DashboardData | null }) {
               {[{ key: 'week_doel', label: 'Weekdoel' }, { key: 'maand_doel', label: 'Maanddoel' }, { key: 'jaar_doel', label: 'Jaardoel' }].map(field => (
                 <div key={field.key}>
                   <label className="block text-sm font-medium text-gray-700 mb-1">{field.label}</label>
-                  <input type="number" value={doelenForm[field.key as keyof typeof doelenForm]} onChange={(e) => setDoelenForm(f => ({ ...f, [field.key]: e.target.value }))} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1e40af] focus:border-transparent" placeholder="0" />
+                  <input type="number" value={doelenForm[field.key as keyof typeof doelenForm]} onChange={(e) => setDoelenForm(f => ({ ...f, [field.key]: e.target.value }))} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#5fab16] focus:border-transparent" placeholder="0" />
                 </div>
               ))}
             </div>
             <div className="flex justify-end gap-2 mt-6">
               <Button variant="ghost" onClick={() => setShowDoelenEdit(false)}>Annuleren</Button>
-              <Button className="bg-[#1e40af] hover:bg-[#1e3a8a]" onClick={handleSaveDoelen} disabled={doelenSaving}>{doelenSaving ? 'Opslaan...' : 'Opslaan'}</Button>
+              <Button className="bg-[#5fab16] hover:bg-[#4e8f12]" onClick={handleSaveDoelen} disabled={doelenSaving}>{doelenSaving ? 'Opslaan...' : 'Opslaan'}</Button>
             </div>
           </div>
         </div>

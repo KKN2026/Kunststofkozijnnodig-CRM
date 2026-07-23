@@ -107,7 +107,7 @@ function buildColumns(
     cell: ({ row }) => (
       <div>
         <div className="flex items-center gap-1.5">
-          <span className="font-medium text-gray-900 group-hover/row:text-[#1e40af] transition-colors">{row.original.factuurnummer}</span>
+          <span className="font-medium text-gray-900 group-hover/row:text-[#5fab16] transition-colors">{row.original.factuurnummer}</span>
           {row.original.factuur_type && row.original.factuur_type !== 'volledig' && (
             <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${typeKleuren[row.original.factuur_type] || ''}`}>
               {typeLabels[row.original.factuur_type] || row.original.factuur_type}
@@ -133,13 +133,13 @@ function buildColumns(
       return (
         <div className="min-w-0">
           {r?.id ? (
-            <Link href={`/relatiebeheer/${r.id}`} onClick={(e) => e.stopPropagation()} className="text-sm font-medium text-gray-900 hover:text-[#1e40af] hover:underline truncate block">
+            <Link href={`/relatiebeheer/${r.id}`} onClick={(e) => e.stopPropagation()} className="text-sm font-medium text-gray-900 hover:text-[#5fab16] hover:underline truncate block">
               {r.bedrijfsnaam}
             </Link>
           ) : (<span className="text-sm font-medium text-gray-900">{r?.bedrijfsnaam || '-'}</span>)}
           {projectNaam && (
             project?.id ? (
-              <Link href={`/projecten/${project.id}`} onClick={(e) => e.stopPropagation()} className="text-[11px] text-gray-500 hover:text-[#1e40af] hover:underline truncate block max-w-[260px]">
+              <Link href={`/projecten/${project.id}`} onClick={(e) => e.stopPropagation()} className="text-[11px] text-gray-500 hover:text-[#5fab16] hover:underline truncate block max-w-[260px]">
                 {projectNaam}
               </Link>
             ) : (
@@ -191,7 +191,7 @@ function buildColumns(
             value={gepland ? gepland.slice(0, 10) : ''}
             onChange={(e) => onPlanChange(f.id, e.target.value || null)}
             title="Geplande verzenddatum"
-            className={`bg-transparent border-0 p-0 text-sm focus:outline-none focus:ring-1 focus:ring-[#1e40af] rounded cursor-pointer ${klaar ? 'text-emerald-600 font-medium' : gepland ? 'text-gray-600' : 'text-gray-400'}`}
+            className={`bg-transparent border-0 p-0 text-sm focus:outline-none focus:ring-1 focus:ring-[#5fab16] rounded cursor-pointer ${klaar ? 'text-emerald-600 font-medium' : gepland ? 'text-gray-600' : 'text-gray-400'}`}
             style={{ minWidth: '110px' }}
           />
           {klaar && <span className="text-[10px] text-emerald-600 font-medium whitespace-nowrap">klaar</span>}
@@ -579,7 +579,7 @@ export function FactuurList({ facturen, ordersMetStatus }: { facturen: Factuur[]
           <select
             value={jaarFilter}
             onChange={(e) => setJaarFilter(e.target.value)}
-            className="px-2.5 py-1 border border-gray-300 rounded-md text-sm bg-white focus:outline-none focus:ring-1 focus:ring-[#1e40af]"
+            className="px-2.5 py-1 border border-gray-300 rounded-md text-sm bg-white focus:outline-none focus:ring-1 focus:ring-[#5fab16]"
           >
             {beschikbareJaren.map(j => <option key={j} value={j}>{j}</option>)}
             <option value="alle">Alle jaren</option>
@@ -794,7 +794,7 @@ function RestbetalingView({
           <button
             type="button"
             onClick={() => setBetaaldOpen(v => !v)}
-            className="w-full flex items-center gap-2 text-sm font-semibold text-gray-900 mb-2 hover:text-[#1e40af] transition-colors"
+            className="w-full flex items-center gap-2 text-sm font-semibold text-gray-900 mb-2 hover:text-[#5fab16] transition-colors"
           >
             <CheckCircle className="h-4 w-4 text-emerald-500" />
             Betaald / afgehandeld
@@ -892,7 +892,7 @@ function PerKlusView({ ordersMetStatus, router }: { ordersMetStatus: OrderMetSta
           placeholder="Zoek klant, klus of ordernummer..."
           value={zoek}
           onChange={(e) => setZoek(e.target.value)}
-          className="w-full max-w-sm px-3 py-1.5 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-[#1e40af] focus:border-transparent"
+          className="w-full max-w-sm px-3 py-1.5 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-[#5fab16] focus:border-transparent"
         />
         <label className="flex items-center gap-2 text-xs text-gray-600 whitespace-nowrap">
           <input
@@ -974,7 +974,7 @@ function KlusFactuurCard({ order, router }: { order: OrderMetStatus; router: Ret
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               {relatieId ? (
-                <Link href={`/relatiebeheer/${relatieId}`} onClick={(e) => e.stopPropagation()} className="font-semibold text-sm text-gray-900 hover:text-[#1e40af] hover:underline truncate">
+                <Link href={`/relatiebeheer/${relatieId}`} onClick={(e) => e.stopPropagation()} className="font-semibold text-sm text-gray-900 hover:text-[#5fab16] hover:underline truncate">
                   {relatieName}
                 </Link>
               ) : (

@@ -113,7 +113,7 @@ export function Sidebar({ rol, mobileOpen, onMobileClose }: { rol?: string; mobi
       mobileOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0",
     )}>
       <div className="p-4 border-b border-white/10 flex items-center justify-between">
-        <Image src="/images/logo-rebu.png" alt="Kunststofkozijnnodig.nl" width={140} height={45} className="h-9 w-auto brightness-0 invert" />
+        <Image src="/images/logo-rebu-white.png" alt="Kunststofkozijnnodig.nl" width={140} height={45} className="h-9 w-auto" />
         {onMobileClose && (
           <button
             type="button"

@@ -53,7 +53,7 @@ function buildColumns(
           type="checkbox"
           checked={allIds.length > 0 && allIds.every(id => selected.has(id))}
           onChange={toggleAll}
-          className="h-4 w-4 rounded border-gray-300 text-[#1e40af] focus:ring-[#1e40af] cursor-pointer"
+          className="h-4 w-4 rounded border-gray-300 text-[#5fab16] focus:ring-[#5fab16] cursor-pointer"
           onClick={e => e.stopPropagation()}
         />
       ),
@@ -63,7 +63,7 @@ function buildColumns(
           checked={selected.has(row.original.id)}
           onChange={() => toggle(row.original.id)}
           onClick={e => e.stopPropagation()}
-          className="h-4 w-4 rounded border-gray-300 text-[#1e40af] focus:ring-[#1e40af] cursor-pointer"
+          className="h-4 w-4 rounded border-gray-300 text-[#5fab16] focus:ring-[#5fab16] cursor-pointer"
         />
       ),
     },
@@ -320,7 +320,7 @@ export function LeadsView({ leads, aiScoutLeads = [] }: { leads: Lead[]; aiScout
         setTimeout(() => setKvkImportResult(null), 5000)
       }} />
       {kvkImportResult && (
-        <div className="fixed bottom-6 right-6 bg-[#1e40af] text-white text-sm px-4 py-2 rounded-lg shadow-lg z-50">
+        <div className="fixed bottom-6 right-6 bg-[#5fab16] text-white text-sm px-4 py-2 rounded-lg shadow-lg z-50">
           ✓ {kvkImportResult}
         </div>
       )}
@@ -337,7 +337,7 @@ export function LeadsView({ leads, aiScoutLeads = [] }: { leads: Lead[]; aiScout
         }}
       />
       {mailResult && (
-        <div className="fixed bottom-6 right-6 bg-[#1e40af] text-white text-sm px-4 py-2 rounded-lg shadow-lg z-50">
+        <div className="fixed bottom-6 right-6 bg-[#5fab16] text-white text-sm px-4 py-2 rounded-lg shadow-lg z-50">
           ✓ {mailResult}
         </div>
       )}

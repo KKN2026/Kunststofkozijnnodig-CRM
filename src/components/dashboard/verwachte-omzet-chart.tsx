@@ -159,7 +159,7 @@ export function VerwachteOmzetChart() {
               <span className="mx-2 text-gray-300">·</span>
               Totaal verwacht {jaar}: <strong className="text-gray-900">{formatCurrency(totaalGewonnen + totaalOpen)}</strong>
             </div>
-            <Link href="/offertes" className="text-[#1e40af] hover:underline">Alle offertes</Link>
+            <Link href="/offertes" className="text-[#5fab16] hover:underline">Alle offertes</Link>
           </div>
         </>
       )}

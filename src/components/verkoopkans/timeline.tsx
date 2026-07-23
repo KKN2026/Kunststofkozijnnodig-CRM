@@ -201,7 +201,7 @@ export function Timeline({ items, onEmailClick, onEdit, onDelete, onInlineRename
                               }}
                               className="flex-1 px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                             />
-                            <button type="button" onClick={() => saveInlineEdit(item)} disabled={editSaving} className="p-1 text-[#1e40af] hover:bg-emerald-50 rounded" title="Opslaan">
+                            <button type="button" onClick={() => saveInlineEdit(item)} disabled={editSaving} className="p-1 text-[#5fab16] hover:bg-emerald-50 rounded" title="Opslaan">
                               <Check className="h-4 w-4" />
                             </button>
                             <button type="button" onClick={cancelInlineEdit} className="p-1 text-gray-400 hover:bg-gray-100 rounded" title="Annuleren">
@@ -224,7 +224,7 @@ export function Timeline({ items, onEmailClick, onEdit, onDelete, onInlineRename
                               <button
                                 type="button"
                                 onClick={() => startInlineEdit(item)}
-                                className="p-1.5 text-gray-400 hover:text-[#1e40af] hover:bg-emerald-50 rounded"
+                                className="p-1.5 text-gray-400 hover:text-[#5fab16] hover:bg-emerald-50 rounded"
                                 title="Naam aanpassen"
                               >
                                 <Pencil className="h-3.5 w-3.5" />
@@ -234,7 +234,7 @@ export function Timeline({ items, onEmailClick, onEdit, onDelete, onInlineRename
                               <button
                                 type="button"
                                 onClick={() => onEdit(item)}
-                                className="p-1.5 text-gray-400 hover:text-[#1e40af] hover:bg-emerald-50 rounded"
+                                className="p-1.5 text-gray-400 hover:text-[#5fab16] hover:bg-emerald-50 rounded"
                                 title="Bewerken"
                               >
                                 <Pencil className="h-3.5 w-3.5" />

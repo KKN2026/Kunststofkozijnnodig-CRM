@@ -1232,7 +1232,7 @@ export function StapTekeningen({
             <div className="flex items-center gap-2 flex-shrink-0">
               <label className="cursor-pointer">
                 <input type="file" accept=".pdf" multiple className="hidden" onChange={handleAddPdf} />
-                <span className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-white bg-[#1e40af] rounded-md hover:bg-[#1e3a8a]">
+                <span className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-white bg-[#5fab16] rounded-md hover:bg-[#4e8f12]">
                   <Plus className="h-3 w-3" />
                   PDF toevoegen
                 </span>

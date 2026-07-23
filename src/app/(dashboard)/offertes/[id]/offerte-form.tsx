@@ -801,7 +801,7 @@ function EditOfferteView({
                   onClick={() => router.push(`/taken/${t.id}`)}
                   className="min-w-0 flex-1 text-left"
                 >
-                  <div className="font-medium text-gray-900 truncate hover:text-[#1e40af]">{t.titel}</div>
+                  <div className="font-medium text-gray-900 truncate hover:text-[#5fab16]">{t.titel}</div>
                   {t.deadline && (
                     <div className="text-xs text-gray-500">Deadline {formatDateShort(t.deadline)}</div>
                   )}

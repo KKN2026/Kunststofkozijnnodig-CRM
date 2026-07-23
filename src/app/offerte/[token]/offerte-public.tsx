@@ -61,7 +61,7 @@ export function OffertePublic({ offerte, token }: { offerte: Offerte; token: str
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <div style={{ backgroundColor: '#1e40af' }}>
+      <div style={{ backgroundColor: '#5fab16' }}>
         <div className="max-w-4xl mx-auto px-6 py-6">
           <div className="flex items-center justify-between">
             <Image src="/images/logo-rebu-white.png" alt="Kunststofkozijnnodig.nl" width={180} height={60} className="h-12 w-auto" />
@@ -154,9 +154,9 @@ export function OffertePublic({ offerte, token }: { offerte: Offerte; token: str
               <div className="w-64 space-y-2 text-sm">
                 <div className="flex justify-between"><span className="text-gray-600">Subtotaal</span><span>{formatCurrency(offerte.subtotaal)}</span></div>
                 <div className="flex justify-between"><span className="text-gray-600">BTW</span><span>{formatCurrency(offerte.btw_totaal)}</span></div>
-                <div className="flex justify-between font-bold text-lg pt-2 mt-2" style={{ borderTop: '2px solid #1e40af' }}>
+                <div className="flex justify-between font-bold text-lg pt-2 mt-2" style={{ borderTop: '2px solid #5fab16' }}>
                   <span>Totaal</span>
-                  <span style={{ color: '#1e40af' }}>{formatCurrency(offerte.totaal)}</span>
+                  <span style={{ color: '#5fab16' }}>{formatCurrency(offerte.totaal)}</span>
                 </div>
               </div>
             </div>
@@ -177,7 +177,7 @@ export function OffertePublic({ offerte, token }: { offerte: Offerte; token: str
               onClick={handleAccept}
               disabled={loading}
               className="inline-flex items-center gap-2 px-8 py-4 text-white font-semibold rounded-xl transition-all hover:opacity-90 disabled:opacity-50"
-              style={{ backgroundColor: '#1e40af' }}
+              style={{ backgroundColor: '#5fab16' }}
             >
               <Check className="h-5 w-5" />
               {loading ? 'Bezig...' : 'Offerte accepteren'}
@@ -195,7 +195,7 @@ export function OffertePublic({ offerte, token }: { offerte: Offerte; token: str
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-2 text-sm underline"
-            style={{ color: '#1e40af' }}
+            style={{ color: '#5fab16' }}
           >
             <FileText className="h-4 w-4" />
             Offerte PDF downloaden
@@ -204,7 +204,7 @@ export function OffertePublic({ offerte, token }: { offerte: Offerte; token: str
 
         {/* Footer */}
         <div className="mt-12 text-center pb-8">
-          <div className="w-16 h-0.5 mx-auto mb-4" style={{ backgroundColor: '#1e40af' }} />
+          <div className="w-16 h-0.5 mx-auto mb-4" style={{ backgroundColor: '#5fab16' }} />
           <p className="text-xs text-gray-400">Kunststofkozijnnodig.nl | KVK: 42075957 | BTW: NL 869 595 313 B01</p>
           <p className="text-xs text-gray-400">Samsonweg 26F, 1521 RM Wormerveer | +31 6 58 86 60 70 | info@kunststofkozijnnodig.nl</p>
         </div>

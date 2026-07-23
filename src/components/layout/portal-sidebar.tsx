@@ -29,7 +29,7 @@ export function PortalSidebar() {
   return (
     <aside className="w-60 bg-sidebar text-white flex flex-col h-screen fixed left-0 top-0">
       <div className="p-4 border-b border-white/10">
-        <Image src="/images/logo-rebu.png" alt="Kunststofkozijnnodig.nl" width={140} height={45} className="h-9 w-auto brightness-0 invert" />
+        <Image src="/images/logo-rebu-white.png" alt="Kunststofkozijnnodig.nl" width={140} height={45} className="h-9 w-auto" />
       </div>
 
       <nav className="flex-1 overflow-y-auto py-2">

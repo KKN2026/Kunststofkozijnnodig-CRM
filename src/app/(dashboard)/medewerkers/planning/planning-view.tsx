@@ -153,7 +153,7 @@ export function PlanningView({ medewerkers }: { medewerkers: Medewerker[] }) {
                       <tr key={med.id} className="border-b border-gray-100 hover:bg-gray-50/50">
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-2">
-                            <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: med.kleur || '#3b82f6' }} />
+                            <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: med.kleur || '#7dc42f' }} />
                             <div>
                               <p className="text-sm font-medium">{med.naam}</p>
                               {med.functie && <p className="text-xs text-gray-400">{med.functie}</p>}
@@ -180,7 +180,7 @@ export function PlanningView({ medewerkers }: { medewerkers: Medewerker[] }) {
                                 >
                                   <div
                                     className="rounded px-2 py-1 text-xs text-white truncate hover:opacity-80 transition-opacity"
-                                    style={{ backgroundColor: med.kleur || '#3b82f6' }}
+                                    style={{ backgroundColor: med.kleur || '#7dc42f' }}
                                     title={`${item.order?.ordernummer} - ${item.order?.onderwerp || (item.order?.relatie as { bedrijfsnaam: string } | null)?.bedrijfsnaam || ''}`}
                                   >
                                     {item.order?.ordernummer}

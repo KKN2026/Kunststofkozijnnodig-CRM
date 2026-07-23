@@ -58,7 +58,7 @@ export default function LoginPage() {
       <div className="w-full max-w-md">
         <div className="bg-white rounded-lg shadow-md p-8">
           <div className="text-center mb-8">
-            <h1 className="text-2xl font-bold text-gray-900">Kunststofkozijnnodig.nl</h1>
+            <img src="/images/logo-rebu.png" alt="Kunststofkozijnnodig.nl" className="h-12 w-auto mx-auto" />
             <p className="text-gray-500 mt-1">{step === 1 ? 'Log in op uw account' : 'Bevestig met code uit uw e-mail'}</p>
           </div>
 

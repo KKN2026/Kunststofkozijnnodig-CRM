@@ -42,7 +42,7 @@ const STAP_KLEUR: Record<StepKey, string> = {
   offertes: 'bg-violet-500',
   geaccepteerd: 'bg-blue-500',
   gefactureerd: 'bg-orange-500',
-  betaald: 'bg-[#1e40af]',
+  betaald: 'bg-[#5fab16]',
 }
 
 export function ConversieFunnelDashboard({ data }: { data: FunnelData }) {
@@ -129,7 +129,7 @@ export function ConversieFunnelDashboard({ data }: { data: FunnelData }) {
                       <Badge status={o.status} />
                     </div>
                     <div className="flex items-center gap-2 mt-0.5 text-xs text-gray-500">
-                      <span className="text-[#1e40af] font-medium">{o.offertenummer}</span>
+                      <span className="text-[#5fab16] font-medium">{o.offertenummer}</span>
                       {o.project_naam && <span className="truncate">· {o.project_naam}</span>}
                     </div>
                   </div>

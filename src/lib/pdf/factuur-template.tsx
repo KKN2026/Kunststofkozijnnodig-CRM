@@ -60,7 +60,6 @@ export function FactuurDocument({ factuur }: { factuur: FactuurData }) {
           {/* Logo groot centraal */}
           <View style={{ marginTop: 180, alignItems: 'center' }}>
             <Image src={logoPath} style={{ width: 280, height: 'auto' }} />
-            <Text style={{ fontSize: 11, color: COLORS.textLight, marginTop: 12, letterSpacing: 2 }}>MAKEN HET VERSCHIL</Text>
           </View>
 
           {/* FACTUUR titel */}
@@ -251,7 +250,6 @@ export function FactuurDocument({ factuur }: { factuur: FactuurData }) {
           {/* Logo + bedankje */}
           <View style={{ marginTop: 240, alignItems: 'center' }}>
             <Image src={logoPath} style={{ width: 220, height: 'auto' }} />
-            <Text style={{ fontSize: 11, color: COLORS.textLight, marginTop: 10, letterSpacing: 2 }}>MAKEN HET VERSCHIL</Text>
           </View>
 
           <View style={{ marginTop: 80, alignItems: 'center' }}>
