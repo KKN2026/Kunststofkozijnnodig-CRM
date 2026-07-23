@@ -244,7 +244,7 @@ export function TaakForm({ taak, projecten, medewerkers, relaties, offertes, not
           relatie gekoppeld is aan deze taak. */}
       {trackerRelatie && (trackerRelatie.email || trackerRelatie.telefoon || trackerRelatie.contactpersoon) && (
         <div className="-mt-2 mb-4 flex flex-wrap items-center gap-x-5 gap-y-1 text-sm text-gray-600">
-          <Link href={`/relatiebeheer/${trackerRelatie.id}`} className="font-medium text-gray-900 hover:text-[#5fab16]">
+          <Link href={`/relatiebeheer/${trackerRelatie.id}`} className="font-medium text-gray-900 hover:text-[#00a66e]">
             {trackerRelatie.bedrijfsnaam}
           </Link>
           {trackerRelatie.contactpersoon && (
@@ -257,7 +257,7 @@ export function TaakForm({ taak, projecten, medewerkers, relaties, offertes, not
             <CopyablePhone nummer={trackerRelatie.telefoon} />
           )}
           {trackerRelatie.email && (
-            <a href={`mailto:${trackerRelatie.email}`} className="inline-flex items-center gap-1.5 hover:text-[#5fab16]">
+            <a href={`mailto:${trackerRelatie.email}`} className="inline-flex items-center gap-1.5 hover:text-[#00a66e]">
               <Mail className="h-3.5 w-3.5 text-gray-400" />
               {trackerRelatie.email}
             </a>
@@ -351,7 +351,7 @@ export function TaakForm({ taak, projecten, medewerkers, relaties, offertes, not
                     <RotateCcw className="h-4 w-4" />Heropenen
                   </Button>
                 ) : (
-                  <Button type="button" onClick={handleToggleAfgerond} disabled={loading} className="bg-[#5fab16] hover:bg-[#4e8f12] text-white">
+                  <Button type="button" onClick={handleToggleAfgerond} disabled={loading} className="bg-[#00a66e] hover:bg-[#008f5f] text-white">
                     <CheckCircle2 className="h-4 w-4" />Taak afronden
                   </Button>
                 )
@@ -377,10 +377,10 @@ export function TaakForm({ taak, projecten, medewerkers, relaties, offertes, not
               <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
                 <Link
                   href={`/offertes/${taak.offerte_id as string}`}
-                  className="text-sm font-medium text-gray-900 hover:text-[#5fab16] inline-flex items-center gap-1"
+                  className="text-sm font-medium text-gray-900 hover:text-[#00a66e] inline-flex items-center gap-1"
                 >
                   {offerteStatus.offertenummer}
-                  <span className="text-gray-400 hover:text-[#5fab16]">→</span>
+                  <span className="text-gray-400 hover:text-[#00a66e]">→</span>
                 </Link>
                 <div className="flex items-center gap-2">
                   {offerteStatus.totaal != null && (
@@ -412,7 +412,7 @@ export function TaakForm({ taak, projecten, medewerkers, relaties, offertes, not
                         key={e.id}
                         type="button"
                         onClick={() => setOpenEmailLogId(e.id)}
-                        className="w-full text-left px-3 py-2 rounded-lg border border-gray-200 hover:border-[#5fab16] hover:bg-gray-50 transition-colors flex items-start gap-3"
+                        className="w-full text-left px-3 py-2 rounded-lg border border-gray-200 hover:border-[#00a66e] hover:bg-gray-50 transition-colors flex items-start gap-3"
                       >
                         <Mail className="h-4 w-4 text-gray-400 mt-0.5 flex-shrink-0" />
                         <div className="flex-1 min-w-0">
@@ -450,12 +450,12 @@ export function TaakForm({ taak, projecten, medewerkers, relaties, offertes, not
                 value={notitieText}
                 onChange={e => setNotitieText(e.target.value)}
                 rows={2}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#5fab16] focus:border-transparent resize-none"
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#00a66e] focus:border-transparent resize-none"
               />
               {notitieText.trim() && (
                 <div className="flex gap-2 justify-end">
                   <Button variant="ghost" size="sm" onClick={() => setNotitieText('')}>Annuleren</Button>
-                  <Button type="button" size="sm" className="bg-[#5fab16] hover:bg-[#4e8f12]" onClick={addPendingNotitie}>
+                  <Button type="button" size="sm" className="bg-[#00a66e] hover:bg-[#008f5f]" onClick={addPendingNotitie}>
                     <Plus className="h-3.5 w-3.5" />Toevoegen
                   </Button>
                 </div>
@@ -509,12 +509,12 @@ export function TaakForm({ taak, projecten, medewerkers, relaties, offertes, not
                 value={notitieText}
                 onChange={e => setNotitieText(e.target.value)}
                 rows={2}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#5fab16] focus:border-transparent resize-none"
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#00a66e] focus:border-transparent resize-none"
               />
               {notitieText.trim() && (
                 <div className="flex gap-2 justify-end">
                   <Button variant="ghost" size="sm" onClick={() => setNotitieText('')}>Annuleren</Button>
-                  <Button size="sm" className="bg-[#5fab16] hover:bg-[#4e8f12]" onClick={handleSaveNotitie} disabled={loading || !notitieText.trim()}>
+                  <Button size="sm" className="bg-[#00a66e] hover:bg-[#008f5f]" onClick={handleSaveNotitie} disabled={loading || !notitieText.trim()}>
                     Opslaan
                   </Button>
                 </div>
@@ -545,7 +545,7 @@ export function TaakForm({ taak, projecten, medewerkers, relaties, offertes, not
                     placeholder="Wat moet er gebeuren? bijv. 'Klant terugbellen'"
                     value={vervolgTitel}
                     onChange={e => setVervolgTitel(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#5fab16] focus:border-transparent"
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#00a66e] focus:border-transparent"
                   />
                   <div className="flex items-center gap-3">
                     <input
@@ -557,7 +557,7 @@ export function TaakForm({ taak, projecten, medewerkers, relaties, offertes, not
                     <span className="text-xs text-gray-400">Zelfde klant, verkoopkans & medewerker</span>
                     <div className="flex gap-2 ml-auto">
                       <Button type="button" variant="ghost" size="sm" onClick={() => { setShowVervolgTaak(false); setVervolgTitel(''); setVervolgDeadline('') }}>Annuleren</Button>
-                      <Button type="button" size="sm" className="bg-[#5fab16] hover:bg-[#4e8f12]" onClick={handleCreateVervolgTaak} disabled={loading || !vervolgTitel.trim()}>
+                      <Button type="button" size="sm" className="bg-[#00a66e] hover:bg-[#008f5f]" onClick={handleCreateVervolgTaak} disabled={loading || !vervolgTitel.trim()}>
                         {vervolgAangemaakt ? <><Check className="h-3.5 w-3.5" />Aangemaakt</> : 'Aanmaken'}
                       </Button>
                     </div>
@@ -587,7 +587,7 @@ export function TaakForm({ taak, projecten, medewerkers, relaties, offertes, not
                   return (
                     <div key={n.id} className="relative pl-10 py-3 group">
                       {/* Tijdlijn dot */}
-                      <div className="absolute left-[11px] top-[18px] h-2.5 w-2.5 rounded-full border-2 border-[#5fab16] bg-white z-10" />
+                      <div className="absolute left-[11px] top-[18px] h-2.5 w-2.5 rounded-full border-2 border-[#00a66e] bg-white z-10" />
 
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex-1 min-w-0">
@@ -602,7 +602,7 @@ export function TaakForm({ taak, projecten, medewerkers, relaties, offertes, not
                                 value={editNotitieText}
                                 onChange={e => setEditNotitieText(e.target.value)}
                                 rows={3}
-                                className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-[#5fab16]"
+                                className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-[#00a66e]"
                               />
                               <div className="flex gap-2 justify-end">
                                 <Button variant="ghost" size="sm" onClick={() => { setEditNotitieId(null); setEditNotitieText('') }}>Annuleren</Button>
@@ -618,7 +618,7 @@ export function TaakForm({ taak, projecten, medewerkers, relaties, offertes, not
                             <button
                               type="button"
                               onClick={() => startEditNotitie(n)}
-                              className="p-1 text-gray-300 hover:text-[#5fab16]"
+                              className="p-1 text-gray-300 hover:text-[#00a66e]"
                               title="Bewerken"
                             >
                               <Pencil className="h-3.5 w-3.5" />

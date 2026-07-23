@@ -1,14 +1,14 @@
 @import "tailwindcss";
 
 @theme inline {
-  --color-sidebar: #111318;
-  --color-sidebar-hover: #1e2128;
-  --color-sidebar-active: #5fab16;
-  --color-primary: #5fab16;
-  --color-primary-hover: #4e8f12;
+  --color-sidebar: #141917;
+  --color-sidebar-hover: #1f2622;
+  --color-sidebar-active: #00a66e;
+  --color-primary: #00a66e;
+  --color-primary-hover: #008f5f;
   --color-danger: #dc2626;
   --color-danger-hover: #b91c1c;
-  --color-success: #5fab16;
+  --color-success: #00a66e;
   --color-warning: #d97706;
 }
 

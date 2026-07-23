@@ -74,7 +74,7 @@ export function AuditLogTab({ entiteitType, entiteitId }: { entiteitType: string
         const tijdStr = datum.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })
         return (
           <div key={e.id} className="p-3 flex items-start gap-3 text-sm">
-            <div className="w-2 h-2 rounded-full bg-[#5fab16] mt-1.5 flex-shrink-0" />
+            <div className="w-2 h-2 rounded-full bg-[#00a66e] mt-1.5 flex-shrink-0" />
             <div className="flex-1 min-w-0">
               <div className="flex items-baseline justify-between gap-2 flex-wrap">
                 <span className="font-medium text-gray-900">{ACTIE_LABELS[e.actie] || e.actie}</span>

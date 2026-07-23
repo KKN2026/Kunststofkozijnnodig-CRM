@@ -131,7 +131,7 @@ const columns: ColumnDef<Relatie, unknown>[] = [
     cell: ({ getValue }) => {
       const v = (getValue() as number) || 0
       if (!v) return <span className="text-gray-400">—</span>
-      return <span className="text-sm font-medium text-[#5fab16]">{formatCurrency(v)}</span>
+      return <span className="text-sm font-medium text-[#00a66e]">{formatCurrency(v)}</span>
     },
   },
   {

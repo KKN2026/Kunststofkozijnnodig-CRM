@@ -73,11 +73,11 @@ export function BulkMailDialog({ open, onClose, leads, onSent }: { open: boolean
         <div>
           <label className="block text-xs font-medium text-gray-600 mb-2">Mail-template</label>
           <div className="flex gap-2">
-            <button onClick={() => setTemplate('eerste_contact')} className={`flex-1 px-4 py-3 rounded-lg border text-left transition-colors ${template === 'eerste_contact' ? 'border-[#5fab16] bg-[#5fab16]/5' : 'border-gray-200 hover:border-gray-300'}`}>
+            <button onClick={() => setTemplate('eerste_contact')} className={`flex-1 px-4 py-3 rounded-lg border text-left transition-colors ${template === 'eerste_contact' ? 'border-[#00a66e] bg-[#00a66e]/5' : 'border-gray-200 hover:border-gray-300'}`}>
               <p className="text-sm font-medium text-gray-900">Eerste contact</p>
               <p className="text-xs text-gray-500 mt-0.5">Kennismaking / koud contact (nog niet gebeld)</p>
             </button>
-            <button onClick={() => setTemplate('na_bellen')} className={`flex-1 px-4 py-3 rounded-lg border text-left transition-colors ${template === 'na_bellen' ? 'border-[#5fab16] bg-[#5fab16]/5' : 'border-gray-200 hover:border-gray-300'}`}>
+            <button onClick={() => setTemplate('na_bellen')} className={`flex-1 px-4 py-3 rounded-lg border text-left transition-colors ${template === 'na_bellen' ? 'border-[#00a66e] bg-[#00a66e]/5' : 'border-gray-200 hover:border-gray-300'}`}>
               <p className="text-sm font-medium text-gray-900">Na telefonisch contact</p>
               <p className="text-xs text-gray-500 mt-0.5">Met brochure-links (‘als besproken’)</p>
             </button>
@@ -90,7 +90,7 @@ export function BulkMailDialog({ open, onClose, leads, onSent }: { open: boolean
             <label className="block text-xs font-medium text-gray-600 mb-1">Extra instructies voor AI (optioneel)</label>
             <Input id="ai_instr" value={extraInstructie} onChange={e => setExtraInstructie(e.target.value)} placeholder="bv. 'benadruk kort levertermijn'" />
           </div>
-          <Button onClick={handleGenereer} disabled={genereren} className="bg-[#5fab16] text-white hover:bg-[#4e8f12]">
+          <Button onClick={handleGenereer} disabled={genereren} className="bg-[#00a66e] text-white hover:bg-[#008f5f]">
             {genereren ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
             Genereer met AI
           </Button>
@@ -108,7 +108,7 @@ export function BulkMailDialog({ open, onClose, leads, onSent }: { open: boolean
             value={bericht}
             onChange={e => setBericht(e.target.value)}
             placeholder="Klik op 'Genereer met AI' of typ hier zelf het bericht..."
-            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm font-sans focus:outline-none focus:ring-2 focus:ring-[#5fab16]"
+            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm font-sans focus:outline-none focus:ring-2 focus:ring-[#00a66e]"
           />
         </div>
 

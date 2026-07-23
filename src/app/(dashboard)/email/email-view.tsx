@@ -405,7 +405,7 @@ export function EmailView({
             <button
               onClick={() => handleFolderChange(null)}
               className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-md transition-colors ${
-                activeFolder === null ? 'bg-[#5fab16]/10 text-[#5fab16] font-medium' : 'text-gray-700 hover:bg-gray-100'
+                activeFolder === null ? 'bg-[#00a66e]/10 text-[#00a66e] font-medium' : 'text-gray-700 hover:bg-gray-100'
               }`}
             >
               <span>Alle e-mails</span>
@@ -417,12 +417,12 @@ export function EmailView({
                 key={f.folder}
                 onClick={() => handleFolderChange(f.folder)}
                 className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-md transition-colors ${
-                  activeFolder === f.folder ? 'bg-[#5fab16]/10 text-[#5fab16] font-medium' : 'text-gray-700 hover:bg-gray-100'
+                  activeFolder === f.folder ? 'bg-[#00a66e]/10 text-[#00a66e] font-medium' : 'text-gray-700 hover:bg-gray-100'
                 }`}
                 title={f.folder}
               >
                 <span className="truncate">{folderLabel(f.folder)}</span>
-                <span className={`text-xs flex-shrink-0 ${f.ongelezen > 0 ? 'text-[#5fab16] font-semibold' : 'text-gray-400'}`}>
+                <span className={`text-xs flex-shrink-0 ${f.ongelezen > 0 ? 'text-[#00a66e] font-semibold' : 'text-gray-400'}`}>
                   {f.ongelezen > 0 ? f.ongelezen : f.totaal}
                 </span>
               </button>
@@ -641,7 +641,7 @@ export function EmailView({
                           <div className="flex gap-2 mt-4 pt-3 border-t border-gray-200 flex-wrap items-start">
                             <Button
                               size="sm"
-                              className="bg-[#5fab16] text-white hover:bg-[#4e8f12]"
+                              className="bg-[#00a66e] text-white hover:bg-[#008f5f]"
                               onClick={(e) => { e.stopPropagation(); handleAiReply(email) }}
                             >
                               <Sparkles className="h-3.5 w-3.5" />
@@ -969,7 +969,7 @@ export function EmailView({
           <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
               <h2 className="font-semibold text-gray-900 flex items-center gap-2">
-                <Sparkles className="h-4 w-4 text-[#5fab16]" />
+                <Sparkles className="h-4 w-4 text-[#00a66e]" />
                 AI-antwoord: {aiReplyEmail.onderwerp || '(geen onderwerp)'}
               </h2>
               <button onClick={() => setAiReplyEmail(null)} className="p-1 text-gray-400 hover:text-gray-700"><X className="h-5 w-5" /></button>
@@ -986,7 +986,7 @@ export function EmailView({
                   value={aiReplyInstructie}
                   onChange={e => setAiReplyInstructie(e.target.value)}
                   placeholder="bijv. ‘vraag om afmetingen en foto's’"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#5fab16]"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#00a66e]"
                 />
               </div>
 
@@ -999,7 +999,7 @@ export function EmailView({
                   rows={14}
                   value={aiReplyText}
                   onChange={e => setAiReplyText(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm font-sans focus:outline-none focus:ring-2 focus:ring-[#5fab16]"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm font-sans focus:outline-none focus:ring-2 focus:ring-[#00a66e]"
                   placeholder="AI-antwoord verschijnt hier..."
                 />
               )}

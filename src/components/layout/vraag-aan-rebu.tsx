@@ -65,7 +65,7 @@ export function VraagAanRebu() {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-[#5fab16] to-[#7dc42f] text-white text-sm font-medium hover:from-[#4e8f12] hover:to-[#5fab16] shadow-sm"
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-[#00a66e] to-[#2bbd8a] text-white text-sm font-medium hover:from-[#008f5f] hover:to-[#00a66e] shadow-sm"
         title="AI-assistent"
       >
         <Sparkles className="h-3.5 w-3.5" />
@@ -76,7 +76,7 @@ export function VraagAanRebu() {
         <div className="fixed inset-0 z-50 flex justify-end" onClick={(e) => { if (e.target === e.currentTarget) setOpen(false) }}>
           <div className="absolute inset-0 bg-black/40" />
           <div className="relative bg-white w-full max-w-md h-full flex flex-col shadow-2xl">
-            <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-[#5fab16] to-[#7dc42f] text-white">
+            <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-[#00a66e] to-[#2bbd8a] text-white">
               <div className="flex items-center gap-2">
                 <Sparkles className="h-4 w-4" />
                 <h3 className="font-semibold">AI-assistent</h3>
@@ -96,7 +96,7 @@ export function VraagAanRebu() {
                         key={v}
                         type="button"
                         onClick={() => sendVraag(v)}
-                        className="block w-full text-left px-3 py-2 text-xs bg-white border border-gray-200 rounded-lg hover:border-[#5fab16] hover:bg-green-50 transition-colors"
+                        className="block w-full text-left px-3 py-2 text-xs bg-white border border-gray-200 rounded-lg hover:border-[#00a66e] hover:bg-green-50 transition-colors"
                       >
                         {v}
                       </button>
@@ -109,7 +109,7 @@ export function VraagAanRebu() {
                   <div
                     className={`max-w-[85%] px-3 py-2 rounded-lg text-sm whitespace-pre-wrap ${
                       m.rol === 'user'
-                        ? 'bg-[#5fab16] text-white rounded-br-sm'
+                        ? 'bg-[#00a66e] text-white rounded-br-sm'
                         : 'bg-white border border-gray-200 text-gray-800 rounded-bl-sm'
                     }`}
                     // markdown-light: bold + code via simpele replace
@@ -144,12 +144,12 @@ export function VraagAanRebu() {
                 onChange={(e) => setVraag(e.target.value)}
                 placeholder="Stel je vraag..."
                 disabled={bezig}
-                className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#5fab16] focus:border-transparent disabled:bg-gray-50"
+                className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#00a66e] focus:border-transparent disabled:bg-gray-50"
               />
               <button
                 type="submit"
                 disabled={bezig || !vraag.trim()}
-                className="p-2 bg-[#5fab16] text-white rounded-lg hover:bg-[#4e8f12] disabled:opacity-50 disabled:cursor-not-allowed"
+                className="p-2 bg-[#00a66e] text-white rounded-lg hover:bg-[#008f5f] disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Send className="h-4 w-4" />
               </button>

@@ -136,7 +136,7 @@ export function PipelineKanban({ items }: { items: Item[] }) {
                             value={c.verwachteValmaand ? c.verwachteValmaand.slice(0, 7) : ''}
                             disabled={savingId === c.id}
                             onChange={(e) => handleMaand(c.id, e.target.value)}
-                            className={`w-full bg-transparent border-0 p-0 text-[10px] focus:outline-none focus:ring-1 focus:ring-[#5fab16] rounded cursor-pointer ${c.verwachteValmaand ? 'text-gray-600' : 'text-gray-400'}`}
+                            className={`w-full bg-transparent border-0 p-0 text-[10px] focus:outline-none focus:ring-1 focus:ring-[#00a66e] rounded cursor-pointer ${c.verwachteValmaand ? 'text-gray-600' : 'text-gray-400'}`}
                           />
                         </div>
                       )}

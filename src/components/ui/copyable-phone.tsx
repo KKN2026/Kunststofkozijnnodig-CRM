@@ -32,7 +32,7 @@ export function CopyablePhone({
 
   return (
     <span className={`inline-flex items-center gap-1.5 ${className}`}>
-      <a href={`tel:${nummer}`} className="inline-flex items-center gap-1.5 hover:text-[#5fab16]">
+      <a href={`tel:${nummer}`} className="inline-flex items-center gap-1.5 hover:text-[#00a66e]">
         {showIcon && <Phone className="h-3.5 w-3.5 text-gray-400" aria-hidden="true" />}
         <span>{nummer}</span>
       </a>

@@ -10688,7 +10688,7 @@ export async function saveMedewerker(formData: FormData) {
     kvk_nummer: formData.get('kvk_nummer') as string || null,
     btw_nummer: formData.get('btw_nummer') as string || null,
     specialisaties,
-    kleur: formData.get('kleur') as string || '#7dc42f',
+    kleur: formData.get('kleur') as string || '#2bbd8a',
     actief: formData.get('actief') === 'true',
     startdatum: formData.get('startdatum') as string || null,
     opmerkingen: formData.get('opmerkingen') as string || null,

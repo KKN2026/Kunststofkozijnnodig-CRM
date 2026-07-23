@@ -499,7 +499,7 @@ export function RelatieDetail({ detail, notities: initialNotities, klantAccounts
             <CopyablePhone nummer={relatie.telefoon} />
           )}
           {relatie.email && (
-            <a href={`mailto:${relatie.email}`} className="inline-flex items-center gap-1.5 hover:text-[#5fab16]">
+            <a href={`mailto:${relatie.email}`} className="inline-flex items-center gap-1.5 hover:text-[#00a66e]">
               <Mail className="h-3.5 w-3.5 text-gray-400" />
               {relatie.email}
             </a>
@@ -608,7 +608,7 @@ export function RelatieDetail({ detail, notities: initialNotities, klantAccounts
                         <div className="min-w-0 flex-1">
                           <div className="flex items-baseline gap-2 flex-wrap">
                             <span className="font-medium text-gray-900">{c.naam}</span>
-                            {c.is_primair && <span className="text-[10px] bg-[#5fab16]/10 text-[#5fab16] px-1.5 py-0.5 rounded-full">Primair</span>}
+                            {c.is_primair && <span className="text-[10px] bg-[#00a66e]/10 text-[#00a66e] px-1.5 py-0.5 rounded-full">Primair</span>}
                             {c.functie && <span className="text-xs text-gray-500">· {c.functie}</span>}
                           </div>
                           <div className="flex flex-wrap gap-3 text-xs text-gray-500 mt-0.5">
@@ -743,7 +743,7 @@ export function RelatieDetail({ detail, notities: initialNotities, klantAccounts
                                 <span className="text-xs text-gray-400 mr-1">{datumStr}</span>
                                 {!isEditing && (
                                   <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
-                                    <button onClick={() => startEdit(n)} className="p-1 text-gray-400 hover:text-[#5fab16]" title="Bewerken">
+                                    <button onClick={() => startEdit(n)} className="p-1 text-gray-400 hover:text-[#00a66e]" title="Bewerken">
                                       <Pencil className="h-3.5 w-3.5" />
                                     </button>
                                     <button onClick={() => handleDeleteNotitie(n.id)} className="p-1 text-gray-400 hover:text-red-500" title="Verwijderen">
@@ -756,7 +756,7 @@ export function RelatieDetail({ detail, notities: initialNotities, klantAccounts
                             <div className="text-xs text-gray-500 mb-1">{n.gebruiker?.naam || 'Onbekend'}</div>
                             {isEditing ? (
                               <div className="space-y-2">
-                                <textarea value={editNotitieText} onChange={e => setEditNotitieText(e.target.value)} rows={3} className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-[#5fab16]" />
+                                <textarea value={editNotitieText} onChange={e => setEditNotitieText(e.target.value)} rows={3} className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-[#00a66e]" />
                                 <div className="flex gap-2 justify-end">
                                   <Button variant="ghost" size="sm" onClick={() => { setEditNotitieId(null); setEditNotitieText('') }}>Annuleren</Button>
                                   <Button size="sm" onClick={() => handleEditNotitie(n.id)}>Opslaan</Button>
@@ -778,7 +778,7 @@ export function RelatieDetail({ detail, notities: initialNotities, klantAccounts
             <div>
               <button
                 onClick={() => setGereedOpen(!gereedOpen)}
-                className="w-full flex items-center gap-2 text-sm font-semibold text-gray-900 mb-2 hover:text-[#5fab16] transition-colors"
+                className="w-full flex items-center gap-2 text-sm font-semibold text-gray-900 mb-2 hover:text-[#00a66e] transition-colors"
               >
                 {gereedOpen ? <ChevronDown className="h-4 w-4 text-gray-400" /> : <ChevronUp className="h-4 w-4 text-gray-400 rotate-180" />}
                 Gereed
@@ -848,7 +848,7 @@ export function RelatieDetail({ detail, notities: initialNotities, klantAccounts
                               )}
                             </div>
                             <div className="flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity pt-1">
-                              <button onClick={() => router.push(`/taken/${t.id}`)} className="p-1 text-gray-400 hover:text-[#5fab16]" title="Bewerken">
+                              <button onClick={() => router.push(`/taken/${t.id}`)} className="p-1 text-gray-400 hover:text-[#00a66e]" title="Bewerken">
                                 <Pencil className="h-3.5 w-3.5" />
                               </button>
                               <button onClick={() => handleDeleteTaak(t.id)} className="p-1 text-gray-400 hover:text-red-500" title="Verwijderen">
@@ -1137,7 +1137,7 @@ export function RelatieDetail({ detail, notities: initialNotities, klantAccounts
                                       <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
                                         <button
                                           onClick={() => { setEditProjectNotitieId(n.id); setEditProjectNotitieText(n.tekst) }}
-                                          className="p-1 text-gray-400 hover:text-[#5fab16]"
+                                          className="p-1 text-gray-400 hover:text-[#00a66e]"
                                           title="Bewerken"
                                         >
                                           <Pencil className="h-3.5 w-3.5" />
@@ -1158,7 +1158,7 @@ export function RelatieDetail({ detail, notities: initialNotities, klantAccounts
                                         value={editProjectNotitieText}
                                         onChange={e => setEditProjectNotitieText(e.target.value)}
                                         rows={3}
-                                        className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-[#5fab16]"
+                                        className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-[#00a66e]"
                                       />
                                       <div className="flex gap-2 justify-end">
                                         <Button variant="ghost" size="sm" onClick={() => { setEditProjectNotitieId(null); setEditProjectNotitieText('') }}>Annuleren</Button>
@@ -1177,7 +1177,7 @@ export function RelatieDetail({ detail, notities: initialNotities, klantAccounts
                                 onChange={e => setProjectNotitieText(prev => ({ ...prev, [p.id]: e.target.value }))}
                                 placeholder="Nieuwe notitie..."
                                 rows={2}
-                                className="flex-1 px-2 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-[#5fab16]"
+                                className="flex-1 px-2 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-[#00a66e]"
                               />
                               <Button
                                 size="sm"
@@ -1200,7 +1200,7 @@ export function RelatieDetail({ detail, notities: initialNotities, klantAccounts
 
           {afgerondeProjecten.length > 0 && (
             <details className="group">
-              <summary className="cursor-pointer text-sm font-medium text-gray-700 hover:text-[#5fab16] flex items-center gap-2 py-2 select-none">
+              <summary className="cursor-pointer text-sm font-medium text-gray-700 hover:text-[#00a66e] flex items-center gap-2 py-2 select-none">
                 <ChevronDown className="h-4 w-4 text-gray-400 group-open:rotate-180 transition-transform" />
                 Afgeronde verkoopkansen ({afgerondeProjecten.length})
               </summary>
@@ -1246,7 +1246,7 @@ export function RelatieDetail({ detail, notities: initialNotities, klantAccounts
 
           {nietDoorgegaanProjecten.length > 0 && (
             <details className="group">
-              <summary className="cursor-pointer text-sm font-medium text-gray-700 hover:text-[#5fab16] flex items-center gap-2 py-2 select-none">
+              <summary className="cursor-pointer text-sm font-medium text-gray-700 hover:text-[#00a66e] flex items-center gap-2 py-2 select-none">
                 <ChevronDown className="h-4 w-4 text-gray-400 group-open:rotate-180 transition-transform" />
                 Niet doorgegaan ({nietDoorgegaanProjecten.length})
               </summary>
@@ -1360,7 +1360,7 @@ export function RelatieDetail({ detail, notities: initialNotities, klantAccounts
                 <button
                   type="button"
                   onClick={() => setAfgerondeOffertesOpen(v => !v)}
-                  className="w-full flex items-center gap-2 text-sm font-semibold text-gray-900 mb-2 hover:text-[#5fab16] transition-colors"
+                  className="w-full flex items-center gap-2 text-sm font-semibold text-gray-900 mb-2 hover:text-[#00a66e] transition-colors"
                 >
                   {afgerondeOffertesOpen ? <ChevronDown className="h-4 w-4 text-gray-400" /> : <ChevronUp className="h-4 w-4 text-gray-400 rotate-180" />}
                   Afgerond
@@ -1522,7 +1522,7 @@ export function RelatieDetail({ detail, notities: initialNotities, klantAccounts
             <td className="px-4 py-3 text-sm text-gray-600">{t.deadline ? new Date(t.deadline).toLocaleDateString('nl-NL') : '-'}</td>
             <td className="px-4 py-3">
               <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                <button onClick={() => router.push(`/taken/${t.id}`)} className="p-1 text-gray-400 hover:text-[#5fab16]" title="Bewerken">
+                <button onClick={() => router.push(`/taken/${t.id}`)} className="p-1 text-gray-400 hover:text-[#00a66e]" title="Bewerken">
                   <Pencil className="h-3.5 w-3.5" />
                 </button>
                 <button onClick={() => handleDeleteTaak(t.id)} className="p-1 text-gray-400 hover:text-red-500" title="Verwijderen">
@@ -1567,7 +1567,7 @@ export function RelatieDetail({ detail, notities: initialNotities, klantAccounts
                 <button
                   type="button"
                   onClick={() => setAfgerondeTakenOpen(v => !v)}
-                  className="w-full flex items-center gap-2 text-sm font-semibold text-gray-900 mb-2 hover:text-[#5fab16] transition-colors"
+                  className="w-full flex items-center gap-2 text-sm font-semibold text-gray-900 mb-2 hover:text-[#00a66e] transition-colors"
                 >
                   {afgerondeTakenOpen ? <ChevronDown className="h-4 w-4 text-gray-400" /> : <ChevronUp className="h-4 w-4 text-gray-400 rotate-180" />}
                   Afgerond
@@ -1599,7 +1599,7 @@ export function RelatieDetail({ detail, notities: initialNotities, klantAccounts
                 value={notitieText}
                 onChange={e => setNotitieText(e.target.value)}
                 rows={2}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#5fab16] focus:border-transparent resize-none"
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#00a66e] focus:border-transparent resize-none"
               />
               {notitieText.trim() && (
                 <div className="flex items-center gap-4">
@@ -1614,7 +1614,7 @@ export function RelatieDetail({ detail, notities: initialNotities, klantAccounts
                   </div>
                   <div className="flex gap-2 ml-auto">
                     <Button variant="ghost" size="sm" onClick={() => setNotitieText('')}>Annuleren</Button>
-                    <Button size="sm" className="bg-[#5fab16] hover:bg-[#4e8f12]" onClick={handleSaveNotitie} disabled={loading || !notitieText.trim()}>
+                    <Button size="sm" className="bg-[#00a66e] hover:bg-[#008f5f]" onClick={handleSaveNotitie} disabled={loading || !notitieText.trim()}>
                       Opslaan
                     </Button>
                   </div>
@@ -1661,7 +1661,7 @@ export function RelatieDetail({ detail, notities: initialNotities, klantAccounts
                               <button onClick={() => handleDeleteNotitie(n.id)} className="p-1 text-gray-400 hover:text-red-500 transition-colors" title="Verwijderen">
                                 <Trash2 className="h-3.5 w-3.5" />
                               </button>
-                              <button onClick={() => startEdit(n)} className="p-1 text-gray-400 hover:text-[#5fab16] transition-colors" title="Bewerken">
+                              <button onClick={() => startEdit(n)} className="p-1 text-gray-400 hover:text-[#00a66e] transition-colors" title="Bewerken">
                                 <Pencil className="h-3.5 w-3.5" />
                               </button>
                             </>
@@ -1671,7 +1671,7 @@ export function RelatieDetail({ detail, notities: initialNotities, klantAccounts
                       <div className="text-xs text-gray-500 mb-1">{n.gebruiker?.naam || 'Onbekend'}</div>
                       {editNotitieId === n.id ? (
                         <div className="space-y-2">
-                          <textarea value={editNotitieText} onChange={e => setEditNotitieText(e.target.value)} rows={3} className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-[#5fab16]" />
+                          <textarea value={editNotitieText} onChange={e => setEditNotitieText(e.target.value)} rows={3} className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-[#00a66e]" />
                           <div className="flex gap-2 justify-end">
                             <Button variant="ghost" size="sm" onClick={() => { setEditNotitieId(null); setEditNotitieText('') }}>Annuleren</Button>
                             <Button size="sm" onClick={() => handleEditNotitie(n.id)}>Opslaan</Button>
@@ -1865,12 +1865,12 @@ export function RelatieDetail({ detail, notities: initialNotities, klantAccounts
             </div>
             <Input id="cp_email" label="E-mail" type="email" value={contactForm.email} onChange={e => setContactForm(f => ({ ...f, email: e.target.value }))} />
             <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={contactForm.is_primair} onChange={e => setContactForm(f => ({ ...f, is_primair: e.target.checked }))} className="h-4 w-4 rounded border-gray-300 text-[#5fab16] focus:ring-[#5fab16]" />
+              <input type="checkbox" checked={contactForm.is_primair} onChange={e => setContactForm(f => ({ ...f, is_primair: e.target.checked }))} className="h-4 w-4 rounded border-gray-300 text-[#00a66e] focus:ring-[#00a66e]" />
               Primaire contactpersoon
             </label>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Opmerkingen</label>
-              <textarea rows={2} value={contactForm.opmerkingen} onChange={e => setContactForm(f => ({ ...f, opmerkingen: e.target.value }))} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#5fab16] focus:border-transparent" />
+              <textarea rows={2} value={contactForm.opmerkingen} onChange={e => setContactForm(f => ({ ...f, opmerkingen: e.target.value }))} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#00a66e] focus:border-transparent" />
             </div>
             <div className="flex justify-end gap-2 pt-1">
               <Button variant="ghost" onClick={() => setContactDialogOpen(false)}>Annuleren</Button>

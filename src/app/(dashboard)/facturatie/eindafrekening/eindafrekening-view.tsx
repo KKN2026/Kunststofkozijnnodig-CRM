@@ -119,7 +119,7 @@ export function EindafrekeningView({ aanbetalings }: { aanbetalings: Aanbetaling
       accessorFn: (r) => (r.offerte?.subtotaal ?? 0) - (r.subtotaal ?? 0),
       cell: ({ getValue }) => {
         const v = getValue() as number
-        return v > 0 ? <span className="font-medium text-[#5fab16]">{formatCurrency(v)}</span> : <span className="text-gray-400 text-xs">-</span>
+        return v > 0 ? <span className="font-medium text-[#00a66e]">{formatCurrency(v)}</span> : <span className="text-gray-400 text-xs">-</span>
       },
     },
     { accessorKey: 'status', header: 'Status', cell: ({ getValue }) => <Badge status={getValue() as string} /> },

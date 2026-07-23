@@ -209,7 +209,7 @@ export function OrderForm({ order, relaties, producten, medewerkers, orderMedewe
                 {orderMedewerkers.map(om => (
                   <div key={om.id} className="py-3 flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <div className="w-3 h-3 rounded-full" style={{ backgroundColor: om.medewerker?.kleur || '#7dc42f' }} />
+                      <div className="w-3 h-3 rounded-full" style={{ backgroundColor: om.medewerker?.kleur || '#2bbd8a' }} />
                       <div>
                         <div className="flex items-center gap-2">
                           <span className="font-medium text-sm">{om.medewerker?.naam}</span>

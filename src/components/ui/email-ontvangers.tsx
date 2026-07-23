@@ -39,7 +39,7 @@ export function EmailOntvangers({
                 type="checkbox"
                 checked={geselecteerd.includes(c.email)}
                 onChange={() => onToggle(c.email)}
-                className="h-4 w-4 rounded border-gray-300 text-[#5fab16] focus:ring-[#5fab16]"
+                className="h-4 w-4 rounded border-gray-300 text-[#00a66e] focus:ring-[#00a66e]"
               />
               <span className="flex-1 min-w-0 text-sm">
                 <span className="font-medium text-gray-900">{c.naam}</span>

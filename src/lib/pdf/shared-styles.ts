@@ -1,10 +1,10 @@
 import { StyleSheet } from '@react-pdf/renderer'
 
 export const COLORS = {
-  black: '#111318',
+  black: '#141917',
   // Merkkleur Kunststofkozijnnodig.nl — blauw. Sleutel heet nog 'green' zodat
   // alle bestaande verwijzingen (COLORS.green) blijven werken.
-  green: '#5fab16',
+  green: '#00a66e',
   white: '#FFFFFF',
   gray: '#6B7280',
   lightGray: '#F3F4F6',

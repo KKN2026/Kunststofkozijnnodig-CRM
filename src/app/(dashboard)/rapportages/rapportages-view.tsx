@@ -408,11 +408,11 @@ export function RapportagesView({ facturen, inkoopfacturen, uren, funnel }: {
                           </span>
                         )}
                         <div
-                          className={`w-full max-w-[48px] rounded-t-md transition-all ${isHuidig ? 'bg-[#5fab16]' : 'bg-[#5fab16]/30 group-hover:bg-[#5fab16]/60'} ${m.omzet === 0 ? 'bg-gray-100' : ''}`}
+                          className={`w-full max-w-[48px] rounded-t-md transition-all ${isHuidig ? 'bg-[#00a66e]' : 'bg-[#00a66e]/30 group-hover:bg-[#00a66e]/60'} ${m.omzet === 0 ? 'bg-gray-100' : ''}`}
                           style={{ height: `${Math.max(hoogte, m.omzet > 0 ? 3 : 1)}%` }}
                         />
                       </div>
-                      <span className={`text-[10px] ${isHuidig ? 'font-bold text-[#5fab16]' : 'text-gray-500'}`}>{m.naam}</span>
+                      <span className={`text-[10px] ${isHuidig ? 'font-bold text-[#00a66e]' : 'text-gray-500'}`}>{m.naam}</span>
                     </Link>
                   )
                 })}
@@ -438,10 +438,10 @@ export function RapportagesView({ facturen, inkoopfacturen, uren, funnel }: {
                       return (
                         <tr key={i} className={`border-b border-gray-100 ${isHuidig ? 'bg-blue-50 font-medium' : ''}`}>
                           <td className="py-2">
-                            <Link href={periodeHref} className="hover:text-[#5fab16] hover:underline">{m.naam} {jaar}</Link>
+                            <Link href={periodeHref} className="hover:text-[#00a66e] hover:underline">{m.naam} {jaar}</Link>
                           </td>
                           <td className="py-2 text-right">
-                            <Link href={periodeHref} title={`Bekijk de ${m.aantal} facturen van ${m.naam} ${jaar}`} className="hover:text-[#5fab16] hover:underline">{m.aantal}</Link>
+                            <Link href={periodeHref} title={`Bekijk de ${m.aantal} facturen van ${m.naam} ${jaar}`} className="hover:text-[#00a66e] hover:underline">{m.aantal}</Link>
                           </td>
                           <td className="py-2 text-right">{formatCurrency(m.omzet)}</td>
                           <td className="py-2 text-right text-gray-500">{formatCurrency(m.btw)}</td>

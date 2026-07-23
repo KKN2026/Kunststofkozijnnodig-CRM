@@ -69,7 +69,7 @@ export default async function PortaalDashboardPage() {
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
           <div className="px-5 py-3.5 border-b border-gray-100 flex items-center justify-between">
             <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2"><FileText className="h-4 w-4 text-blue-500" />Recente offertes</h3>
-            <Link href="/portaal/offertes" className="text-xs text-[#5fab16] hover:underline">Alle</Link>
+            <Link href="/portaal/offertes" className="text-xs text-[#00a66e] hover:underline">Alle</Link>
           </div>
           {data.recenteOffertes.length === 0 ? (
             <p className="text-sm text-gray-400 p-5 text-center">Geen offertes</p>
@@ -92,7 +92,7 @@ export default async function PortaalDashboardPage() {
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
           <div className="px-5 py-3.5 border-b border-gray-100 flex items-center justify-between">
             <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2"><Mail className="h-4 w-4 text-purple-500" />Verzonden e-mails</h3>
-            <Link href="/portaal/emails" className="text-xs text-[#5fab16] hover:underline">Alle</Link>
+            <Link href="/portaal/emails" className="text-xs text-[#00a66e] hover:underline">Alle</Link>
           </div>
           {(data.recenteEmails || []).length === 0 ? (
             <p className="text-sm text-gray-400 p-5 text-center">Nog geen e-mails</p>

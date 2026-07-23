@@ -101,7 +101,7 @@ export function ZoekKvkDialog({ open, onClose, onImported }: { open: boolean; on
                 key={s.value}
                 type="button"
                 onClick={() => setNaam(s.value)}
-                className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${naam === s.value ? 'bg-[#5fab16] text-white border-[#5fab16]' : 'bg-white text-gray-700 border-gray-200 hover:border-gray-300'}`}
+                className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${naam === s.value ? 'bg-[#00a66e] text-white border-[#00a66e]' : 'bg-white text-gray-700 border-gray-200 hover:border-gray-300'}`}
               >
                 {s.label}
               </button>
@@ -148,14 +148,14 @@ export function ZoekKvkDialog({ open, onClose, onImported }: { open: boolean; on
           <div className="border border-gray-200 rounded-md overflow-hidden">
             <div className="flex items-center justify-between px-3 py-2 bg-gray-50 border-b border-gray-200 sticky top-0">
               <label className="flex items-center gap-2 text-sm font-medium">
-                <input type="checkbox" checked={geselecteerd.size === resultaten.length} onChange={toggleAll} className="h-4 w-4 rounded border-gray-300 text-[#5fab16]" />
+                <input type="checkbox" checked={geselecteerd.size === resultaten.length} onChange={toggleAll} className="h-4 w-4 rounded border-gray-300 text-[#00a66e]" />
                 Alles selecteren ({geselecteerd.size}/{resultaten.length})
               </label>
             </div>
             <div className="max-h-96 overflow-y-auto">
               {resultaten.map(r => (
                 <label key={r.kvkNummer} className={`flex items-start gap-2 px-3 py-2 border-b border-gray-100 last:border-0 cursor-pointer hover:bg-gray-50 ${geselecteerd.has(r.kvkNummer) ? 'bg-blue-50/40' : ''}`}>
-                  <input type="checkbox" checked={geselecteerd.has(r.kvkNummer)} onChange={() => toggle(r.kvkNummer)} className="mt-1 h-4 w-4 rounded border-gray-300 text-[#5fab16]" />
+                  <input type="checkbox" checked={geselecteerd.has(r.kvkNummer)} onChange={() => toggle(r.kvkNummer)} className="mt-1 h-4 w-4 rounded border-gray-300 text-[#00a66e]" />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-gray-900 truncate">{r.naam}</p>
                     <p className="text-xs text-gray-500 truncate">

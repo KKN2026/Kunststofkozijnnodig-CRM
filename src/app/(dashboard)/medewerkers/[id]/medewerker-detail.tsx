@@ -182,7 +182,7 @@ export function MedewerkerDetail({
                   id="kleur"
                   name="kleur"
                   type="color"
-                  defaultValue={(medewerker?.kleur as string) || '#7dc42f'}
+                  defaultValue={(medewerker?.kleur as string) || '#2bbd8a'}
                   className="w-full h-10 rounded-md border border-gray-300 cursor-pointer"
                 />
               </div>
