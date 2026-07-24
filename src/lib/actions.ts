@@ -4071,7 +4071,7 @@ export async function getVerwachteOmzetPerMaand(jaar: number) {
   const offertes = await fetchAllRows<any>((from, to) =>
     supabase
       .from('offertes')
-      .select('id, groep_id, status, subtotaal, totaal, datum, versie_nummer, created_at, verwachte_valdatum, offertenummer, relatie:relaties(bedrijfsnaam, contactpersoon)')
+      .select('id, groep_id, status, subtotaal, totaal, datum, versie_nummer, created_at, verwachte_valdatum, offertenummer, relatie:relaties(bedrijfsnaam, contactpersoon), project:projecten(status, verwachte_valmaand)')
       .eq('administratie_id', adminId)
       .or('gearchiveerd.is.null,gearchiveerd.eq.false')
       .range(from, to),
@@ -4104,16 +4104,23 @@ export async function getVerwachteOmzetPerMaand(jaar: number) {
   }))
 
   for (const o of perGroep.values()) {
-    // Nu pas filteren: alleen de LAATSTE versie telt, en alleen als die
-    // open/gewonnen is met een valdatum in het gevraagde jaar.
-    if (o.status !== 'verzonden' && o.status !== 'geaccepteerd') continue
-    const valdatum = o.verwachte_valdatum as string | null
-    if (!valdatum || !valdatum.startsWith(`${jaar}-`)) continue
-    const bedrag = Number(o.subtotaal || 0) || (o.totaal ? Number(o.totaal) / 1.21 : 0)
-    const maandIdx = parseInt(String(o.verwachte_valdatum).slice(5, 7), 10) - 1
+    const proj = (o.project || {}) as { status?: string | null; verwachte_valmaand?: string | null }
+    const projStatus = proj.status || null
+    // Definitief afgevallen kansen tellen niet mee in de prognose.
+    if (projStatus === 'verloren' || projStatus === 'geannuleerd' || projStatus === 'vervallen') continue
+    // "Afvinken": een gewonnen/afgeronde verkoopkans (of geaccepteerde offerte)
+    // telt als zekere omzet (groen). Anders telt alleen een verzonden offerte (open).
+    const gewonnen = projStatus === 'gewonnen' || projStatus === 'afgerond' || o.status === 'geaccepteerd'
+    if (!gewonnen && o.status !== 'verzonden') continue
+    // "Inplannen": de maand komt uit de verwachte valdatum van de offerte, en
+    // anders uit de verwachte valmaand van de verkoopkans (kanban-planning).
+    const bronDatum = (o.verwachte_valdatum as string | null) || (proj.verwachte_valmaand as string | null)
+    if (!bronDatum || !bronDatum.startsWith(`${jaar}-`)) continue
+    const maandIdx = parseInt(String(bronDatum).slice(5, 7), 10) - 1
     const bucket = maanden[maandIdx]
     if (!bucket) continue
-    if (o.status === 'geaccepteerd') {
+    const bedrag = Number(o.subtotaal || 0) || (o.totaal ? Number(o.totaal) / 1.21 : 0)
+    if (gewonnen) {
       bucket.gewonnen += bedrag
       bucket.aantalGewonnen += 1
     } else {
@@ -4125,8 +4132,8 @@ export async function getVerwachteOmzetPerMaand(jaar: number) {
       offertenummer: o.offertenummer,
       relatieNaam: o.relatie?.bedrijfsnaam || o.relatie?.contactpersoon || null,
       bedrag: Math.round(bedrag),
-      status: o.status,
-      valdatum: o.verwachte_valdatum,
+      status: gewonnen ? 'geaccepteerd' : o.status,
+      valdatum: bronDatum,
     })
   }
 

@@ -58,7 +58,7 @@ export function VerwachteOmzetChart() {
         <div>
           <h3 className="font-semibold text-gray-900 text-sm">Verwachte omzet per maand</h3>
           <p className="text-xs text-gray-500">
-            Op basis van de verwachte valdatum van offertes · excl. BTW · laatste versie per offerte
+            Op basis van de verwachte valdatum van de offerte, of anders de verwachte valmaand van de verkoopkans · excl. BTW · gewonnen kansen tellen als zeker
           </p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">

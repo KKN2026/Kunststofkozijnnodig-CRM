@@ -69,6 +69,7 @@ export function DeliveryPlanningDialog({ open, onClose, order, mode }: {
   const [week, setWeek] = useState('')
   const [dag, setDag] = useState('')
   const [emailTo, setEmailTo] = useState('')
+  const [mailen, setMailen] = useState(true)
   const [emailSubject, setEmailSubject] = useState('')
   const [emailBody, setEmailBody] = useState('')
   const [sending, setSending] = useState(false)
@@ -161,7 +162,7 @@ export function DeliveryPlanningDialog({ open, onClose, order, mode }: {
     }
   }, [week, dag, klantNaam, adresRegel, medewerkerNaam, order, isDef, weekOptions])
 
-  const klaar = !!week && (!isDef || !!dag) && !!emailTo
+  const klaar = !!week && (!isDef || !!dag) && (!mailen || !!emailTo)
 
   async function handleSend() {
     if (!klaar) return
@@ -174,14 +175,14 @@ export function DeliveryPlanningDialog({ open, onClose, order, mode }: {
       result = await planLeveringDefinitief(order.id, {
         leverdatum,
         leverweek: weekMaandag(week),
-        emailTo, emailSubject, emailBody,
+        emailTo: mailen ? emailTo : '', emailSubject, emailBody,
       })
     } else {
       const leverweek = weekMaandag(week)
       if (!leverweek) { setSending(false); return }
       result = await planLeveringIndicatief(order.id, {
         leverweek,
-        emailTo, emailSubject, emailBody,
+        emailTo: mailen ? emailTo : '', emailSubject, emailBody,
       })
     }
     setSending(false)
@@ -254,6 +255,15 @@ export function DeliveryPlanningDialog({ open, onClose, order, mode }: {
             )}
           </div>
 
+          <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer select-none">
+            <input type="checkbox" checked={mailen} onChange={e => setMailen(e.target.checked)} className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary" />
+            Klant per e-mail informeren
+          </label>
+          {!mailen && (
+            <div className="bg-gray-50 text-gray-500 text-sm rounded-md p-3">Alleen intern inplannen — er wordt geen mail naar de klant verstuurd.</div>
+          )}
+
+          {mailen && (<>
           {/* Email velden */}
           <div>
             <label htmlFor="delivery_email_to" className="block text-sm font-medium text-gray-700 mb-1">
@@ -287,13 +297,15 @@ export function DeliveryPlanningDialog({ open, onClose, order, mode }: {
             <p className="text-xs text-gray-400 mt-1">De handtekening en bedrijfsgegevens worden automatisch onder het bericht geplaatst.</p>
           </div>
 
+          </>)}
+
           <div className="flex justify-end gap-2 pt-2 border-t border-gray-200">
             <Button variant="ghost" onClick={onClose} disabled={sending}>
               Annuleren
             </Button>
             <Button onClick={handleSend} disabled={sending || !klaar}>
               {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-              {sending ? 'Verzenden...' : (isDef ? 'Definitief plannen & versturen' : 'Plannen & versturen')}
+              {sending ? (mailen ? 'Verzenden...' : 'Opslaan...') : (mailen ? (isDef ? 'Definitief plannen & versturen' : 'Plannen & versturen') : (isDef ? 'Definitief inplannen' : 'Inplannen'))}
             </Button>
           </div>
         </div>
