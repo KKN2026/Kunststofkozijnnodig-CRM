@@ -239,7 +239,11 @@ export function TaakForm({ taak, projecten, medewerkers, relaties, offertes, not
           href={`/taken/${taak.id}`}
         />
       )}
-      <PageHeader title={isNew ? 'Nieuwe taak' : 'Taak bewerken'} actions={<Button variant="ghost" onClick={() => navigateAfterSave((taak?.id as string) || undefined)}><ArrowLeft className="h-4 w-4" />Terug</Button>} />
+      <PageHeader
+        title={isNew ? 'Nieuwe taak' : 'Taak bewerken'}
+        description={!isNew && taak?.created_at ? `Aangemaakt op ${new Date(taak.created_at as string).toLocaleString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}` : undefined}
+        actions={<Button variant="ghost" onClick={() => navigateAfterSave((taak?.id as string) || undefined)}><ArrowLeft className="h-4 w-4" />Terug</Button>}
+      />
       {/* Klant-contactstrip: email + telefoon snel bij de hand zodra er een
           relatie gekoppeld is aan deze taak. */}
       {trackerRelatie && (trackerRelatie.email || trackerRelatie.telefoon || trackerRelatie.contactpersoon) && (

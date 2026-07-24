@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useBackNav } from '@/lib/hooks/use-back-nav'
 import Link from 'next/link'
-import { saveRelatie, deleteRelatie, saveNotitie, deleteNotitie, deleteProject, saveContactpersoon, deleteContactpersoon, deleteTaak, saveProjectNotitie, toggleVasteKlant, acceptOfferte, setProjectStatus } from '@/lib/actions'
+import { saveRelatie, deleteRelatie, saveNotitie, deleteNotitie, deleteProject, saveContactpersoon, deleteContactpersoon, deleteTaak, saveProjectNotitie, toggleVasteKlant, toggleReferentieGevraagd, acceptOfferte, setProjectStatus } from '@/lib/actions'
 import { EmailLogDialog } from '@/components/email-log-dialog'
 import { RelatieTimeline } from '@/components/relaties/timeline'
 import { PageHeader } from '@/components/ui/page-header'
@@ -29,6 +29,7 @@ interface RelatieData {
   bedrijfsnaam: string
   type: string
   vaste_klant?: boolean | null
+  om_referentie_gevraagd?: boolean | null
   contactpersoon: string | null
   email: string | null
   telefoon: string | null
@@ -175,6 +176,7 @@ export function RelatieDetail({ detail, notities: initialNotities, klantAccounts
   const router = useRouter()
   const { navigateBack } = useBackNav(`relatie-${relatie.id}`)
   const [vasteKlant, setVasteKlant] = useState<boolean>(!!relatie.vaste_klant)
+  const [referentieGevraagd, setReferentieGevraagd] = useState<boolean>(!!relatie.om_referentie_gevraagd)
   type TabKey = 'overzicht' | 'tijdlijn' | 'projecten' | 'offertes' | 'facturen' | 'documenten' | 'taken' | 'notities' | 'portaal' | 'gegevens'
   // Initiele tab uit URL ?tab=... zodat back-navigatie de juiste tab laat zien.
   // De tab-wissel gebruikt router.replace() — anders weet Next.js' interne
@@ -472,6 +474,22 @@ export function RelatieDetail({ detail, notities: initialNotities, klantAccounts
             >
               <Star className={`h-4 w-4 ${vasteKlant ? 'fill-amber-400' : ''}`} />
               {vasteKlant ? 'Vaste klant' : 'Vaste klant?'}
+            </Button>
+            <Button
+              variant="ghost"
+              onClick={async () => {
+                const nieuw = !referentieGevraagd
+                setReferentieGevraagd(nieuw)
+                const res = await toggleReferentieGevraagd(relatie.id, nieuw)
+                const { showToast } = await import('@/components/ui/toast')
+                if (res?.error) { setReferentieGevraagd(!nieuw); showToast(res.error, 'error') }
+                else showToast(nieuw ? 'Genoteerd: om referentie gevraagd' : 'Referentie-markering verwijderd', 'success')
+              }}
+              title="Onthoud dat we deze aannemer al om referenties/bekenden in de omgeving hebben gevraagd"
+              className={referentieGevraagd ? 'text-primary' : 'text-gray-400'}
+            >
+              <UserPlus className="h-4 w-4" />
+              {referentieGevraagd ? 'Referentie gevraagd' : 'Om referentie gevraagd?'}
             </Button>
             <Button variant="secondary" onClick={() => router.push(`/offertes/nieuw?relatie_id=${relatie.id}`)}>
               <FileText className="h-4 w-4" />

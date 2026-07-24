@@ -23,6 +23,7 @@ interface Taak {
   prioriteit: string
   deadline: string | null
   deadline_tijd: string | null
+  created_at: string
   categorie: string | null
   toegewezen_aan: string | null
   medewerker_id: string | null
@@ -138,6 +139,7 @@ function getColumns(
         </span>
       )
     } },
+    { accessorKey: 'created_at', header: 'Aangemaakt', cell: ({ getValue }) => <span className="text-sm text-gray-500">{formatDateShort(getValue() as string)}</span> },
   ]
   if (isAdmin) {
     // Map profiel_id → medewerker_id zodat oudere taken (alleen toegewezen_aan

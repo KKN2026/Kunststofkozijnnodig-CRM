@@ -1148,6 +1148,7 @@ export async function saveOfferte(formData: FormData) {
     versie_nummer: versieNummer,
     groep_id: groepId,
     ...(verwachteValdatum !== undefined ? { verwachte_valdatum: verwachteValdatum } : {}),
+    merk: (formData.get('merk') as string) || null,
   }
 
   let offerteId = id
@@ -10565,6 +10566,20 @@ export async function toggleVasteKlant(relatieId: string, vast: boolean) {
   const adminId = await getAdministratieId()
   if (!adminId) return { error: 'Niet ingelogd' }
   const { error } = await supabase.from('relaties').update({ vaste_klant: vast }).eq('id', relatieId).eq('administratie_id', adminId)
+  if (error) return { error: error.message }
+  revalidatePath('/relatiebeheer')
+  revalidatePath(`/relatiebeheer/${relatieId}`)
+  return { success: true }
+}
+
+// "Om referentie gevraagd (bekende)": onthoudt dat we deze aannemer al eens
+// hebben gevraagd of er in de omgeving nog anderen met kozijnen werken — zodat
+// we die vraag niet blijven herhalen.
+export async function toggleReferentieGevraagd(relatieId: string, gevraagd: boolean) {
+  const supabase = await createClient()
+  const adminId = await getAdministratieId()
+  if (!adminId) return { error: 'Niet ingelogd' }
+  const { error } = await supabase.from('relaties').update({ om_referentie_gevraagd: gevraagd }).eq('id', relatieId).eq('administratie_id', adminId)
   if (error) return { error: error.message }
   revalidatePath('/relatiebeheer')
   revalidatePath(`/relatiebeheer/${relatieId}`)

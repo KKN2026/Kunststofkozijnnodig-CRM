@@ -21,21 +21,27 @@ interface Regel {
   isTekst?: boolean
 }
 
-// Bezorgkosten worden alleen automatisch toegevoegd als het orderbedrag (excl
-// bezorg/korting) onder de €1750 ligt. Bedrag verschilt per leverancier:
-//   Standaard         → €150
-//   Gealan / Schüco   → €300 (zwaardere transporten / lange routes)
-// Detectie van Gealan/Schüco kijkt zowel naar de leverancier-naam (dealer) als
-// het profielsysteem (bv. dealer 'AKU Geveltechniek' levert Gealan-kozijnen).
+// Bezorgkosten per merk (excl. BTW), automatisch toegevoegd als het
+// producttotaal ONDER de drempel ligt; daarboven gratis. Het merk wordt
+// expliciet op de offerte gekozen (voorheen afgeleid uit de leverancier, wat
+// te vaak fout ging).
+//   Aluplast        < €1750 → €150
+//   Schüco / Gealan < €6000 → €300
 const BEZORGKOSTEN_LABEL = 'Bezorgkosten'
-const BEZORGKOSTEN_STANDAARD = { drempel: 1750, bedrag: 150 }
-const BEZORGKOSTEN_GEALAN_SCHUCO = { drempel: 1750, bedrag: 300 }
-function bezorgkostenRegel(leverancier: string | undefined, profiel?: string | undefined): { drempel: number; bedrag: number } {
+const MERK_OPTIES = ['Aluplast', 'Schüco', 'Gealan', 'Overig'] as const
+const MERK_BEZORGKOSTEN: Record<string, { drempel: number; bedrag: number }> = {
+  Aluplast: { drempel: 1750, bedrag: 150 },
+  'Schüco': { drempel: 6000, bedrag: 300 },
+  Gealan: { drempel: 6000, bedrag: 300 },
+}
+const GEEN_BEZORGKOSTEN = { drempel: 0, bedrag: 0 }
+// Slim voorinvullen van het merk uit een gedetecteerde leverancier/profiel.
+function detecteerMerk(leverancier?: string, profiel?: string): string {
   const tekst = ((leverancier || '') + ' ' + (profiel || '')).toLowerCase()
-  if (tekst.includes('gealan') || tekst.includes('schüco') || tekst.includes('schuco')) {
-    return BEZORGKOSTEN_GEALAN_SCHUCO
-  }
-  return BEZORGKOSTEN_STANDAARD
+  if (tekst.includes('gealan')) return 'Gealan'
+  if (tekst.includes('schüco') || tekst.includes('schuco')) return 'Schüco'
+  if (tekst.includes('aluplast')) return 'Aluplast'
+  return ''
 }
 
 export function StapControleren({
@@ -113,7 +119,10 @@ export function StapControleren({
   // Telt ALLE product-regels op (excl. bezorgkosten en korting).
   const leverancierNaam = detectedLeverancier?.display_naam || detectedLeverancier?.leverancier || ''
   const leverancierProfiel = detectedLeverancier?.profiel || ''
-  const bezorgConfig = bezorgkostenRegel(leverancierNaam, leverancierProfiel)
+  // Merk expliciet op de offerte; bij een nieuwe offerte slim voorgevuld uit de
+  // gedetecteerde leverancier. Stuurt de automatische bezorgkosten aan.
+  const [merk, setMerk] = useState<string>((offerte?.merk as string) || detecteerMerk(leverancierNaam, leverancierProfiel))
+  const bezorgConfig = MERK_BEZORGKOSTEN[merk] || GEEN_BEZORGKOSTEN
   // Heeft de gebruiker de bezorgkosten-regel bewust verwijderd? Dan niet
   // opnieuw automatisch toevoegen. Bij een BESTAANDE offerte die zonder
   // bezorgkosten is opgeslagen, respecteren we die keuze vanaf het laden.
@@ -136,10 +145,7 @@ export function StapControleren({
 
     // Bekende default-bedragen — gebruikt om te detecteren of de huidige waarde
     // nog "auto" is of door de gebruiker handmatig is aangepast.
-    const bekendeDefaults = new Set<number>([
-      BEZORGKOSTEN_STANDAARD.bedrag,
-      BEZORGKOSTEN_GEALAN_SCHUCO.bedrag,
-    ])
+    const bekendeDefaults = new Set<number>([150, 300])
 
     if (productTotaal < bezorgConfig.drempel && productTotaal > 0) {
       if (!heeftBezorgkosten) {
@@ -682,6 +688,7 @@ export function StapControleren({
       ? { ...r, aantal: null, prijs: null }
       : { ...r, aantal: numVal(r.aantal), prijs: numVal(r.prijs) })))
     if (selectedProjectId) formData.set('project_id', selectedProjectId)
+    formData.set('merk', merk)
     const result = await saveOfferte(formData)
     if (result.error) {
       setError(result.error)
@@ -783,6 +790,14 @@ export function StapControleren({
                 ]}
               />
               <Input id="onderwerp" name="onderwerp" label="Onderwerp" defaultValue={(offerte?.onderwerp as string) || ''} />
+              <Select
+                id="merk"
+                label="Merk (bepaalt bezorgkosten)"
+                value={merk}
+                onChange={(e) => setMerk(e.target.value)}
+                placeholder="Kies merk…"
+                options={MERK_OPTIES.map((m) => ({ value: m, label: m }))}
+              />
             </div>
           </CardContent>
         </Card>
@@ -793,7 +808,7 @@ export function StapControleren({
               <h3 className="font-semibold text-gray-900">Regelitems</h3>
               {regels.some(r => r.omschrijving === BEZORGKOSTEN_LABEL) && (
                 <p className="text-xs text-orange-600 mt-0.5">
-                  Bezorgkosten automatisch toegevoegd ({formatCurrency(bezorgConfig.bedrag)} bij producttotaal onder {formatCurrency(bezorgConfig.drempel)}{leverancierNaam ? ` — ${leverancierNaam}` : ''})
+                  Bezorgkosten automatisch toegevoegd ({formatCurrency(bezorgConfig.bedrag)} bij producttotaal onder {formatCurrency(bezorgConfig.drempel)}{merk ? ` — ${merk}` : ''})
                 </p>
               )}
             </div>
