@@ -129,7 +129,7 @@ export async function getRelaties() {
   const supabase = await createClient()
 
   const relaties = await fetchAllRows((from, to) =>
-    supabase.from('relaties').select('id, bedrijfsnaam, type, contactpersoon, email, telefoon, plaats, standaard_marge, actief').order('bedrijfsnaam').range(from, to)
+    supabase.from('relaties').select('id, bedrijfsnaam, type, herkomst, contactpersoon, email, telefoon, plaats, standaard_marge, actief').order('bedrijfsnaam').range(from, to)
   )
 
   if (relaties.length === 0) return []
@@ -397,6 +397,7 @@ export async function saveRelatie(formData: FormData) {
     btw_nummer: formData.get('btw_nummer') as string || null,
     iban: formData.get('iban') as string || null,
     website: formData.get('website') as string || null,
+    herkomst: formData.get('herkomst') as string || null,
     opmerkingen: formData.get('opmerkingen') as string || null,
     standaard_marge: formData.get('standaard_marge') ? parseFloat(formData.get('standaard_marge') as string) : null,
     // 'voormalig' = niet meer actief. Relatie blijft in het systeem staan zodat

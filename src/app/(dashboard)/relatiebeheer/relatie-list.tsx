@@ -19,6 +19,7 @@ interface Relatie {
   id: string
   bedrijfsnaam: string
   type: string
+  herkomst?: string | null
   actief?: boolean | null
   contactpersoon: string | null
   email: string | null
@@ -172,6 +173,7 @@ export function RelatieList({ relaties }: { relaties: Relatie[] }) {
   const [importOpen, setImportOpen] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [filterType, setFilterType] = useState<'alle' | 'zakelijk' | 'particulier' | 'top'>('alle')
+  const [filterHerkomst, setFilterHerkomst] = useState<'alle' | 'eigen_klant' | 'linkedin' | 'psa'>('alle')
   const [verbergVoormalig, setVerbergVoormalig] = useState(false)
   const [bulkMailDialog, setBulkMailDialog] = useState<{ ids: string[] } | null>(null)
   const [bulkOnderwerp, setBulkOnderwerp] = useState('')
@@ -190,6 +192,7 @@ export function RelatieList({ relaties }: { relaties: Relatie[] }) {
   }
   // Voormalige relaties blijven standaard zichtbaar (met badge); optioneel verbergen.
   if (verbergVoormalig) gefilterd = gefilterd.filter(r => r.actief !== false)
+  if (filterHerkomst !== 'alle') gefilterd = gefilterd.filter(r => r.herkomst === filterHerkomst)
 
   async function handleExport() {
     setExporting(true)
@@ -306,6 +309,27 @@ export function RelatieList({ relaties }: { relaties: Relatie[] }) {
           Voormalige verbergen
         </button>
         <span className="text-sm text-gray-400 ml-2">{gefilterd.length} relaties</span>
+      </div>
+
+      {/* Filter op herkomst */}
+      <div className="mb-4 flex items-center gap-2 flex-wrap">
+        <span className="text-xs text-gray-400 mr-1">Herkomst:</span>
+        {([
+          { value: 'alle' as const, label: 'Alle' },
+          { value: 'eigen_klant' as const, label: 'Eigen klant' },
+          { value: 'linkedin' as const, label: 'Via LinkedIn' },
+          { value: 'psa' as const, label: 'Via PSA' },
+        ]).map(h => (
+          <button
+            key={h.value}
+            onClick={() => setFilterHerkomst(h.value)}
+            className={`px-3 py-1.5 text-sm rounded-md font-medium transition-colors ${
+              filterHerkomst === h.value ? 'bg-primary text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            {h.label}
+          </button>
+        ))}
       </div>
 
       {gefilterd.length === 0 ? (

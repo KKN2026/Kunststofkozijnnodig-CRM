@@ -378,6 +378,18 @@ export function RelatieForm({ relatie }: { relatie: RelatieData | null }) {
                   { value: 'voormalig', label: 'Voormalig — niet meer benaderen' },
                 ]}
               />
+              <Select
+                id="herkomst"
+                name="herkomst"
+                label="Herkomst (voor filteren)"
+                defaultValue={(relatie as unknown as Record<string, unknown> | undefined)?.herkomst as string || ''}
+                options={[
+                  { value: '', label: '—' },
+                  { value: 'eigen_klant', label: 'Eigen klant' },
+                  { value: 'linkedin', label: 'Via LinkedIn' },
+                  { value: 'psa', label: 'Via PSA' },
+                ]}
+              />
               <Input id="contactpersoon" name="contactpersoon" label="Contactpersoon" defaultValue={relatie?.contactpersoon || ''} />
               <Input ref={emailRef} id="email" name="email" label="E-mail" type="email" defaultValue={relatie?.email || ''} />
               <Input id="factuur_email" name="factuur_email" label="Factuur-e-mail (optioneel)" type="email" defaultValue={(relatie as Record<string, unknown> | undefined)?.factuur_email as string || ''} placeholder="Leeg = algemene e-mail gebruiken" />
