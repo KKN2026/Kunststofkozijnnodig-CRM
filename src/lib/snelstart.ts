@@ -10,8 +10,8 @@ const API_BASE = 'https://b2bapi.snelstart.nl/v2'
 let cachedToken: { token: string; expiresAt: number } | null = null
 
 async function getAccessToken(): Promise<string> {
-  const subscriptionKey = process.env.SNELSTART_SUBSCRIPTION_KEY
-  const clientKey = process.env.SNELSTART_CLIENT_KEY
+  const subscriptionKey = (process.env.SNELSTART_SUBSCRIPTION_KEY || '').replace(/\s/g, '')
+  const clientKey = (process.env.SNELSTART_CLIENT_KEY || '').replace(/\s/g, '')
   if (!subscriptionKey || !clientKey) {
     throw new Error('SNELSTART_SUBSCRIPTION_KEY en/of SNELSTART_CLIENT_KEY ontbreken')
   }
@@ -49,7 +49,7 @@ async function getAccessToken(): Promise<string> {
 }
 
 async function snelstartFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const subscriptionKey = process.env.SNELSTART_SUBSCRIPTION_KEY
+  const subscriptionKey = (process.env.SNELSTART_SUBSCRIPTION_KEY || '').replace(/\s/g, '')
   if (!subscriptionKey) throw new Error('SNELSTART_SUBSCRIPTION_KEY ontbreekt')
 
   const token = await getAccessToken()
