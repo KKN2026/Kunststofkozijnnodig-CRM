@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sendEmail } from '@/lib/email'
 import { buildRebuEmailHtml } from '@/lib/email-template'
+import { getInstellingen, bool, num, type InstellingWaarden } from '@/lib/instellingen'
 
 // Auto-follow-up cron voor verzonden offertes:
 // - Voor verzonden offertes met klantadres
@@ -23,8 +24,35 @@ export async function GET(req: NextRequest) {
 
   const sb = createAdminClient()
   const now = Date.now()
-  const zevenDagenGeleden = new Date(now - 7 * 24 * 60 * 60 * 1000).toISOString()
-  const dertigDagenGeleden = new Date(now - 30 * 24 * 60 * 60 * 1000).toISOString()
+
+  // Het opvolgvenster is instelbaar (Instellingen → Herinneringen). We halen de
+  // offertes op met het ruimst mogelijke venster over alle administraties en
+  // filteren per offerte op de instellingen van háár administratie.
+  const insCache = new Map<string, InstellingWaarden>()
+  async function insVoor(administratieId: string): Promise<InstellingWaarden> {
+    const bestaand = insCache.get(administratieId)
+    if (bestaand) return bestaand
+    const ins = await getInstellingen(sb, administratieId)
+    insCache.set(administratieId, ins)
+    return ins
+  }
+
+  const { data: administraties } = await sb.from('administraties').select('id')
+  let ruimsteNa = Number.MAX_SAFE_INTEGER
+  let ruimsteTot = 0
+  for (const a of administraties || []) {
+    const ins = await insVoor(a.id as string)
+    if (!bool(ins, 'offerte_followup_actief')) continue
+    ruimsteNa = Math.min(ruimsteNa, num(ins, 'offerte_followup_na_dagen'))
+    ruimsteTot = Math.max(ruimsteTot, num(ins, 'offerte_followup_tot_dagen'))
+  }
+  if (ruimsteTot === 0) {
+    // Geen enkele administratie heeft opvolging aan staan.
+    return NextResponse.json({ disabled: true, checked: 0, reminders_sent: 0 })
+  }
+
+  const zevenDagenGeleden = new Date(now - ruimsteNa * 24 * 60 * 60 * 1000).toISOString()
+  const dertigDagenGeleden = new Date(now - ruimsteTot * 24 * 60 * 60 * 1000).toISOString()
 
   // Verzonden offertes binnen het venster — exclusief offertes die we al
   // gerappelleerd hebben (track via email_log met onderwerp prefix 'Reminder:').
@@ -46,6 +74,14 @@ export async function GET(req: NextRequest) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const relatie = (offerte as any).relatie
     if (!relatie?.email) continue
+
+    // Het opgehaalde venster is het ruimste over alle administraties; toets hier
+    // tegen de eigen instellingen van deze offerte.
+    const ins = await insVoor(offerte.administratie_id as string)
+    if (!bool(ins, 'offerte_followup_actief')) continue
+    const dagenSinds = Math.floor((now - new Date(offerte.updated_at as string).getTime()) / 86400000)
+    if (dagenSinds < num(ins, 'offerte_followup_na_dagen')) continue
+    if (dagenSinds > num(ins, 'offerte_followup_tot_dagen')) continue
 
     // Skip wanneer er al een reminder is verstuurd
     const { data: prevReminders } = await sb

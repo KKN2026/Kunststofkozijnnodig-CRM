@@ -5,11 +5,13 @@ import { buildRebuEmailHtml } from '@/lib/email-template'
 import { ensureFactuurBetaalLink } from '@/lib/mollie'
 import { syncFactuurFromMollie } from '@/lib/mollie-sync'
 import { getAppUrl } from '@/lib/utils'
+import { getInstellingen, bool, num, type InstellingWaarden } from '@/lib/instellingen'
 
-// Auto-herinneringen voor openstaande facturen op:
+// Auto-herinneringen voor openstaande facturen, standaard op:
 //  - 7 dagen na vervaldatum  → vriendelijke herinnering
 //  - 14 dagen na vervaldatum → 2e herinnering, iets steviger
 //  - 30 dagen na vervaldatum → 3e herinnering met aankondiging incasso
+// De dagen én het aan/uit-zetten komen uit Instellingen → Herinneringen.
 //
 // Idempotent via email_log: per factuur + per fase max 1 herinnering. We
 // markeren met onderwerp-prefix 'Herinnering 1/2/3 — F-...' zodat we kunnen
@@ -20,20 +22,26 @@ import { getAppUrl } from '@/lib/utils'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
-// KILL-SWITCH: automatische betalingsherinneringen staan UIT (op verzoek, juni
+// Automatische betalingsherinneringen staan standaard UIT (op verzoek, juni
 // 2026 — klanten kregen aanmaningen terwijl betalingen via bank/SnelStart nog
-// niet afgeletterd waren). De cron-schedule is ook uit vercel.json verwijderd;
-// deze guard zorgt dat ook een handmatige aanroep niets verstuurt. Zet op
-// `true` (of verwijder de guard) om de aanmaningen weer aan te zetten.
-const AANMANINGEN_ACTIEF = false
+// niet afgeletterd waren). Sinds de instellingen-pagina is dit geen hardcoded
+// kill-switch meer: per administratie in te schakelen via Instellingen →
+// Herinneringen, inclusief de dagen per fase. De cron-schedule staat ook niet
+// in vercel.json; aanzetten betekent dus ook die schedule terugzetten.
+interface Fase {
+  stap: number
+  dagen: number
+  prefix: string
+  toon: 'vriendelijk' | 'dringend' | 'laatste'
+}
 
-const FASES = [
-  { stap: 1, dagen: 7, prefix: 'Herinnering 1', toon: 'vriendelijk' },
-  { stap: 2, dagen: 14, prefix: 'Herinnering 2', toon: 'dringend' },
-  { stap: 3, dagen: 30, prefix: 'Herinnering 3', toon: 'laatste' },
-] as const
-
-type Fase = typeof FASES[number]
+function fasesVoor(ins: InstellingWaarden): Fase[] {
+  return [
+    { stap: 1, dagen: num(ins, 'aanmaning_1_dagen'), prefix: 'Herinnering 1', toon: 'vriendelijk' },
+    { stap: 2, dagen: num(ins, 'aanmaning_2_dagen'), prefix: 'Herinnering 2', toon: 'dringend' },
+    { stap: 3, dagen: num(ins, 'aanmaning_3_dagen'), prefix: 'Herinnering 3', toon: 'laatste' },
+  ]
+}
 
 function buildBody(fase: Fase, klantNaam: string, factuurnummer: string, openstaand: number, vervaldatum: string) {
   const bedrag = new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR' }).format(openstaand)
@@ -75,12 +83,18 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
   }
 
-  // Automatische aanmaningen staan uit — verstuur niets.
-  if (!AANMANINGEN_ACTIEF) {
-    return NextResponse.json({ disabled: true, checked: 0, sent: 0 })
+  const sb = createAdminClient()
+
+  // Instellingen worden per administratie gelezen en hergebruikt binnen deze run.
+  const insCache = new Map<string, InstellingWaarden>()
+  async function insVoor(administratieId: string): Promise<InstellingWaarden> {
+    const bestaand = insCache.get(administratieId)
+    if (bestaand) return bestaand
+    const ins = await getInstellingen(sb, administratieId)
+    insCache.set(administratieId, ins)
+    return ins
   }
 
-  const sb = createAdminClient()
   const today = new Date(); today.setHours(0, 0, 0, 0)
 
   const { data: facturen } = await sb
@@ -98,9 +112,14 @@ export async function GET(req: NextRequest) {
   const baseUrl = getAppUrl()
 
   let overgeslagenBetaald = 0
+  let overgeslagenUitgezet = 0
   for (const f of facturen) {
     let openstaand = Number(f.totaal || 0) - Number(f.betaald_bedrag || 0)
     if (openstaand <= 0.01) continue
+
+    // Herinneringen staan per administratie aan of uit (standaard uit).
+    const ins = await insVoor(f.administratie_id as string)
+    if (!bool(ins, 'aanmaningen_actief')) { overgeslagenUitgezet++; continue }
 
     // HARDE CHECK: nooit een aanmaning sturen naar een klant die al betaald
     // heeft. Onze factuurstatus kan achterlopen (bv. Mollie-betaling nog niet
@@ -134,7 +153,9 @@ export async function GET(req: NextRequest) {
     // Door deze sortering (descending) krijgt een 31-daagse factuur direct
     // fase 3 als fase 1/2 om wat voor reden dan ook gemist zijn.
     let fase: Fase | null = null
-    for (const f2 of [...FASES].reverse()) {
+    // Sorteren op dagen (hoog → laag) i.p.v. blind omdraaien: de dagen komen
+    // uit de instellingen en staan niet gegarandeerd oplopend.
+    for (const f2 of [...fasesVoor(ins)].sort((a, b) => b.dagen - a.dagen)) {
       if (dagenOver >= f2.dagen) { fase = f2; break }
     }
     if (!fase) continue
@@ -225,6 +246,7 @@ export async function GET(req: NextRequest) {
     checked: facturen.length,
     sent,
     overgeslagen_betaald: overgeslagenBetaald,
+    overgeslagen_uitgezet: overgeslagenUitgezet,
     errors: errors.length ? errors : undefined,
   })
 }

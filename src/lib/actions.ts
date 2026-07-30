@@ -6,9 +6,18 @@ import { createAdminClient } from '@/lib/supabase/admin'
 // Medewerkers met een eigen mailbox: bij offerte/factuur-verzending komt
 // de mail uit hun eigen adres en reacties komen daar terecht. Alle andere
 // medewerkers gebruiken de gedeelde info@-postbus (default SMTP_FROM).
-const EIGEN_MAILBOX_EMAILS = new Set<string>([
-  'verkoop@kunststofkozijnnodig.nl',  // Jordy
-])
+// De lijst is instelbaar via Instellingen → E-mail.
+async function heeftEigenMailbox(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  sb: any,
+  administratieId: string,
+  email: string | null | undefined,
+): Promise<boolean> {
+  if (!email) return false
+  const { getInstellingen, lijst } = await import('@/lib/instellingen')
+  const ins = await getInstellingen(sb, administratieId)
+  return lijst(ins, 'eigen_mailbox_adressen').includes(email.toLowerCase())
+}
 import { revalidatePath } from 'next/cache'
 import { cookies, headers } from 'next/headers'
 import { sendEmail, normaliseerOntvangers } from '@/lib/email'
@@ -659,6 +668,31 @@ export async function deleteRelatie(id: string) {
   return { success: true }
 }
 
+// Bulk verwijderen vanuit de selectie in Relatiebeheer. Afhankelijke records
+// (offertes, facturen, projecten, notities, contactpersonen, e-maillog) gaan
+// via ON DELETE CASCADE mee — zie migratie 044.
+export async function deleteRelaties(ids: string[]) {
+  if (!ids?.length) return { error: 'Geen relaties geselecteerd' }
+  const supabase = await createClient()
+
+  let verwijderd = 0
+  const BATCH = 100
+  for (let i = 0; i < ids.length; i += BATCH) {
+    const batch = ids.slice(i, i + BATCH)
+    const { data, error } = await supabase
+      .from('relaties')
+      .delete()
+      .in('id', batch)
+      .select('id')
+    if (error) return { error: error.message, verwijderd }
+    verwijderd += data?.length || 0
+  }
+
+  revalidatePath('/relatiebeheer')
+  revalidatePath('/')
+  return { success: true, verwijderd }
+}
+
 // === PRODUCTEN ===
 export async function getProducten() {
   const supabase = await createClient()
@@ -1075,9 +1109,14 @@ export async function saveOfferte(formData: FormData) {
   const datumRaw = formData.get('datum') as string | null
   const datum = datumRaw && datumRaw.trim() ? datumRaw : new Date().toISOString().split('T')[0]
   const geldigTotRaw = formData.get('geldig_tot') as string | null
-  const geldigTot = geldigTotRaw && geldigTotRaw.trim()
-    ? geldigTotRaw
-    : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+  let geldigTot = geldigTotRaw && geldigTotRaw.trim() ? geldigTotRaw : ''
+  if (!geldigTot) {
+    // Geen datum meegegeven → standaard geldigheidsduur uit de instellingen.
+    const { getInstellingen: leesIns, num: insN } = await import('@/lib/instellingen')
+    const ins = await leesIns(supabase, adminId)
+    geldigTot = new Date(Date.now() + insN(ins, 'offerte_geldigheid_dagen') * 24 * 60 * 60 * 1000)
+      .toISOString().split('T')[0]
+  }
 
   // Status mag alleen één van de toegestane CHECK-waarden zijn
   const allowedStatus = new Set(['concept', 'verzonden', 'geaccepteerd', 'afgewezen', 'verlopen'])
@@ -2396,6 +2435,9 @@ export async function maakOfferteVanuitEmail(emailId: string) {
   const { data: email } = await sb.from('emails').select('*').eq('id', emailId).single()
   if (!email) return { error: 'Email niet gevonden' }
 
+  const { getInstellingen: leesInstellingen, bool: insBool, tekst: insTekst, num: insNum } = await import('@/lib/instellingen')
+  const instellingen = await leesInstellingen(supabase, adminId)
+
   // Zoek of maak relatie obv afzender
   let relatieId: string | null = email.relatie_id
   if (!relatieId && email.van_email) {
@@ -2403,15 +2445,21 @@ export async function maakOfferteVanuitEmail(emailId: string) {
     // élke keer een nieuw duplicaat aan — hoofdoorzaak van de duplicaten-stroom.
     const dup = await vindBestaandeRelatieKandidaat(sb, adminId, { email: email.van_email })
     if (dup) relatieId = dup.id
-    else {
+    else if (insBool(instellingen, 'relatie_auto_aanmaken_uit_email')) {
       const { data: nieuw } = await sb.from('relaties').insert({
         administratie_id: adminId,
         bedrijfsnaam: email.van_naam || email.van_email || 'Onbekend',
-        type: 'particulier',
+        type: insTekst(instellingen, 'relatie_auto_type'),
+        herkomst: insTekst(instellingen, 'relatie_auto_herkomst'),
         email: email.van_email,
         contactpersoon: email.van_naam || null,
       }).select('id').single()
       relatieId = nieuw?.id || null
+    } else {
+      // Automatisch aanmaken staat uit → de gebruiker koppelt de klant zelf.
+      return {
+        error: `Afzender ${email.van_email} is nog geen relatie. Koppel de e-mail eerst aan een klant, of zet "Klant automatisch aanmaken uit e-mail" aan bij Instellingen.`,
+      }
     }
   }
   if (!relatieId) return { error: 'Geen afzender-email om relatie van te maken' }
@@ -2433,7 +2481,8 @@ export async function maakOfferteVanuitEmail(emailId: string) {
   // Maak concept-offerte aan
   const offertenummer = await getVolgendeNummer('offerte')
   const datum = new Date().toISOString().slice(0, 10)
-  const geldigTot = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10)
+  const geldigTot = new Date(Date.now() + insNum(instellingen, 'offerte_geldigheid_dagen') * 86400000)
+    .toISOString().slice(0, 10)
   const { data: offerte, error } = await sb.from('offertes').insert({
     administratie_id: adminId,
     relatie_id: relatieId,
@@ -2606,7 +2655,11 @@ export async function sendFactuurEmail(factuurId: string, options: {
     factuurUpdate.datum = vandaag
     const oudeDatum = factuur.datum ? new Date(factuur.datum) : null
     const oudeVervaldatum = factuur.vervaldatum ? new Date(factuur.vervaldatum) : null
-    let dagenTermijn = 7
+    // Standaard betaaltermijn uit de instellingen; een concept dat zelf al een
+    // datum + vervaldatum had houdt zijn eigen termijn.
+    const { getInstellingen: leesIns, num: insN } = await import('@/lib/instellingen')
+    const ins = await leesIns(supabaseAdmin2, factuur.administratie_id as string)
+    let dagenTermijn = insN(ins, 'factuur_betaaltermijn_dagen')
     if (oudeDatum && oudeVervaldatum) {
       const diff = Math.round((oudeVervaldatum.getTime() - oudeDatum.getTime()) / (1000 * 60 * 60 * 24))
       if (diff > 0 && diff <= 90) dagenTermijn = diff
@@ -2623,10 +2676,19 @@ export async function sendFactuurEmail(factuurId: string, options: {
   // NB: een bestaande betaal_link is GEEN reden om Mollie over te slaan —
   // ensureFactuurBetaalLink verifieert dat het linkbedrag nog klopt en
   // vervangt de link als de factuur intussen gewijzigd is.
-  const mollieDoNothing = openstaandBedrag <= 0
+  // De betaallink kan per administratie uitgezet worden (Instellingen →
+  // Facturatie). Dan gaat de factuur zonder iDEAL-knop de deur uit.
+  const { getInstellingen: leesBetaalIns, bool: insB } = await import('@/lib/instellingen')
+  const betaalIns = await leesBetaalIns(supabaseAdmin2, factuur.administratie_id as string)
+  const betaallinkAan = insB(betaalIns, 'factuur_betaallink_actief')
+
+  const mollieDoNothing = !betaallinkAan || openstaandBedrag <= 0
     || factuur.status === 'gecrediteerd' || factuur.status === 'betaald'
 
   const molliePromise: Promise<string | null | { error: string }> = (async () => {
+    // Uitgezet in de instellingen → geen betaalknop, ook niet als er nog een
+    // oude link op de factuur staat.
+    if (!betaallinkAan) return null
     if (mollieDoNothing) return huidigeBetaalLink
     if (!process.env.MOLLIE_API_KEY) {
       return { error: 'Mollie is niet geconfigureerd — kan factuur niet versturen zonder betaal-link.' }
@@ -2691,10 +2753,11 @@ export async function sendFactuurEmail(factuurId: string, options: {
   try {
     // Alleen medewerkers met een eigen mailbox versturen vanuit hun eigen
     // adres. Andere medewerkers gebruiken de gedeelde info@-postbus.
-    const eigenMailbox = mwInfo?.email && EIGEN_MAILBOX_EMAILS.has(mwInfo.email.toLowerCase())
+    const eigenMailbox = await heeftEigenMailbox(supabaseAdmin2, factuur.administratie_id as string, mwInfo?.email)
     await sendEmail({
       to: ontvangers,
       bcc: options.bcc,
+      administratieId: factuur.administratie_id as string,
       subject: options.subject,
       html: emailHtml,
       attachments: attachments.map(a => ({
@@ -6712,6 +6775,17 @@ export async function reclassifyExistingEmails() {
   const adminId = await getAdministratieId()
   if (!adminId) return { error: 'Niet ingelogd', updated: 0 }
 
+  // Zonder deze check zou deze knop alsnog labels terugzetten die je via de
+  // instellingen juist hebt uitgezet.
+  const { getInstellingen: leesIns, bool: insB } = await import('@/lib/instellingen')
+  const ins = await leesIns(supabase, adminId)
+  if (!insB(ins, 'email_herkenning_actief')) {
+    return {
+      error: 'Automatisch beoordelen van binnenkomende mail staat uit. Zet het aan bij Instellingen → E-mail als u dit wilt gebruiken.',
+      updated: 0,
+    }
+  }
+
   const supabaseAdmin = createAdminClient()
   const { classifyEmail } = await import('@/lib/imap')
 
@@ -6904,15 +6978,24 @@ export async function getGebruikers() {
   return data || []
 }
 
+// Toegestane rollen; voorkomt dat er via FormData een onbekende rol binnenkomt.
+const GELDIGE_ROLLEN = new Set(['admin', 'gebruiker', 'readonly', 'medewerker'])
+
 export async function createGebruiker(formData: FormData) {
   const supabase = await createClient()
   const adminId = await getAdministratieId()
   if (!adminId) return { error: 'Niet ingelogd' }
 
+  // Zonder deze check kon élke ingelogde gebruiker (ook 'readonly') een nieuw
+  // admin-account aanmaken.
+  const { rol: eigenRol } = await getRolEnEigenMedewerker(supabase, adminId)
+  if (eigenRol !== 'admin') return { error: 'Alleen een beheerder kan gebruikers aanmaken' }
+
   const naam = formData.get('naam') as string
   const email = formData.get('email') as string
   const wachtwoord = formData.get('wachtwoord') as string
-  const rol = formData.get('rol') as string || 'gebruiker'
+  const rolRaw = formData.get('rol') as string || 'gebruiker'
+  const rol = GELDIGE_ROLLEN.has(rolRaw) ? rolRaw : 'gebruiker'
 
   const supabaseAdmin = createAdminClient()
   const { data: userData, error: authError } = await supabaseAdmin.auth.admin.createUser({
@@ -6963,12 +7046,110 @@ Wij raden u aan uw wachtwoord na de eerste login te wijzigen.`
 
 export async function deleteGebruiker(id: string) {
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (user?.id === id) return { error: 'U kunt uzelf niet verwijderen' }
+  const adminId = await getAdministratieId()
+  if (!adminId) return { error: 'Niet ingelogd' }
+
+  const { userId, rol } = await getRolEnEigenMedewerker(supabase, adminId)
+  if (rol !== 'admin') return { error: 'Alleen een beheerder kan gebruikers verwijderen' }
+  if (userId === id) return { error: 'U kunt uzelf niet verwijderen' }
 
   const supabaseAdmin = createAdminClient()
+
+  // Zonder deze controle kon een willekeurig user-id meegegeven worden en dus
+  // ook een account uit een ándere administratie verwijderd worden.
+  const { data: doelProfiel } = await supabaseAdmin
+    .from('profielen')
+    .select('administratie_id')
+    .eq('id', id)
+    .maybeSingle()
+  if (!doelProfiel || doelProfiel.administratie_id !== adminId) {
+    return { error: 'Gebruiker niet gevonden' }
+  }
+
   const { error } = await supabaseAdmin.auth.admin.deleteUser(id)
   if (error) return { error: error.message }
+
+  revalidatePath('/beheer')
+  return { success: true }
+}
+
+// Account bijwerken: naam, rol, e-mailadres en/of wachtwoord. Alleen admins,
+// en alleen binnen de eigen administratie.
+export async function updateGebruiker(id: string, data: {
+  naam?: string
+  rol?: string
+  email?: string
+  wachtwoord?: string
+}) {
+  const supabase = await createClient()
+  const adminId = await getAdministratieId()
+  if (!adminId) return { error: 'Niet ingelogd' }
+
+  const { userId, rol: eigenRol } = await getRolEnEigenMedewerker(supabase, adminId)
+  if (eigenRol !== 'admin') return { error: 'Alleen een beheerder kan accounts wijzigen' }
+
+  const supabaseAdmin = createAdminClient()
+  const { data: doelProfiel } = await supabaseAdmin
+    .from('profielen')
+    .select('administratie_id, rol, email')
+    .eq('id', id)
+    .maybeSingle()
+  if (!doelProfiel || doelProfiel.administratie_id !== adminId) {
+    return { error: 'Gebruiker niet gevonden' }
+  }
+
+  // Jezelf degraderen kan je buitensluiten uit het beheer — en als je de enige
+  // beheerder bent, zou niemand het meer terug kunnen draaien.
+  if (id === userId && data.rol && data.rol !== 'admin') {
+    return { error: 'U kunt uw eigen beheerdersrol niet afnemen' }
+  }
+  if (doelProfiel.rol === 'admin' && data.rol && data.rol !== 'admin') {
+    const { count } = await supabaseAdmin
+      .from('profielen')
+      .select('id', { count: 'exact', head: true })
+      .eq('administratie_id', adminId)
+      .eq('rol', 'admin')
+    if ((count || 0) <= 1) return { error: 'Er moet minimaal één beheerder blijven' }
+  }
+
+  const nieuweEmail = data.email?.trim().toLowerCase()
+  const nieuwWachtwoord = data.wachtwoord?.trim()
+
+  if (nieuwWachtwoord && nieuwWachtwoord.length < 8) {
+    return { error: 'Wachtwoord moet minimaal 8 tekens zijn' }
+  }
+  if (nieuweEmail && !nieuweEmail.includes('@')) {
+    return { error: 'Ongeldig e-mailadres' }
+  }
+
+  // E-mail en wachtwoord zitten in auth, niet in het profiel.
+  if (nieuweEmail || nieuwWachtwoord) {
+    const authPatch: { email?: string; password?: string; email_confirm?: boolean } = {}
+    if (nieuweEmail && nieuweEmail !== (doelProfiel.email || '').toLowerCase()) {
+      authPatch.email = nieuweEmail
+      // Zonder dit moet de gebruiker het nieuwe adres eerst bevestigen voordat
+      // hij weer kan inloggen; een beheerder die het adres wijzigt wil dat niet.
+      authPatch.email_confirm = true
+    }
+    if (nieuwWachtwoord) authPatch.password = nieuwWachtwoord
+    if (Object.keys(authPatch).length > 0) {
+      const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(id, authPatch)
+      if (authError) return { error: authError.message }
+    }
+  }
+
+  const profielPatch: Record<string, string> = {}
+  if (data.naam?.trim()) profielPatch.naam = data.naam.trim()
+  if (data.rol && GELDIGE_ROLLEN.has(data.rol)) profielPatch.rol = data.rol
+  if (nieuweEmail) profielPatch.email = nieuweEmail
+
+  if (Object.keys(profielPatch).length > 0) {
+    const { error: profielError } = await supabaseAdmin
+      .from('profielen')
+      .update(profielPatch)
+      .eq('id', id)
+    if (profielError) return { error: profielError.message }
+  }
 
   revalidatePath('/beheer')
   return { success: true }
@@ -7257,6 +7438,38 @@ export async function createRelatieInline(data: {
   return { success: true, id: relatie.id, bedrijfsnaam: relatie.bedrijfsnaam }
 }
 
+// Kozijntekeningen worden opgeslagen op A4 scale 2 (~1190px breed, JPEG q85),
+// wat neerkomt op ±290KB per stuk. Die tekening gaat vervolgens in ZOWEL de
+// offerte-PDF als de tekeningen-PDF, dus bij 20 elementen zit je al op ~11MB
+// aan bijlagen voordat de gebruiker zelf iets heeft toegevoegd. Voor een PDF
+// die op papier of op het scherm bekeken wordt is 900px ruim voldoende; dat
+// scheelt in de praktijk een factor 2 tot 3 zonder zichtbaar kwaliteitsverlies.
+// Mislukt het verkleinen, dan gaat gewoon het origineel mee.
+async function verkleinTekening(
+  origineel: Buffer,
+  pad: string,
+): Promise<{ buffer: Buffer; mime: string }> {
+  const mimeOrigineel = /\.jpe?g$/i.test(pad) ? 'image/jpeg' : 'image/png'
+  try {
+    const sharp = (await import('sharp')).default
+    const meta = await sharp(origineel).metadata()
+    // Al klein genoeg? Dan niet opnieuw comprimeren (dat kost alleen kwaliteit).
+    if ((meta.width || 0) <= 900 && origineel.length < 120 * 1024) {
+      return { buffer: origineel, mime: mimeOrigineel }
+    }
+    const verkleind = await sharp(origineel)
+      .resize({ width: 900, withoutEnlargement: true })
+      .jpeg({ quality: 75, mozjpeg: true })
+      .toBuffer()
+    // Alleen gebruiken als het écht kleiner is.
+    if (verkleind.length >= origineel.length) return { buffer: origineel, mime: mimeOrigineel }
+    return { buffer: verkleind, mime: 'image/jpeg' }
+  } catch (err) {
+    console.error('[offerte-mail] tekening verkleinen mislukt, origineel gebruikt:', err)
+    return { buffer: origineel, mime: mimeOrigineel }
+  }
+}
+
 // === OFFERTE EMAIL VERSTUREN ===
 export async function getOfferteEmailDefaults(offerteId: string) {
   const supabase = await createClient()
@@ -7397,7 +7610,8 @@ export async function sendOfferteEmail(offerteId: string, options: {
     }
   }
 
-  const emailHtml = buildRebuEmailHtml(options.body, link, 'Offerte bekijken &amp; accepteren', medewerkerInfo)
+  // De HTML wordt pas verderop gebouwd: als bijlagen te groot blijken worden ze
+  // vervangen door downloadlinks, en die moeten in de tekst terechtkomen.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let kozijnElementen: any[] | undefined
 
@@ -7462,22 +7676,36 @@ export async function sendOfferteEmail(offerteId: string, options: {
             tekeningenPerNaam.get(t.naam)!.push(t)
           }
 
-          kozijnElementen = []
-          for (const naam of naamVolgorde) {
-            const tekeningenVoorElement = tekeningenPerNaam.get(naam)!
+          // De tekeningen werden hier één voor één opgehaald (await in de lus),
+          // dus bij 20 elementen 20 losse storage-rondjes achter elkaar. Nu
+          // allemaal tegelijk: scheelt bij grote offertes het leeuwendeel van
+          // de wachttijd in deze stap.
+          const tDownload = Date.now()
+          let bytesVoor = 0
+          let bytesNa = 0
+          const tekeningUrls = await Promise.all(naamVolgorde.map(async naam => {
             // Eerste pagina-image als hoofd-tekening (rest blijft onbenut in
             // de email-flow; live-API gebruikt de volledige set)
-            const eerste = tekeningenVoorElement[0]
+            const eerste = tekeningenPerNaam.get(naam)![0]
             const { data: imgFile } = await supabaseAdmin.storage
               .from('documenten')
               .download(eerste.tekeningPath)
+            if (!imgFile) return ''
+            const imgBuffer = Buffer.from(await imgFile.arrayBuffer())
+            bytesVoor += imgBuffer.length
+            const klein = await verkleinTekening(imgBuffer, eerste.tekeningPath)
+            bytesNa += klein.buffer.length
+            return `data:${klein.mime};base64,${klein.buffer.toString('base64')}`
+          }))
+          console.log(
+            `[offerte-mail] ${naamVolgorde.length} tekeningen opgehaald in ${Date.now() - tDownload}ms — ` +
+            `${(bytesVoor / 1024 / 1024).toFixed(1)}MB verkleind naar ${(bytesNa / 1024 / 1024).toFixed(1)}MB`,
+          )
 
-            let tekeningUrl = ''
-            if (imgFile) {
-              const imgBuffer = Buffer.from(await imgFile.arrayBuffer())
-              const mime = /\.jpe?g$/i.test(eerste.tekeningPath) ? 'image/jpeg' : 'image/png'
-              tekeningUrl = `data:${mime};base64,${imgBuffer.toString('base64')}`
-            }
+          kozijnElementen = []
+          for (let i = 0; i < naamVolgorde.length; i++) {
+            const naam = naamVolgorde[i]
+            const tekeningUrl = tekeningUrls[i]
 
             const matchingElement = elementData.find(e => e.naam === naam)
             // Handmatige override wint van de (her-geparste) AI-prijs.
@@ -7521,52 +7749,138 @@ export async function sendOfferteEmail(offerteId: string, options: {
     console.error('Error loading kozijn elements for email:', err)
   }
 
-  // Genereer offerte PDF (met kozijn tekeningen)
+  // Beide PDF's tegelijk renderen — ze stonden achter elkaar terwijl ze niets
+  // van elkaar nodig hebben. De 'offerte zonder prijzen' is vervangen door de
+  // 'Tekeningen-*.pdf', zodat er altijd maar 2 bestanden meegaan:
+  // offerte-met-prijzen + tekeningen.
   const attachments: { filename: string; content: string }[] = []
-  try {
-    const { renderToBuffer } = await import('@react-pdf/renderer')
-    const { OfferteDocument } = await import('@/lib/pdf/offerte-template')
-    const offerteData = { ...offerte, kozijnElementen }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const pdfBuffer = await renderToBuffer(OfferteDocument({ offerte: offerteData }) as any)
-    const pdfBase64 = Buffer.from(pdfBuffer).toString('base64')
-    attachments.push({
-      filename: `Offerte-${offerte.offertenummer}.pdf`,
-      content: pdfBase64,
-    })
-    // De 'offerte zonder prijzen' is vervangen door de 'Tekeningen-*.pdf' hieronder,
-    // zodat er altijd maar 2 bestanden meegaan: offerte-met-prijzen + tekeningen.
-  } catch (err) {
-    console.error('PDF generatie voor email mislukt:', err)
-  }
+  const tRender = Date.now()
+  const [offertePdf, tekeningenPdf] = await Promise.all([
+    (async () => {
+      try {
+        const { renderToBuffer } = await import('@react-pdf/renderer')
+        const { OfferteDocument } = await import('@/lib/pdf/offerte-template')
+        const offerteData = { ...offerte, kozijnElementen }
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const buf = await renderToBuffer(OfferteDocument({ offerte: offerteData }) as any)
+        return Buffer.from(buf).toString('base64')
+      } catch (err) {
+        console.error('PDF generatie voor email mislukt:', err)
+        return null
+      }
+    })(),
+    (async () => {
+      if (!kozijnElementen || kozijnElementen.length === 0) return null
+      try {
+        const { renderToBuffer } = await import('@react-pdf/renderer')
+        const { TekeningenDocument } = await import('@/lib/pdf/tekeningen-template')
+        const tekeningenElementen = kozijnElementen.map(e => ({ ...e }))
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const buf = await renderToBuffer(TekeningenDocument({ offerte: { offertenummer: offerte.offertenummer, elementen: tekeningenElementen } }) as any)
+        return Buffer.from(buf).toString('base64')
+      } catch (err) {
+        console.error('Tekeningen PDF generatie voor email mislukt:', err)
+        return null
+      }
+    })(),
+  ])
+  console.log(`[offerte-mail] PDF's gerenderd in ${Date.now() - tRender}ms`)
 
-  // Genereer tekeningen PDF (zonder prijzen) als er kozijn elementen zijn
-  if (kozijnElementen && kozijnElementen.length > 0) {
-    try {
-      const { renderToBuffer } = await import('@react-pdf/renderer')
-      const { TekeningenDocument } = await import('@/lib/pdf/tekeningen-template')
-      const tekeningenElementen = kozijnElementen.map(e => ({ ...e }))
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const tekPdfBuffer = await renderToBuffer(TekeningenDocument({ offerte: { offertenummer: offerte.offertenummer, elementen: tekeningenElementen } }) as any)
-      const tekPdfBase64 = Buffer.from(tekPdfBuffer).toString('base64')
-      attachments.push({
-        filename: `Tekeningen-${offerte.offertenummer}.pdf`,
-        content: tekPdfBase64,
-      })
-    } catch (err) {
-      console.error('Tekeningen PDF generatie voor email mislukt:', err)
-    }
-  }
+  if (offertePdf) attachments.push({ filename: `Offerte-${offerte.offertenummer}.pdf`, content: offertePdf })
+  if (tekeningenPdf) attachments.push({ filename: `Tekeningen-${offerte.offertenummer}.pdf`, content: tekeningenPdf })
 
   // Extra bijlagen (tekeningen etc.)
   if (options.extraBijlagen) {
     attachments.push(...options.extraBijlagen)
   }
 
+  // Grootte-controle vóór het SMTP-verkeer. Gmail weigert mail boven ~25MB;
+  // zonder deze check bleef de verzending eerst minutenlang hangen om daarna
+  // alsnog te falen. Nu krijgt de gebruiker meteen te horen wat er mis is.
+  // 18MB aan bestanden wordt in de mail zelf ~24MB (base64 kost 33% extra),
+  // net onder de 25MB die Gmail accepteert.
+  const MAX_MAIL_MB = 18
+  const mbVan = (a: { content: string }) => (a.content.length * 0.75) / 1024 / 1024 // base64 → bytes
+  const totaalMbVan = (lijst: typeof attachments) => lijst.reduce((s, a) => s + mbVan(a), 0)
+  console.log(
+    `[offerte-mail] ${attachments.length} bijlagen, samen ${totaalMbVan(attachments).toFixed(1)}MB: ` +
+    attachments.map(a => `${a.filename} ${mbVan(a).toFixed(1)}MB`).join(', '),
+  )
+
+  // Past het niet in één mail? Dan NIET weigeren — de offerte moet de deur uit.
+  // We verplaatsen de grootste bijlagen naar opslag en zetten downloadlinks in
+  // de mail, net zolang tot de rest wél past. De offerte-PDF zelf houden we
+  // zoveel mogelijk als echte bijlage, die wil de klant direct zien.
+  const viaLink: { filename: string; url: string; mb: number }[] = []
+  if (totaalMbVan(attachments) > MAX_MAIL_MB) {
+    // Grootste eerst, maar de offerte-PDF pas als allerlaatste kandidaat.
+    const kandidaten = attachments
+      .map((a, i) => ({ i, a, mb: mbVan(a), isOfferte: a.filename === `Offerte-${offerte.offertenummer}.pdf` }))
+      .sort((x, y) => (x.isOfferte !== y.isOfferte ? (x.isOfferte ? 1 : -1) : y.mb - x.mb))
+
+    const teVerplaatsen = new Set<number>()
+    let resterend = totaalMbVan(attachments)
+    for (const k of kandidaten) {
+      if (resterend <= MAX_MAIL_MB) break
+      teVerplaatsen.add(k.i)
+      resterend -= k.mb
+    }
+
+    for (const k of kandidaten) {
+      if (!teVerplaatsen.has(k.i)) continue
+      try {
+        const pad = `offerte-groot/${offerteId}/${Date.now()}-${k.a.filename}`
+        const { error: uploadError } = await supabaseAdmin.storage
+          .from('email-bijlagen')
+          .upload(pad, Buffer.from(k.a.content, 'base64'), {
+            contentType: 'application/pdf',
+            upsert: true,
+          })
+        if (uploadError) throw uploadError
+        // Ruim een jaar geldig — de klant moet er ook later nog bij kunnen.
+        const { data: signed } = await supabaseAdmin.storage
+          .from('email-bijlagen')
+          .createSignedUrl(pad, 60 * 60 * 24 * 365)
+        if (!signed?.signedUrl) throw new Error('geen downloadlink gekregen')
+        viaLink.push({ filename: k.a.filename, url: signed.signedUrl, mb: k.mb })
+      } catch (err) {
+        // Lukt het uploaden niet, dan laten we de bijlage gewoon in de mail
+        // zitten; hooguit is de mail dan te groot, maar we gooien 'm niet weg.
+        console.error(`[offerte-mail] ${k.a.filename} naar opslag verplaatsen mislukt:`, err)
+        teVerplaatsen.delete(k.i)
+      }
+    }
+
+    if (teVerplaatsen.size > 0) {
+      // Van achter naar voren verwijderen zodat de indexen blijven kloppen.
+      for (const i of [...teVerplaatsen].sort((a, b) => b - a)) attachments.splice(i, 1)
+      console.log(
+        `[offerte-mail] ${viaLink.length} bijlage(n) als downloadlink meegestuurd ` +
+        `(${viaLink.map(v => `${v.filename} ${v.mb.toFixed(1)}MB`).join(', ')}); ` +
+        `mail nu ${totaalMbVan(attachments).toFixed(1)}MB`,
+      )
+    }
+  }
+  const totaalMb = totaalMbVan(attachments)
+
+  // Downloadlinks onder aan het bericht, vóór de handtekening/CTA.
+  let mailBody = options.body
+  if (viaLink.length > 0) {
+    const regels = viaLink
+      .map(v => `<li><a href="${v.url}">${v.filename}</a> (${v.mb.toFixed(1)} MB)</li>`)
+      .join('')
+    mailBody +=
+      `<p>De volgende ${viaLink.length === 1 ? 'bijlage was te groot' : 'bijlagen waren te groot'} om mee te sturen. ` +
+      `U kunt ${viaLink.length === 1 ? 'hem' : 'ze'} hier downloaden:</p><ul>${regels}</ul>`
+  }
+  const emailHtml = buildRebuEmailHtml(mailBody, link, 'Offerte bekijken &amp; accepteren', medewerkerInfo)
+
   try {
-    const eigenMailbox = medewerkerInfo?.email && EIGEN_MAILBOX_EMAILS.has(medewerkerInfo.email.toLowerCase())
+    const tVerzend = Date.now()
+    const eigenMailbox = await heeftEigenMailbox(supabaseAdmin, offerte.administratie_id as string, medewerkerInfo?.email)
     await sendEmail({
       to: ontvangers,
+      administratieId: offerte.administratie_id as string,
       subject: options.subject,
       html: emailHtml,
       attachments: attachments.map(a => ({
@@ -7577,6 +7891,7 @@ export async function sendOfferteEmail(offerteId: string, options: {
       fromEmail: eigenMailbox ? medewerkerInfo!.email : undefined,
       replyTo: eigenMailbox ? medewerkerInfo!.email : undefined,
     })
+    console.log(`[offerte-mail] SMTP-verzending ${totaalMb.toFixed(1)}MB in ${Date.now() - tVerzend}ms`)
   } catch (err) {
     console.error('E-mail verzenden mislukt:', err)
     return { error: 'E-mail verzenden mislukt. Gebruik de link om handmatig te delen.', link }
@@ -8109,7 +8424,7 @@ export async function resendEmailLog(emailLogId: string, overrideTo?: string) {
     .select('naam, email')
     .eq('id', user.id)
     .maybeSingle()
-  const eigenMailbox = profiel?.email && EIGEN_MAILBOX_EMAILS.has(profiel.email.toLowerCase())
+  const eigenMailbox = await heeftEigenMailbox(supabaseAdmin, adminId, profiel?.email)
 
   try {
     await sendEmail({
@@ -11388,5 +11703,67 @@ export async function bevestigLeverancierDetectie(input: {
       user_corrected_to: input.userCorrectedFrom ? input.leverancierSlug : null,
     }).eq('offerte_id', input.offerteId).order('created_at', { ascending: false }).limit(1)
   }
+  return { success: true }
+}
+
+// === INSTELLINGEN ===
+// Vrij instelbare voorkeuren per administratie. De definities (label, type,
+// default) staan in lib/instellingen.ts; hier alleen lezen en opslaan.
+
+export async function getInstellingenVoorUI() {
+  const supabase = await createClient()
+  const adminId = await getAdministratieId()
+  if (!adminId) return { waarden: {}, magBewerken: false }
+
+  const { getInstellingen } = await import('@/lib/instellingen')
+  const { rol } = await getRolEnEigenMedewerker(supabase, adminId)
+  const waarden = await getInstellingen(supabase, adminId)
+  return { waarden, magBewerken: rol === 'admin' }
+}
+
+export async function saveInstellingen(patch: Record<string, boolean | number | string | string[]>) {
+  const supabase = await createClient()
+  const adminId = await getAdministratieId()
+  if (!adminId) return { error: 'Niet ingelogd' }
+
+  const { rol } = await getRolEnEigenMedewerker(supabase, adminId)
+  if (rol !== 'admin') return { error: 'Alleen een beheerder kan instellingen wijzigen' }
+
+  const { valideerInstelling } = await import('@/lib/instellingen')
+  const rijen: { administratie_id: string; sleutel: string; waarde: boolean | number | string | string[] }[] = []
+  for (const [sleutel, ruw] of Object.entries(patch)) {
+    const waarde = valideerInstelling(sleutel, ruw)
+    if (waarde === null) continue // onbekende sleutel → negeren
+    rijen.push({ administratie_id: adminId, sleutel, waarde })
+  }
+  if (rijen.length === 0) return { error: 'Geen geldige instellingen ontvangen' }
+
+  const { error } = await supabase
+    .from('instellingen')
+    .upsert(rijen, { onConflict: 'administratie_id,sleutel' })
+  if (error) return { error: error.message }
+
+  // Instellingen sturen gedrag door de hele app aan → alles opnieuw ophalen.
+  revalidatePath('/', 'layout')
+  return { success: true }
+}
+
+// Zet één of meer instellingen terug op de standaardwaarde (rij verwijderen).
+export async function resetInstellingen(sleutels: string[]) {
+  const supabase = await createClient()
+  const adminId = await getAdministratieId()
+  if (!adminId) return { error: 'Niet ingelogd' }
+
+  const { rol } = await getRolEnEigenMedewerker(supabase, adminId)
+  if (rol !== 'admin') return { error: 'Alleen een beheerder kan instellingen wijzigen' }
+
+  const { error } = await supabase
+    .from('instellingen')
+    .delete()
+    .eq('administratie_id', adminId)
+    .in('sleutel', sleutels)
+  if (error) return { error: error.message }
+
+  revalidatePath('/', 'layout')
   return { success: true }
 }

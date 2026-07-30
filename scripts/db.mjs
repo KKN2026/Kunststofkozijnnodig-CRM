@@ -32,8 +32,10 @@ export async function createDbClient() {
     console.error('Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_DB_PASSWORD in .env.local')
     process.exit(1)
   }
-  // Gebruik session pooler (IPv4) ipv directe connectie (alleen IPv6)
-  const client = new pg.Client({
+  // Eerst de session pooler (IPv4). Op dit project is de pooler-tenant nooit
+  // geregistreerd ("tenant/user postgres.<ref> not found"), dus valt hij terug
+  // op de directe host — die werkt hier wel, via IPv6.
+  const pooler = new pg.Client({
     host: `aws-1-eu-west-1.pooler.supabase.com`,
     port: 5432,
     database: 'postgres',
@@ -41,8 +43,24 @@ export async function createDbClient() {
     password: dbPassword,
     ssl: { rejectUnauthorized: false },
   })
-  await client.connect()
-  return client
+  try {
+    await pooler.connect()
+    return pooler
+  } catch (err) {
+    await pooler.end().catch(() => {})
+    console.warn(`Pooler niet beschikbaar (${err.message}) — via directe host db.${projectRef}.supabase.co`)
+  }
+
+  const direct = new pg.Client({
+    host: `db.${projectRef}.supabase.co`,
+    port: 5432,
+    database: 'postgres',
+    user: 'postgres',
+    password: dbPassword,
+    ssl: { rejectUnauthorized: false },
+  })
+  await direct.connect()
+  return direct
 }
 
 // Supabase JS client met service_role key — voor helper scripts

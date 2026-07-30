@@ -77,6 +77,10 @@ export async function sendEmail(options: {
   // mits het binnen het eigen domein valt (anders DMARC-fail). Default = RESEND_FROM
   // of SMTP_FROM.
   fromEmail?: string
+  // Meegeven zodat de ingestelde blinde kopie (Instellingen → E-mail) van deze
+  // administratie automatisch wordt toegevoegd. Zonder dit veld gaat er geen
+  // extra BCC mee — alleen wat de aanroeper zelf opgeeft.
+  administratieId?: string
 }) {
   const defaultFrom = process.env.RESEND_FROM || process.env.SMTP_FROM || process.env.SMTP_USER || 'info@kunststofkozijnnodig.nl'
   // Alleen overschrijven binnen eigen domein, anders DMARC fail.
@@ -91,6 +95,25 @@ export async function sendEmail(options: {
   const to = normaliseerOntvangers(options.to)
   if (to.length === 0) throw new Error('Geen geldig e-mailadres opgegeven')
 
+  // Ingestelde blinde kopie erbij, zonder dubbelingen en zonder adressen die
+  // al in het To-veld staan.
+  let bcc = options.bcc
+  if (options.administratieId) {
+    try {
+      const { createAdminClient } = await import('@/lib/supabase/admin')
+      const { getInstellingen, bool, tekst } = await import('@/lib/instellingen')
+      const ins = await getInstellingen(createAdminClient(), options.administratieId)
+      const adres = tekst(ins, 'email_bcc_adres').trim()
+      if (bool(ins, 'email_bcc_actief') && adres.includes('@')) {
+        const bestaand = new Set([...to, ...(bcc || [])].map(a => a.toLowerCase()))
+        if (!bestaand.has(adres.toLowerCase())) bcc = [...(bcc || []), adres]
+      }
+    } catch (err) {
+      // Instellingen niet leesbaar → gewoon versturen zonder extra BCC.
+      console.error('BCC-instelling lezen mislukt:', err)
+    }
+  }
+
   if (resend) {
     const { error } = await resend.emails.send({
       from,
@@ -98,7 +121,7 @@ export async function sendEmail(options: {
       subject: options.subject,
       html: options.html,
       text,
-      bcc: options.bcc,
+      bcc,
       replyTo,
       attachments: options.attachments?.map(a => ({
         filename: a.filename,
@@ -120,7 +143,7 @@ export async function sendEmail(options: {
     subject: options.subject,
     html: options.html,
     text,
-    bcc: options.bcc,
+    bcc,
     replyTo,
     attachments: options.attachments,
   })

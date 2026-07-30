@@ -6,7 +6,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { RichTextEditor, plainTextToHtml } from '@/components/ui/rich-text-editor'
 import { EmailOntvangers, combineerOntvangers, type EmailContactOptie } from '@/components/ui/email-ontvangers'
-import { Send, Download, Paperclip, Plus, X, Loader2, CheckCircle, Link2, ArrowLeft, FileText } from 'lucide-react'
+import { Send, Download, Paperclip, Plus, X, Loader2, CheckCircle, Link2, ArrowLeft, FileText, AlertTriangle } from 'lucide-react'
 
 export function StapVersturen({
   offerteId,
@@ -21,6 +21,8 @@ export function StapVersturen({
 }) {
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
+  // Toont waar het verzenden mee bezig is; bij grote bijlagen duurt dat even.
+  const [verzendStap, setVerzendStap] = useState('')
   // Ontvangers: aan te vinken contactpersonen van de relatie + vrij veld voor
   // losse adressen. Meerdere contactpersonen tegelijk kan.
   const [contacten, setContacten] = useState<EmailContactOptie[]>([])
@@ -66,40 +68,56 @@ export function StapVersturen({
   }, [offerteId])
 
   const ontvangers = combineerOntvangers(gekozenEmails, extraEmail)
+  const eigenBijlagenMb = emailAttachments.reduce((s, f) => s + f.size, 0) / 1024 / 1024
 
   async function handleSendEmail() {
     setSending(true)
     setError('')
     setVerzondenNaar(ontvangers.join(', '))
 
-    const extraBijlagen: { filename: string; content: string }[] = []
-    for (const file of emailAttachments) {
-      const base64 = await new Promise<string>((resolve) => {
-        const reader = new FileReader()
-        reader.onload = () => {
-          const result = reader.result as string
-          resolve(result.split(',')[1])
-        }
-        reader.readAsDataURL(file)
+    // De hele verzendactie stond zonder try/catch. Liep de server-actie stuk of
+    // over haar tijdslimiet heen, dan gooide de await en werd setSending(false)
+    // nooit bereikt — de knop bleef dan eindeloos op "Verzenden..." staan zonder
+    // enige melding. Vandaar try/finally.
+    try {
+      setVerzendStap('Bijlagen voorbereiden...')
+      const extraBijlagen: { filename: string; content: string }[] = []
+      for (const file of emailAttachments) {
+        const base64 = await new Promise<string>((resolve) => {
+          const reader = new FileReader()
+          reader.onload = () => {
+            const result = reader.result as string
+            resolve(result.split(',')[1])
+          }
+          reader.readAsDataURL(file)
+        })
+        extraBijlagen.push({ filename: file.name, content: base64 })
+      }
+
+      setVerzendStap('Offerte-PDF maken en versturen...')
+      const result = await sendOfferteEmail(offerteId, {
+        to: ontvangers,
+        subject: emailSubject,
+        body: emailBody,
+        extraBijlagen: extraBijlagen.length > 0 ? extraBijlagen : undefined,
       })
-      extraBijlagen.push({ filename: file.name, content: base64 })
-    }
 
-    const result = await sendOfferteEmail(offerteId, {
-      to: ontvangers,
-      subject: emailSubject,
-      body: emailBody,
-      extraBijlagen: extraBijlagen.length > 0 ? extraBijlagen : undefined,
-    })
-
-    setSending(false)
-
-    if (result.error) {
-      setError(result.error)
-      if (result.link) setSentLink(result.link)
-    } else {
-      setSent(true)
-      if (result.link) setSentLink(result.link)
+      if (result.error) {
+        setError(result.error)
+        if (result.link) setSentLink(result.link)
+      } else {
+        setSent(true)
+        if (result.link) setSentLink(result.link)
+      }
+    } catch (err) {
+      console.error('Offerte versturen mislukt:', err)
+      setError(
+        'Versturen is niet gelukt — waarschijnlijk duurde het te lang door de grootte van de bijlagen. ' +
+        'Controleer bij Verzonden of de mail alsnog is aangekomen. Zo niet: verwijder een grote bijlage en probeer het opnieuw.',
+      )
+    } finally {
+      setSending(false)
+      setVerzendStap('')
     }
   }
 
@@ -283,6 +301,20 @@ export function StapVersturen({
                 </div>
               ))}
 
+              {/* De offerte-PDF en tekeningen komen er serverkant nog bij, dus
+                  waarschuw al ruim onder de ~25MB die mailboxen accepteren. */}
+              {eigenBijlagenMb > 10 && (
+                <div className="flex items-start gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-md text-sm text-amber-800">
+                  <AlertTriangle className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                  <span>
+                    Uw eigen bijlagen zijn samen {eigenBijlagenMb.toFixed(1)} MB. De offerte-PDF en
+                    tekeningen komen daar nog bij. Wordt het totaal te groot voor de mailbox van de
+                    klant, dan sturen we de grootste bestanden automatisch als downloadlink mee —
+                    de offerte gaat dus hoe dan ook de deur uit.
+                  </span>
+                </div>
+              )}
+
               <label className="flex items-center gap-2 px-3 py-2 border-2 border-dashed border-gray-300 rounded-md text-sm text-gray-500 hover:border-primary hover:text-primary cursor-pointer transition-colors">
                 <Plus className="h-4 w-4" />
                 <span>Extra bijlage toevoegen</span>
@@ -291,7 +323,10 @@ export function StapVersturen({
             </div>
           </div>
 
-          <div className="flex justify-end gap-2 pt-4 border-t border-gray-200">
+          <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-200">
+            {sending && verzendStap && (
+              <span className="text-sm text-gray-500">{verzendStap}</span>
+            )}
             <Button onClick={handleSendEmail} disabled={sending || ontvangers.length === 0}>
               {sending ? (
                 <Loader2 className="h-4 w-4 animate-spin" />

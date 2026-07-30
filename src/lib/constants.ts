@@ -12,6 +12,7 @@ import {
   Inbox,
   BarChart3,
   Settings,
+  SlidersHorizontal,
   Mail,
   UserSearch,
   HardHat,
@@ -41,13 +42,13 @@ export const navigationItems: NavItem[] = [
   { label: 'Vrije dagen', href: '/vrije-dagen', icon: Palmtree },
   { label: 'Agenda', href: '/agenda', icon: Calendar },
   { label: 'Taken', href: '/taken', icon: CheckSquare },
-  { label: 'Aanvragen', href: '/aanvragen', icon: Inbox },
   { label: 'E-mail', href: '/email', icon: Mail },
   { label: 'Documenten inbox', href: '/documenten', icon: Inbox },
   { label: 'Faalkosten', href: '/faalkosten', icon: AlertTriangle },
   { label: 'Rapportages', href: '/rapportages', icon: BarChart3 },
   { label: 'Archief', href: '/archief', icon: Archive },
   { label: 'Beheer', href: '/beheer', icon: Settings },
+  { label: 'Instellingen', href: '/instellingen', icon: SlidersHorizontal },
 ]
 
 export const relatieTypes = ['particulier', 'zakelijk'] as const

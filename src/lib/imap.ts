@@ -74,6 +74,8 @@ const MATERIAAL_SERVICE_KEYWORDS = [
   'renovatie', 'nieuwbouw', 'verbouwing', 'isolatie',
 ]
 
+// Wordt alleen aangeroepen als "Binnenkomende mail automatisch beoordelen"
+// aan staat (Instellingen → E-mail); standaard staat dat uit.
 export function classifyEmail(
   onderwerp: string | null,
   vanEmail: string,
@@ -133,6 +135,13 @@ type ParsedEmailWithFolder = ParsedEmail & { _folder: string }
 
 export async function syncEmails(administratieId: string) {
   const supabase = createAdminClient()
+
+  // Postvak ophalen kan uitgezet worden (Instellingen → E-mail).
+  const { getInstellingen, bool, lijst: insLijst } = await import('@/lib/instellingen')
+  const instellingen = await getInstellingen(supabase, administratieId)
+  if (!bool(instellingen, 'email_sync_actief')) {
+    return { synced: 0, uitgeschakeld: true }
+  }
 
   let { data: syncState } = await supabase
     .from('email_sync_state')
@@ -269,14 +278,17 @@ export async function syncEmails(administratieId: string) {
   let maxUid = syncState?.laatste_uid || 0
   const isFirstSync = (syncState?.laatste_uid || 0) === 0
 
-  // All "our" email addresses for direction detection
+  // Onze eigen adressen (Instellingen → E-mail) bepalen of een bericht in- of
+  // uitgaand is. Het SMTP-afzenderadres telt altijd mee, ook als iemand het uit
+  // de lijst haalt — anders zou onze eigen post als klantmail binnenkomen.
   const onzeAdressen = new Set([
     (process.env.SMTP_USER || '').toLowerCase(),
-    'info@kunststofkozijnnodig.nl',
-    'nick@kunststofkozijnnodig.nl',
-    'n.burgers@kunststofkozijnnodig.nl',
-    'verkoop@kunststofkozijnnodig.nl',
+    ...insLijst(instellingen, 'eigen_email_adressen'),
   ].filter(Boolean))
+
+  // Automatisch labelen + nieuwsbrieven afvinken staat standaard uit
+  // (Instellingen → E-mail). Uit betekent: alle post komt ongesorteerd binnen.
+  const herkenningAan = bool(instellingen, 'email_herkenning_actief')
 
   // Pre-load all relaties for fast email matching
   const { data: alleRelaties } = await supabase
@@ -324,8 +336,8 @@ export async function syncEmails(administratieId: string) {
     const labels: string[] = []
     let verwerkt = isFirstSync
 
-    // Classify inkomende emails
-    if (richting === 'inkomend') {
+    // Classify inkomende emails — alleen als de herkenning aan staat.
+    if (richting === 'inkomend' && herkenningAan) {
       const classificatie = classifyEmail(
         email.onderwerp,
         email.van_email,
@@ -393,8 +405,9 @@ export async function syncEmails(administratieId: string) {
     }
   }
 
-  // Only process new emails for tasks on incremental syncs (not first sync)
-  if (!isFirstSync) {
+  // Only process new emails for tasks on incremental syncs (not first sync).
+  // Staat de herkenning uit, dan gebeurt hier niets automatisch.
+  if (!isFirstSync && herkenningAan) {
     for (const email of newEmails) {
       const richting = onzeAdressen.has(email.van_email.toLowerCase()) ? 'uitgaand' : 'inkomend'
       if (richting !== 'inkomend') continue

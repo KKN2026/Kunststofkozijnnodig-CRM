@@ -10,10 +10,10 @@ import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Plus, Users, Search, Upload, Download, Loader2 } from 'lucide-react'
 import { ImportRelatiesDialog } from './import-relaties-dialog'
-import { exportRelaties, sendBroadcastEmail } from '@/lib/actions'
+import { exportRelaties, sendBroadcastEmail, deleteRelaties } from '@/lib/actions'
 import { formatCurrency } from '@/lib/utils'
 import { Dialog } from '@/components/ui/dialog'
-import { Mail, Send } from 'lucide-react'
+import { Mail, Send, Trash2, AlertTriangle } from 'lucide-react'
 
 interface Relatie {
   id: string
@@ -179,6 +179,10 @@ export function RelatieList({ relaties }: { relaties: Relatie[] }) {
   const [bulkOnderwerp, setBulkOnderwerp] = useState('')
   const [bulkBericht, setBulkBericht] = useState('')
   const [bulkSending, setBulkSending] = useState(false)
+  // Verwijderen vanuit de selectie: clearSelection komt uit de DataTable mee zodat
+  // de balk na een geslaagde verwijdering meteen leeg is.
+  const [verwijderDialog, setVerwijderDialog] = useState<{ ids: string[]; clear: () => void } | null>(null)
+  const [verwijderBusy, setVerwijderBusy] = useState(false)
 
   // Filter + (eventueel) sortering op geaccepteerd-bedrag voor de Top-tab.
   let gefilterd: Relatie[]
@@ -360,15 +364,25 @@ export function RelatieList({ relaties }: { relaties: Relatie[] }) {
               ? <span className={r.heeft_vervallen ? 'text-red-600' : 'text-gray-700'}>{formatCurrency(r.openstaand_bedrag)} openstaand</span>
               : null,
           })}
-          bulkActions={(selectedIds) => (
-            <button
-              type="button"
-              onClick={() => { setBulkMailDialog({ ids: selectedIds }); setBulkOnderwerp(''); setBulkBericht('') }}
-              className="inline-flex items-center gap-1 px-3 py-1.5 bg-primary text-white text-xs rounded-md hover:opacity-90"
-            >
-              <Mail className="h-3 w-3" />
-              Bulk e-mail
-            </button>
+          bulkActions={(selectedIds, clearSelection) => (
+            <>
+              <button
+                type="button"
+                onClick={() => { setBulkMailDialog({ ids: selectedIds }); setBulkOnderwerp(''); setBulkBericht('') }}
+                className="inline-flex items-center gap-1 px-3 py-1.5 bg-primary text-white text-xs rounded-md hover:opacity-90"
+              >
+                <Mail className="h-3 w-3" />
+                Bulk e-mail
+              </button>
+              <button
+                type="button"
+                onClick={() => setVerwijderDialog({ ids: selectedIds, clear: clearSelection })}
+                className="inline-flex items-center gap-1 px-3 py-1.5 bg-red-600 text-white text-xs rounded-md hover:bg-red-700"
+              >
+                <Trash2 className="h-3 w-3" />
+                Verwijderen
+              </button>
+            </>
           )}
         />
       )}
@@ -421,6 +435,55 @@ export function RelatieList({ relaties }: { relaties: Relatie[] }) {
               {bulkSending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
               Verstuur
             </Button>
+          </div>
+        </div>
+      </Dialog>
+
+      <Dialog
+        open={!!verwijderDialog}
+        onClose={() => { if (!verwijderBusy) setVerwijderDialog(null) }}
+        title={`${verwijderDialog?.ids.length || 0} ${verwijderDialog?.ids.length === 1 ? 'relatie' : 'relaties'} verwijderen`}
+      >
+        <div className="space-y-4">
+          <div className="flex gap-3 p-3 bg-red-50 border border-red-200 rounded-md">
+            <AlertTriangle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
+            <div className="text-sm text-red-800">
+              <p className="font-medium">Dit kan niet ongedaan gemaakt worden.</p>
+              <p className="mt-1">
+                Ook alle bijbehorende offertes, orders, facturen, projecten, notities,
+                contactpersonen en e-mailgeschiedenis worden verwijderd.
+              </p>
+            </div>
+          </div>
+          <p className="text-sm text-gray-600">
+            Wilt u alleen voorkomen dat u deze klanten nog benadert? Zet ze dan op
+            &lsquo;voormalig&rsquo; in plaats van verwijderen.
+          </p>
+          <div className="flex items-center justify-end gap-2 pt-2 border-t">
+            <Button variant="ghost" onClick={() => setVerwijderDialog(null)} disabled={verwijderBusy}>
+              Annuleren
+            </Button>
+            <button
+              type="button"
+              disabled={verwijderBusy}
+              onClick={async () => {
+                if (!verwijderDialog) return
+                setVerwijderBusy(true)
+                const result = await deleteRelaties(verwijderDialog.ids)
+                setVerwijderBusy(false)
+                if ('error' in result && result.error) {
+                  alert(`Verwijderen mislukt: ${result.error}`)
+                  return
+                }
+                verwijderDialog.clear()
+                setVerwijderDialog(null)
+                router.refresh()
+              }}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-md hover:bg-red-700 disabled:opacity-60"
+            >
+              {verwijderBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+              Definitief verwijderen
+            </button>
           </div>
         </div>
       </Dialog>

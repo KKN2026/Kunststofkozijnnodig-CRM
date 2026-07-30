@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { saveAdministratie, saveNummering, createGebruiker, deleteGebruiker } from '@/lib/actions'
+import { saveAdministratie, saveNummering, createGebruiker, deleteGebruiker, updateGebruiker } from '@/lib/actions'
 import { PageHeader } from '@/components/ui/page-header'
 import { Card, CardContent, CardFooter } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -9,7 +9,7 @@ import { Select } from '@/components/ui/select'
 import { Button } from '@/components/ui/button'
 import { Dialog } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
-import { Save, Plus, Trash2, UserPlus } from 'lucide-react'
+import { Save, Plus, Trash2, UserPlus, Pencil, KeyRound } from 'lucide-react'
 
 interface Administratie {
   id: string
@@ -49,6 +49,41 @@ export function BeheerView({ administratie, nummering, gebruikers }: {
   const [success, setSuccess] = useState('')
   const [error, setError] = useState('')
   const [showNewUser, setShowNewUser] = useState(false)
+  // Account bewerken: naam/rol/e-mail, en optioneel een nieuw wachtwoord.
+  const [bewerkUser, setBewerkUser] = useState<Gebruiker | null>(null)
+  const [bewerkNaam, setBewerkNaam] = useState('')
+  const [bewerkEmail, setBewerkEmail] = useState('')
+  const [bewerkRol, setBewerkRol] = useState('gebruiker')
+  const [bewerkWachtwoord, setBewerkWachtwoord] = useState('')
+
+  function openBewerk(g: Gebruiker) {
+    setBewerkUser(g)
+    setBewerkNaam(g.naam || '')
+    setBewerkEmail(g.email || '')
+    setBewerkRol(g.rol || 'gebruiker')
+    setBewerkWachtwoord('')
+    setError(''); setSuccess('')
+  }
+
+  async function handleUpdateGebruiker() {
+    if (!bewerkUser) return
+    setLoading(true); setError(''); setSuccess('')
+    const result = await updateGebruiker(bewerkUser.id, {
+      naam: bewerkNaam,
+      rol: bewerkRol,
+      email: bewerkEmail,
+      // Leeg laten = wachtwoord ongemoeid laten.
+      wachtwoord: bewerkWachtwoord || undefined,
+    })
+    setLoading(false)
+    if (result.error) { setError(result.error); return }
+    setSuccess(
+      bewerkWachtwoord
+        ? `Account van ${bewerkNaam} bijgewerkt (ook het wachtwoord)`
+        : `Account van ${bewerkNaam} bijgewerkt`,
+    )
+    setBewerkUser(null)
+  }
 
   async function handleSaveBedrijf(formData: FormData) {
     setLoading(true); setError(''); setSuccess('')
@@ -178,13 +213,23 @@ export function BeheerView({ administratie, nummering, gebruikers }: {
                       <td className="px-6 py-3 text-sm font-medium text-gray-900">{g.naam}</td>
                       <td className="px-6 py-3 text-sm text-gray-600">{g.email}</td>
                       <td className="px-6 py-3"><Badge status={g.rol}>{rolLabels[g.rol] || g.rol}</Badge></td>
-                      <td className="px-6 py-3 text-right">
-                        <button
-                          onClick={() => handleDeleteGebruiker(g.id)}
-                          className="text-gray-400 hover:text-red-500 transition-colors"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
+                      <td className="px-6 py-3">
+                        <div className="flex items-center justify-end gap-3">
+                          <button
+                            onClick={() => openBewerk(g)}
+                            title="Naam, e-mail, rol of wachtwoord wijzigen"
+                            className="text-gray-400 hover:text-primary transition-colors"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteGebruiker(g.id)}
+                            title="Account verwijderen"
+                            className="text-gray-400 hover:text-red-500 transition-colors"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -199,6 +244,75 @@ export function BeheerView({ administratie, nummering, gebruikers }: {
               </table>
             </CardContent>
           </Card>
+
+          <Dialog
+            open={!!bewerkUser}
+            onClose={() => { if (!loading) setBewerkUser(null) }}
+            title={`Account bewerken — ${bewerkUser?.naam || ''}`}
+          >
+            <div className="space-y-4">
+              <Input
+                id="bewerk-naam"
+                name="naam"
+                label="Naam"
+                value={bewerkNaam}
+                onChange={e => setBewerkNaam(e.target.value)}
+              />
+              <Input
+                id="bewerk-email"
+                name="email"
+                label="E-mailadres"
+                type="email"
+                value={bewerkEmail}
+                onChange={e => setBewerkEmail(e.target.value)}
+              />
+              <p className="-mt-2 text-xs text-gray-500">
+                Hiermee logt deze persoon in. Het adres wordt direct actief; er gaat geen
+                bevestigingsmail heen.
+              </p>
+              <Select
+                id="bewerk-rol"
+                name="rol"
+                label="Rol"
+                value={bewerkRol}
+                onChange={e => setBewerkRol(e.target.value)}
+                options={[
+                  { value: 'admin', label: 'Admin' },
+                  { value: 'gebruiker', label: 'Gebruiker' },
+                  { value: 'readonly', label: 'Alleen lezen' },
+                  { value: 'medewerker', label: 'Medewerker' },
+                ]}
+              />
+
+              <div className="pt-2 border-t">
+                <div className="flex items-center gap-2 mb-1">
+                  <KeyRound className="h-4 w-4 text-gray-400" />
+                  <span className="text-sm font-medium text-gray-700">Wachtwoord wijzigen</span>
+                </div>
+                <Input
+                  id="bewerk-wachtwoord"
+                  name="wachtwoord"
+                  label=""
+                  type="password"
+                  placeholder="Leeg laten = ongewijzigd"
+                  value={bewerkWachtwoord}
+                  onChange={e => setBewerkWachtwoord(e.target.value)}
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Minimaal 8 tekens. Het nieuwe wachtwoord wordt niet gemaild — geef het zelf door.
+                </p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 mt-6">
+              <Button type="button" variant="secondary" onClick={() => setBewerkUser(null)} disabled={loading}>
+                Annuleren
+              </Button>
+              <Button type="button" onClick={handleUpdateGebruiker} disabled={loading}>
+                <Save className="h-4 w-4" />
+                {loading ? 'Opslaan...' : 'Opslaan'}
+              </Button>
+            </div>
+          </Dialog>
 
           <Dialog open={showNewUser} onClose={() => setShowNewUser(false)} title="Nieuwe gebruiker">
             <form action={handleCreateGebruiker}>

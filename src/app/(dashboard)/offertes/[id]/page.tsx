@@ -1,6 +1,14 @@
 import { getOfferte, getRelaties, getProducten, getOrderByOfferteId, getOfferteEmailLog, getOpenTakenVoorOfferte } from '@/lib/actions'
 import { OfferteForm } from './offerte-form'
 
+// De verzend-actie (sendOfferteEmail) draait vanuit deze pagina en doet veel
+// werk: leverancier-PDF parsen, tekeningen ophalen, twee PDF's renderen en een
+// mail met tientallen MB's aan bijlagen via SMTP versturen. Zonder deze regel
+// draait dat op Vercel's standaard (korte) tijdslimiet en wordt de request
+// afgekapt — de gebruiker zag dan alleen een eindeloze spinner.
+// Vergelijk: één losse offerte-PDF renderen kreeg al maxDuration 60.
+export const maxDuration = 300
+
 export default async function OfferteDetailPage({
   params,
   searchParams,
