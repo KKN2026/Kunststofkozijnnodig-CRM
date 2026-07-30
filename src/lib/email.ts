@@ -95,9 +95,19 @@ export async function sendEmail(options: {
   const to = normaliseerOntvangers(options.to)
   if (to.length === 0) throw new Error('Geen geldig e-mailadres opgegeven')
 
-  // Ingestelde blinde kopie erbij, zonder dubbelingen en zonder adressen die
-  // al in het To-veld staan.
+  // Universele blinde kopie (env MAIL_BCC): van élk bericht dat het CRM
+  // verstuurt gaat een kopie naar dit adres, zodat je kunt controleren of er
+  // daadwerkelijk en correct verzonden is. Geldt ook voor cron-mails en
+  // portaalberichten, omdat alles hier langskomt. Niet gezet = uit.
   let bcc = options.bcc
+  const universeleBcc = (process.env.MAIL_BCC || '').trim()
+  if (universeleBcc.includes('@')) {
+    const bestaand = new Set([...to, ...(bcc || [])].map(a => a.toLowerCase()))
+    if (!bestaand.has(universeleBcc.toLowerCase())) bcc = [...(bcc || []), universeleBcc]
+  }
+
+  // Daarnaast kan per administratie nog een eigen BCC-adres ingesteld zijn
+  // (Instellingen → E-mail). Dubbele adressen worden hier weggefilterd.
   if (options.administratieId) {
     try {
       const { createAdminClient } = await import('@/lib/supabase/admin')
