@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import {
   useReactTable,
   getCoreRowModel,
@@ -10,9 +10,32 @@ import {
   flexRender,
   type ColumnDef,
   type SortingState,
+  type FilterFn,
 } from '@tanstack/react-table'
 import { ArrowUpDown, ChevronLeft, ChevronRight, Search } from 'lucide-react'
 import { cn } from '@/lib/utils'
+
+// Zoeken moet werken ondanks leestekens: klantnamen als "A. Bax", "A.G. Allround"
+// of "'t Schippersrijk B.V." vielen buiten de boot omdat de standaardfilter
+// letterlijk vergelijkt — "ag" vond "A.G." niet en "abax" vond "A. Bax" niet.
+// Door aan beide kanten alles behalve letters en cijfers weg te halen (en
+// accenten te normaliseren) maakt het niet meer uit hoe iets geschreven is.
+function normaliseerZoek(waarde: string): string {
+  return waarde
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]/g, '')
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const zoekFilter: FilterFn<any> = (row, columnId, filterValue) => {
+  const zoek = normaliseerZoek(String(filterValue ?? ''))
+  if (!zoek) return true
+  const waarde = row.getValue(columnId)
+  if (waarde === null || waarde === undefined) return false
+  return normaliseerZoek(String(waarde)).includes(zoek)
+}
 
 interface DataTableProps<T> {
   columns: ColumnDef<T, unknown>[]
@@ -80,12 +103,31 @@ export function DataTable<T>({
     })
   }
 
+  // Bij 1600+ klanten levert zoeken op twee letters honderden treffers op,
+  // verspreid over pagina's. Wie met de zoekterm begint hoort bovenaan te
+  // staan, daarna wie het ergens in de naam heeft. Alleen als de gebruiker
+  // niet zelf op een kolom sorteert.
+  const eersteKolomSleutel = (columns[0] as { accessorKey?: string })?.accessorKey
+  const gerangschikt = useMemo(() => {
+    const zoek = normaliseerZoek(globalFilter)
+    if (!zoek || sorting.length > 0 || !eersteKolomSleutel) return data
+    const rang = (rij: T) => {
+      const waarde = (rij as Record<string, unknown>)[eersteKolomSleutel]
+      const genormaliseerd = normaliseerZoek(String(waarde ?? ''))
+      if (genormaliseerd.startsWith(zoek)) return 0
+      if (genormaliseerd.includes(zoek)) return 1
+      return 2 // treffer zat in een andere kolom (e-mail, plaats, ...)
+    }
+    return [...data].sort((a, b) => rang(a) - rang(b))
+  }, [data, globalFilter, sorting, eersteKolomSleutel])
+
   const table = useReactTable({
-    data,
+    data: gerangschikt,
     columns,
     state: { sorting, globalFilter },
     onSortingChange: setSorting,
     onGlobalFilterChange: setGlobalFilter,
+    globalFilterFn: zoekFilter,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),

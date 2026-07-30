@@ -7871,7 +7871,7 @@ export async function sendOfferteEmail(offerteId: string, options: {
   // We verplaatsen de grootste bijlagen naar opslag en zetten downloadlinks in
   // de mail, net zolang tot de rest wél past. De offerte-PDF zelf houden we
   // zoveel mogelijk als echte bijlage, die wil de klant direct zien.
-  const viaLink: { filename: string; url: string; mb: number }[] = []
+  const viaLink: { filename: string; url: string; mb: number; pad: string }[] = []
   if (totaalMbVan(attachments) > MAX_MAIL_MB) {
     // Grootste eerst, maar de offerte-PDF pas als allerlaatste kandidaat.
     const kandidaten = attachments
@@ -7902,7 +7902,7 @@ export async function sendOfferteEmail(offerteId: string, options: {
           .from('email-bijlagen')
           .createSignedUrl(pad, 60 * 60 * 24 * 365)
         if (!signed?.signedUrl) throw new Error('geen downloadlink gekregen')
-        viaLink.push({ filename: k.a.filename, url: signed.signedUrl, mb: k.mb })
+        viaLink.push({ filename: k.a.filename, url: signed.signedUrl, mb: k.mb, pad })
       } catch (err) {
         // Lukt het uploaden niet, dan laten we de bijlage gewoon in de mail
         // zitten; hooguit is de mail dan te groot, maar we gooien 'm niet weg.
@@ -7978,10 +7978,23 @@ export async function sendOfferteEmail(offerteId: string, options: {
   // filename; die kunnen we altijd on-the-fly regenereren via /api/pdf/offerte/[id].
   // User-uploads uit extraBijlagen archiveren we in storage zodat ze later
   // terug te halen zijn via getEmailBijlageUrl.
+  // Bijlagen die de browser al naar storage uploadde staan er gewoon; hun pad
+  // gaat direct mee zodat ze in het verzonden-overzicht te openen blijven.
+  // Zonder dit meldt getEmailBijlageUrl 'Bijlage niet gearchiveerd'.
+  const padPerBestand = new Map<string, string>()
+  for (const b of options.extraBijlagenPaden || []) padPerBestand.set(b.filename, b.pad)
+  for (const v of viaLink) padPerBestand.set(v.filename, v.pad)
+
   const bijlagenMeta: { filename: string; storage_path?: string; kind: 'offerte_pdf' | 'tekeningen_pdf' | 'upload' }[] = attachments.map(a => ({
     filename: a.filename,
+    storage_path: padPerBestand.get(a.filename),
     kind: a.filename.startsWith('Offerte-') ? 'offerte_pdf' : a.filename.startsWith('Tekeningen-') ? 'tekeningen_pdf' : 'upload',
   }))
+  // Te grote bijlagen gingen als downloadlink mee i.p.v. als bijlage, maar
+  // horen wel in het verzonden-overzicht thuis.
+  for (const v of viaLink) {
+    bijlagenMeta.push({ filename: v.filename, storage_path: v.pad, kind: 'upload' })
+  }
   const { data: emailLogRow } = await supabaseAdmin.from('email_log').insert({
     administratie_id: offerte.administratie_id,
     offerte_id: offerteId,
