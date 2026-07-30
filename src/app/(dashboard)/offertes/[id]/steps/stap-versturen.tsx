@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { getOfferteEmailDefaults, sendOfferteEmail, getLeverancierPdfData } from '@/lib/actions'
+import { getOfferteEmailDefaults, sendOfferteEmail, getLeverancierPdfData, maakBijlageUploadUrl } from '@/lib/actions'
+import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { RichTextEditor, plainTextToHtml } from '@/components/ui/rich-text-editor'
@@ -80,18 +81,24 @@ export function StapVersturen({
     // nooit bereikt — de knop bleef dan eindeloos op "Verzenden..." staan zonder
     // enige melding. Vandaar try/finally.
     try {
-      setVerzendStap('Bijlagen voorbereiden...')
-      const extraBijlagen: { filename: string; content: string }[] = []
-      for (const file of emailAttachments) {
-        const base64 = await new Promise<string>((resolve) => {
-          const reader = new FileReader()
-          reader.onload = () => {
-            const result = reader.result as string
-            resolve(result.split(',')[1])
-          }
-          reader.readAsDataURL(file)
-        })
-        extraBijlagen.push({ filename: file.name, content: base64 })
+      // Bijlagen gaan NIET meer als base64 door de server-actie: Vercel weigert
+      // requests boven 4,5MB, dus een PDF van een paar MB mislukte altijd. De
+      // browser uploadt ze nu rechtstreeks naar Supabase Storage via een signed
+      // upload-URL; de server krijgt alleen het pad.
+      const extraBijlagenPaden: { filename: string; pad: string }[] = []
+      if (emailAttachments.length > 0) {
+        const supabase = createClient()
+        for (let i = 0; i < emailAttachments.length; i++) {
+          const file = emailAttachments[i]
+          setVerzendStap(`Bijlage ${i + 1} van ${emailAttachments.length} uploaden...`)
+          const doel = await maakBijlageUploadUrl(offerteId, file.name)
+          if ('error' in doel && doel.error) throw new Error(doel.error)
+          const { error: uploadError } = await supabase.storage
+            .from('email-bijlagen')
+            .uploadToSignedUrl(doel.pad!, doel.token!, file)
+          if (uploadError) throw new Error(`${file.name} uploaden mislukt: ${uploadError.message}`)
+          extraBijlagenPaden.push({ filename: file.name, pad: doel.pad! })
+        }
       }
 
       setVerzendStap('Offerte-PDF maken en versturen...')
@@ -99,7 +106,7 @@ export function StapVersturen({
         to: ontvangers,
         subject: emailSubject,
         body: emailBody,
-        extraBijlagen: extraBijlagen.length > 0 ? extraBijlagen : undefined,
+        extraBijlagenPaden: extraBijlagenPaden.length > 0 ? extraBijlagenPaden : undefined,
       })
 
       if (result.error) {
@@ -112,8 +119,8 @@ export function StapVersturen({
     } catch (err) {
       console.error('Offerte versturen mislukt:', err)
       setError(
-        'Versturen is niet gelukt — waarschijnlijk duurde het te lang door de grootte van de bijlagen. ' +
-        'Controleer bij Verzonden of de mail alsnog is aangekomen. Zo niet: verwijder een grote bijlage en probeer het opnieuw.',
+        `Versturen is niet gelukt: ${err instanceof Error ? err.message : 'onbekende fout'}. ` +
+        'Controleer bij Verzonden of de mail alsnog is aangekomen voordat u het opnieuw probeert.',
       )
     } finally {
       setSending(false)

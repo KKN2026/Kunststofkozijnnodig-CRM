@@ -7471,6 +7471,30 @@ async function verkleinTekening(
 }
 
 // === OFFERTE EMAIL VERSTUREN ===
+// Vercel accepteert maximaal 4,5MB request-body per aanroep — een harde
+// platformgrens, los van de bodySizeLimit in next.config. Handmatige bijlagen
+// van een paar MB gingen als base64 dwars door de server-actie heen en werden
+// dus door Vercel geweigerd nog vóór onze code draaide; de gebruiker zag alleen
+// dat versturen mislukte. Daarom uploadt de browser ze nu rechtstreeks naar
+// Supabase Storage met een signed upload-URL: die gaat volledig om Vercel heen.
+// De server krijgt alleen nog het pad.
+export async function maakBijlageUploadUrl(offerteId: string, bestandsnaam: string) {
+  const adminId = await getAdministratieId()
+  if (!adminId) return { error: 'Niet ingelogd' }
+
+  // Naam saneren: storage accepteert geen rare tekens in paden.
+  const veiligeNaam = bestandsnaam.replace(/[^\w.\-() ]+/g, '_').slice(-120)
+  const pad = `offerte-bijlagen/${offerteId}/${Date.now()}-${veiligeNaam}`
+
+  const supabaseAdmin = createAdminClient()
+  const { data, error } = await supabaseAdmin.storage
+    .from('email-bijlagen')
+    .createSignedUploadUrl(pad)
+  if (error || !data) return { error: error?.message || 'Kon geen upload-link maken' }
+
+  return { pad, token: data.token }
+}
+
 export async function getOfferteEmailDefaults(offerteId: string) {
   const supabase = await createClient()
 
@@ -7571,7 +7595,11 @@ export async function sendOfferteEmail(offerteId: string, options: {
   to: string | string[]
   subject: string
   body: string
+  // Kleine bijlagen mogen nog inline mee; grote worden door de browser eerst
+  // naar storage geüpload (zie maakBijlageUploadUrl) en komen hier als pad
+  // binnen, omdat Vercel niet meer dan 4,5MB request-body accepteert.
   extraBijlagen?: { filename: string; content: string }[]
+  extraBijlagenPaden?: { filename: string; pad: string }[]
 }) {
   const supabase = await createClient()
 
@@ -7792,6 +7820,38 @@ export async function sendOfferteEmail(offerteId: string, options: {
   // Extra bijlagen (tekeningen etc.)
   if (options.extraBijlagen) {
     attachments.push(...options.extraBijlagen)
+  }
+
+  // Grootte-controle vóór het SMTP-verkeer. Gmail weigert mail boven ~25MB;
+  // zonder deze check bleef de verzending eerst minutenlang hangen om daarna
+  // alsnog te falen. Nu krijgt de gebruiker meteen te horen wat er mis is.
+  // Bijlagen die de browser rechtstreeks naar storage heeft geüpload ophalen.
+  if (options.extraBijlagenPaden?.length) {
+    const tBijlagen = Date.now()
+    const opgehaald = await Promise.all(options.extraBijlagenPaden.map(async b => {
+      const { data, error } = await supabaseAdmin.storage.from('email-bijlagen').download(b.pad)
+      if (error || !data) {
+        console.error(`[offerte-mail] bijlage ${b.filename} ophalen mislukt:`, error)
+        return null
+      }
+      return {
+        filename: b.filename,
+        content: Buffer.from(await data.arrayBuffer()).toString('base64'),
+      }
+    }))
+    const gelukt = opgehaald.filter((b): b is { filename: string; content: string } => b !== null)
+    attachments.push(...gelukt)
+    console.log(`[offerte-mail] ${gelukt.length}/${options.extraBijlagenPaden.length} geüploade bijlagen opgehaald in ${Date.now() - tBijlagen}ms`)
+
+    if (gelukt.length < options.extraBijlagenPaden.length) {
+      const mislukt = options.extraBijlagenPaden
+        .filter(b => !gelukt.some(g => g.filename === b.filename))
+        .map(b => b.filename)
+      return {
+        error: `Deze bijlage(n) konden niet worden opgehaald: ${mislukt.join(', ')}. De offerte is niet verstuurd — probeer het opnieuw.`,
+        link,
+      }
+    }
   }
 
   // Grootte-controle vóór het SMTP-verkeer. Gmail weigert mail boven ~25MB;
