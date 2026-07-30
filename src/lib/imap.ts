@@ -125,6 +125,8 @@ export function classifyEmail(
 // 'crm verzonden' = de map/het label waarin de blinde kopie van onze eigen
 // uitgaande mail belandt (zie MAIL_BCC). Die berichten staan al in email_log,
 // dus opnieuw importeren levert alleen dubbele regels in het e-mailoverzicht op.
+// Het label wordt in Gmail gezet met een filter op deliveredto:<ons adres> —
+// het BCC-adres zelf staat niet in de headers, dus daar kun je niet op filteren.
 const SKIP_FOLDERS = ['spam', 'junk', 'trash', 'prullenbak', 'deleted items', 'drafts', 'concepten', 'crm verzonden', 'crm-verzonden']
 function shouldSyncFolder(path: string, specialUse?: string): boolean {
   const p = path.toLowerCase()
