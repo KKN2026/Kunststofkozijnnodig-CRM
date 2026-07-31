@@ -143,6 +143,9 @@ export async function sendEmail(options: {
     if (error) {
       throw new Error(`Resend: ${error.message || JSON.stringify(error)}`)
     }
+    // Resend komt niet langs Gmail, dus zonder dit blijft de Verzonden-map leeg.
+    const { bewaarInVerzonden } = await import('@/lib/mail-archief')
+    await bewaarInVerzonden({ from, to, bcc, replyTo, subject: options.subject, html: options.html, text, attachments: options.attachments })
     return
   }
 
