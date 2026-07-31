@@ -243,7 +243,12 @@ function buildColumns(
 
 type TabType = 'alle' | 'openstaand' | 'aanbetaling' | 'restbetaling' | 'gecrediteerd' | 'per-klus'
 
-export function FactuurList({ facturen, ordersMetStatus }: { facturen: Factuur[]; ordersMetStatus: OrderMetStatus[] }) {
+export function FactuurList({ facturen, ordersMetStatus, sleutelWaarschuwing }: {
+  facturen: Factuur[]
+  ordersMetStatus: OrderMetStatus[]
+  // Aflopende/verlopen SnelStart-sleutel; null = niets aan de hand.
+  sleutelWaarschuwing?: { bericht: string; verlopen: boolean } | null
+}) {
   const router = useRouter()
   const searchParams = useSearchParams()
   // Tab uit URL lezen zodat dashboard-KPI's direct naar 'Openstaand' (etc)
@@ -502,6 +507,16 @@ export function FactuurList({ facturen, ordersMetStatus }: { facturen: Factuur[]
 
   return (
     <div>
+      {sleutelWaarschuwing && (
+        <div className={`mb-4 flex items-start gap-2 p-3 rounded-md border text-sm ${
+          sleutelWaarschuwing.verlopen
+            ? 'bg-red-50 border-red-200 text-red-800'
+            : 'bg-amber-50 border-amber-200 text-amber-800'
+        }`}>
+          <AlertTriangle className="h-4 w-4 flex-shrink-0 mt-0.5" />
+          <span>{sleutelWaarschuwing.bericht}</span>
+        </div>
+      )}
       <PageHeader
         title="Facturatie"
         actions={
