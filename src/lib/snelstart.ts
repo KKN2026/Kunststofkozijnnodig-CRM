@@ -7,11 +7,22 @@
 const AUTH_URL = 'https://auth.snelstart.nl/b2b/token'
 const API_BASE = 'https://b2bapi.snelstart.nl/v2'
 
+// Sleutels uit de env komen soms vervuild binnen: aanhalingstekens eromheen, of
+// een LETTERLIJKE \\n (backslash + n) aan het eind doordat de waarde ooit met
+// escapes is geplakt. Alleen /\\s/ strippen haalt zo'n letterlijke \\n er niet af,
+// waardoor SnelStart 401 "invalid subscription key" gaf.
+function schoonSleutel(waarde: string | undefined): string {
+  return (waarde || '')
+    .replace(/\\[rn]/g, '')   // letterlijke \\n of \\r
+    .replace(/\s/g, '')       // echte witruimte en regeleindes
+    .replace(/^["']|["']$/g, '')
+}
+
 let cachedToken: { token: string; expiresAt: number } | null = null
 
 async function getAccessToken(): Promise<string> {
-  const subscriptionKey = (process.env.SNELSTART_SUBSCRIPTION_KEY || '').replace(/\s/g, '')
-  const clientKey = (process.env.SNELSTART_CLIENT_KEY || '').replace(/\s/g, '')
+  const subscriptionKey = schoonSleutel(process.env.SNELSTART_SUBSCRIPTION_KEY)
+  const clientKey = schoonSleutel(process.env.SNELSTART_CLIENT_KEY)
   if (!subscriptionKey || !clientKey) {
     throw new Error('SNELSTART_SUBSCRIPTION_KEY en/of SNELSTART_CLIENT_KEY ontbreken')
   }
@@ -49,7 +60,7 @@ async function getAccessToken(): Promise<string> {
 }
 
 async function snelstartFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const subscriptionKey = (process.env.SNELSTART_SUBSCRIPTION_KEY || '').replace(/\s/g, '')
+  const subscriptionKey = schoonSleutel(process.env.SNELSTART_SUBSCRIPTION_KEY)
   if (!subscriptionKey) throw new Error('SNELSTART_SUBSCRIPTION_KEY ontbreekt')
 
   const token = await getAccessToken()
