@@ -1,5 +1,6 @@
 'use client'
 
+import { EmailBijlageKnop } from '@/components/ui/email-bijlage-knop'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useState } from 'react'
@@ -49,6 +50,7 @@ interface VerstuurdeEmail {
   aan: string
   onderwerp: string | null
   bijlagen: { filename: string }[] | null
+  offerte_id?: string | null
   verstuurd_op: string
   offertenummer?: string | null
 }
@@ -544,10 +546,12 @@ export function ProjectDetail({ timeline, relaties, isNew, emails = [], document
                         {bijlagen.length > 0 && (
                           <div className="flex flex-wrap gap-1.5 mt-1.5">
                             {bijlagen.map((b, i) => (
-                              <span key={i} className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-50 text-blue-700 text-xs rounded border border-blue-200">
-                                <Paperclip className="h-3 w-3" />
-                                {b.filename}
-                              </span>
+                              <EmailBijlageKnop
+                                key={i}
+                                emailLogId={e.id}
+                                filename={b.filename}
+                                offerteId={e.offerte_id}
+                              />
                             ))}
                           </div>
                         )}

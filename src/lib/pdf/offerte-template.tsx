@@ -219,7 +219,6 @@ export function OfferteDocument({ offerte, hidePrices }: { offerte: OfferteData;
             <View style={s.tableColEenheid}><Text style={s.tableHeaderText}>Eenheid</Text></View>
             <View style={s.tableColDesc}><Text style={s.tableHeaderText}>Omschrijving</Text></View>
             {!hidePrices && <View style={s.tableColBedrag}><Text style={s.tableHeaderText}>Bedrag</Text></View>}
-            {!hidePrices && <View style={s.tableColKorting}><Text style={s.tableHeaderText}>Korting</Text></View>}
             {!hidePrices && <View style={s.tableColTotaal}><Text style={s.tableHeaderText}>Totaal</Text></View>}
           </View>
           {regels.map((regel, i) => {
@@ -231,7 +230,6 @@ export function OfferteDocument({ offerte, hidePrices }: { offerte: OfferteData;
                 <View style={s.tableColEenheid}><Text style={s.tableCellText}>{isTekst ? '' : 'Stuk'}</Text></View>
                 <View style={s.tableColDesc}><Text style={s.tableCellText}>{regel.omschrijving}</Text></View>
                 {!hidePrices && <View style={s.tableColBedrag}><Text style={s.tableCellText}>{isTekst ? '' : formatCurrencyPdf(regel.prijs ?? 0)}</Text></View>}
-                {!hidePrices && <View style={s.tableColKorting}><Text style={s.tableCellText}>{isTekst ? '' : '0%'}</Text></View>}
                 {!hidePrices && <View style={s.tableColTotaal}><Text style={s.tableCellText}>{isTekst ? '' : formatCurrencyPdf((regel.aantal || 0) * (regel.prijs || 0))}</Text></View>}
               </View>
             )

@@ -1,5 +1,6 @@
 'use client'
 
+import { EmailBijlageKnop } from '@/components/ui/email-bijlage-knop'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useBackNav } from '@/lib/hooks/use-back-nav'
@@ -144,6 +145,9 @@ interface VerstuurdeEmail {
   verstuurd_op: string
   offerte?: { id: string; offertenummer: string } | null
   verkoopkans?: { id: string; naam: string } | null
+  // Nodig om offerte-/factuur-PDF's opnieuw te genereren bij het openen.
+  offerte_id?: string | null
+  factuur_id?: string | null
 }
 
 interface Props {
@@ -925,10 +929,13 @@ export function RelatieDetail({ detail, notities: initialNotities, klantAccounts
                             {bijlagen.length > 0 && (
                               <div className="flex flex-wrap gap-1.5 mt-1.5">
                                 {bijlagen.map((b, i) => (
-                                  <span key={i} className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-50 text-blue-700 text-xs rounded border border-blue-200">
-                                    <Paperclip className="h-3 w-3" />
-                                    {b.filename}
-                                  </span>
+                                  <EmailBijlageKnop
+                                    key={i}
+                                    emailLogId={e.id}
+                                    filename={b.filename}
+                                    offerteId={e.offerte_id}
+                                    factuurId={e.factuur_id}
+                                  />
                                 ))}
                               </div>
                             )}

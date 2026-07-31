@@ -34,4 +34,7 @@ type VerstuurdeEmailPassthrough = {
   verstuurd_op: string
   offerte?: { id: string; offertenummer: string } | null
   verkoopkans?: { id: string; naam: string } | null
+  // Nodig om offerte-/factuur-PDF's opnieuw te genereren bij het openen.
+  offerte_id?: string | null
+  factuur_id?: string | null
 }

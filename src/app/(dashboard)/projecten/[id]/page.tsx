@@ -29,4 +29,7 @@ type VerstuurdeEmailPassthrough = {
   bijlagen: { filename: string }[] | null
   verstuurd_op: string
   offertenummer?: string | null
+  // Nodig om de offerte-/tekeningen-PDF opnieuw te kunnen genereren bij het
+  // openen van een bijlage.
+  offerte_id?: string | null
 }

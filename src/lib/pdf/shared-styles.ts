@@ -150,7 +150,8 @@ export const sharedStyles = StyleSheet.create({
   tableColEenheid: { width: 50 },
   tableColDesc: { flex: 1 },
   tableColBedrag: { width: 80, textAlign: 'right' },
-  tableColKorting: { width: 60, textAlign: 'right' },
+  // Kortingskolom verwijderd: er bestaat geen kortingsveld, dus hij toonde
+  // altijd '0%'. De 60pt gaan naar de omschrijving.
   tableColTotaal: { width: 80, textAlign: 'right' },
   tableHeaderText: {
     fontSize: 8,

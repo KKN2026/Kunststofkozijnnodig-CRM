@@ -53,6 +53,28 @@ function relatieveDatum(datum: string): string {
   return `${Math.floor(diffMaand / 12)}j geleden`
 }
 
+// Herkomst als gekleurd label achter de bedrijfsnaam, zodat je in één oogopslag
+// ziet waar een aannemer vandaan komt zonder op het filter te klikken.
+const herkomstLabels: Record<string, { tekst: string; klasse: string; stip: string }> = {
+  eigen_klant: { tekst: 'Eigen klant', klasse: 'bg-emerald-100 text-emerald-700 border-emerald-200', stip: 'bg-emerald-500' },
+  linkedin: { tekst: 'LinkedIn', klasse: 'bg-sky-100 text-sky-700 border-sky-200', stip: 'bg-sky-500' },
+  psa: { tekst: 'PSA', klasse: 'bg-violet-100 text-violet-700 border-violet-200', stip: 'bg-violet-500' },
+}
+
+function HerkomstBadge({ herkomst }: { herkomst?: string | null }) {
+  const label = herkomst ? herkomstLabels[herkomst] : null
+  if (!label) return null
+  return (
+    <span
+      title={`Herkomst: ${label.tekst}`}
+      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border shrink-0 ${label.klasse}`}
+    >
+      <span className={`h-1.5 w-1.5 rounded-full ${label.stip}`} />
+      {label.tekst}
+    </span>
+  )
+}
+
 const columns: ColumnDef<Relatie, unknown>[] = [
   {
     accessorKey: 'bedrijfsnaam',
@@ -60,6 +82,7 @@ const columns: ColumnDef<Relatie, unknown>[] = [
     cell: ({ row }) => (
       <span className="flex items-center gap-2">
         <span className={row.original.actief === false ? 'text-gray-400' : ''}>{row.original.bedrijfsnaam}</span>
+        <HerkomstBadge herkomst={row.original.herkomst} />
         {row.original.actief === false && (
           <span title="Voormalige klant — niet meer benaderen" className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 text-amber-700 border border-amber-200 shrink-0">
             <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
@@ -357,7 +380,12 @@ export function RelatieList({ relaties }: { relaties: Relatie[] }) {
           selectable
           getRowId={(row) => row.id}
           mobileCard={(r) => ({
-            title: r.bedrijfsnaam,
+            title: (
+              <span className="flex items-center gap-2">
+                {r.bedrijfsnaam}
+                <HerkomstBadge herkomst={r.herkomst} />
+              </span>
+            ),
             subtitle: [r.contactpersoon, r.plaats].filter(Boolean).join(' · '),
             rightTop: r.actieve_verkoopkansen > 0 ? `${r.actieve_verkoopkansen} verkoopkans${r.actieve_verkoopkansen === 1 ? '' : 'en'}` : null,
             rightBottom: r.openstaand_bedrag > 0

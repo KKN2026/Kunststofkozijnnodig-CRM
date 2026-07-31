@@ -160,7 +160,6 @@ export function FactuurDocument({ factuur }: { factuur: FactuurData }) {
             <View style={s.tableColEenheid}><Text style={s.tableHeaderText}>Eenheid</Text></View>
             <View style={s.tableColDesc}><Text style={s.tableHeaderText}>Omschrijving</Text></View>
             <View style={s.tableColBedrag}><Text style={s.tableHeaderText}>Bedrag</Text></View>
-            <View style={s.tableColKorting}><Text style={s.tableHeaderText}>Korting</Text></View>
             <View style={s.tableColTotaal}><Text style={s.tableHeaderText}>Totaal</Text></View>
           </View>
           {regels.map((regel, i) => (
@@ -169,7 +168,6 @@ export function FactuurDocument({ factuur }: { factuur: FactuurData }) {
               <View style={s.tableColEenheid}><Text style={s.tableCellText}>Stuk</Text></View>
               <View style={s.tableColDesc}><Text style={s.tableCellText}>{regel.omschrijving}</Text></View>
               <View style={s.tableColBedrag}><Text style={s.tableCellText}>{formatCurrencyPdf(regel.prijs)}</Text></View>
-              <View style={s.tableColKorting}><Text style={s.tableCellText}>0%</Text></View>
               <View style={s.tableColTotaal}><Text style={s.tableCellText}>{formatCurrencyPdf(regel.aantal * regel.prijs)}</Text></View>
             </View>
           ))}
