@@ -77,6 +77,18 @@ async function snelstartFetch<T>(path: string, options: RequestInit = {}): Promi
 
   if (!res.ok) {
     const txt = await res.text()
+    // APIM meldt een geweigerde sleutel met 401 + 'invalid subscription key'.
+    // De auth-server accepteert die sleutel niet eens als controle (die kijkt
+    // alleen naar de client key), dus dit is altijd een abonnementsprobleem bij
+    // SnelStart zelf en nooit iets in onze code — vandaar een duidelijke tekst.
+    if (res.status === 401 && /subscription key/i.test(txt)) {
+      throw new Error(
+        'SnelStart weigert de subscription key. De koppeling is niet stuk in het CRM: ' +
+        'de sleutel is bij SnelStart ingetrokken, verlopen of niet meer gekoppeld aan de B2B-API. ' +
+        'Haal een nieuwe op in het SnelStart developer-portaal (Profiel → Abonnementen) en zet die ' +
+        'als SNELSTART_SUBSCRIPTION_KEY in de omgevingsvariabelen.',
+      )
+    }
     throw new Error(`SnelStart ${options.method || 'GET'} ${path} faalde (${res.status}): ${txt}`)
   }
 
