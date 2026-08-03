@@ -49,3 +49,7 @@ scripts/data/
 
 # Supabase CLI temp
 supabase/.temp/
+
+# Export met klantgegevens — hoort niet in de repo (AVG)
+unmatched-relaties.csv
+*.csv
