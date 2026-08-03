@@ -11524,6 +11524,12 @@ export async function sendBroadcastEmail(onderwerp: string, bericht: string, typ
         subject: onderwerp,
         html: emailHtml,
         bcc: batch,
+        // Massamail zonder afmeldmogelijkheid wordt door Gmail en Yahoo als
+        // spam aangemerkt, en dat beschadigt de reputatie van het hele domein
+        // — waardoor ook gewone offerte- en factuurmail in de spammap belandt.
+        headers: {
+          'List-Unsubscribe': `<mailto:${from}?subject=Afmelden%20nieuwsbrief>`,
+        },
       })
     }
   } catch (err) {
