@@ -1818,6 +1818,18 @@ export function RelatieDetail({ detail, notities: initialNotities, klantAccounts
                   ]}
                 />
                 <Select
+                  id="herkomst"
+                  name="herkomst"
+                  label="Herkomst"
+                  defaultValue={((relatie as unknown as Record<string, unknown>).herkomst as string) || ''}
+                  options={[
+                    { value: '', label: '—' },
+                    { value: 'eigen_klant', label: 'Eigen klant' },
+                    { value: 'linkedin', label: 'Via LinkedIn' },
+                    { value: 'psa', label: 'Via PSA' },
+                  ]}
+                />
+                <Select
                   id="actief"
                   name="actief"
                   label="Status"
