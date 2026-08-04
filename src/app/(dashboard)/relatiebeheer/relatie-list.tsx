@@ -198,6 +198,9 @@ export function RelatieList({ relaties }: { relaties: Relatie[] }) {
   const [filterType, setFilterType] = useState<'alle' | 'zakelijk' | 'particulier' | 'top'>('alle')
   const [filterHerkomst, setFilterHerkomst] = useState<'alle' | 'eigen_klant' | 'linkedin' | 'psa'>('alle')
   const [verbergVoormalig, setVerbergVoormalig] = useState(false)
+  // Opruimfilter: toont alleen klanten waar nog nooit iets mee gedaan is.
+  // Handig om de rommel die automatisch uit e-mail ontstond te beoordelen.
+  const [alleenZonderHistorie, setAlleenZonderHistorie] = useState(false)
   const [bulkMailDialog, setBulkMailDialog] = useState<{ ids: string[] } | null>(null)
   const [bulkOnderwerp, setBulkOnderwerp] = useState('')
   const [bulkBericht, setBulkBericht] = useState('')
@@ -222,6 +225,10 @@ export function RelatieList({ relaties }: { relaties: Relatie[] }) {
   // Voormalige relaties blijven standaard zichtbaar (met badge); optioneel verbergen.
   if (verbergVoormalig) gefilterd = gefilterd.filter(r => r.actief !== false)
   if (filterHerkomst !== 'alle') gefilterd = gefilterd.filter(r => r.herkomst === filterHerkomst)
+  if (alleenZonderHistorie) {
+    gefilterd = gefilterd.filter(r =>
+      !r.totaal_geoffereerd && !r.totaal_gefactureerd && !r.actieve_verkoopkansen && !r.openstaand_bedrag)
+  }
 
   async function handleExport() {
     setExporting(true)
@@ -329,6 +336,15 @@ export function RelatieList({ relaties }: { relaties: Relatie[] }) {
             {t.label}
           </button>
         ))}
+        <button
+          onClick={() => setAlleenZonderHistorie(v => !v)}
+          title="Klanten waar nooit een offerte, factuur of verkoopkans voor is gemaakt"
+          className={`px-3 py-1.5 text-sm rounded-md font-medium transition-colors ${
+            alleenZonderHistorie ? 'bg-primary text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+          }`}
+        >
+          Zonder historie
+        </button>
         <button
           onClick={() => setVerbergVoormalig(v => !v)}
           className={`px-3 py-1.5 text-sm rounded-md font-medium transition-colors ${

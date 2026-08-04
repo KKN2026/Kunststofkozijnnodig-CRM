@@ -43,7 +43,6 @@ export const navigationItems: NavItem[] = [
   { label: 'Agenda', href: '/agenda', icon: Calendar },
   { label: 'Taken', href: '/taken', icon: CheckSquare },
   { label: 'E-mail', href: '/email', icon: Mail },
-  { label: 'Documenten inbox', href: '/documenten', icon: Inbox },
   { label: 'Faalkosten', href: '/faalkosten', icon: AlertTriangle },
   { label: 'Rapportages', href: '/rapportages', icon: BarChart3 },
   { label: 'Archief', href: '/archief', icon: Archive },
