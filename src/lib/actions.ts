@@ -671,9 +671,32 @@ export async function deleteRelatie(id: string) {
 // Bulk verwijderen vanuit de selectie in Relatiebeheer. Afhankelijke records
 // (offertes, facturen, projecten, notities, contactpersonen, e-maillog) gaan
 // via ON DELETE CASCADE mee — zie migratie 044.
-export async function deleteRelaties(ids: string[]) {
+export async function deleteRelaties(ids: string[], forceer = false) {
   if (!ids?.length) return { error: 'Geen relaties geselecteerd' }
   const supabase = await createClient()
+
+  // Een klant met offertes of facturen verwijderen haalt die records via de
+  // cascade óók weg, terwijl ze in SnelStart blijven staan — dan loopt je
+  // boekhouding niet meer synchroon met het CRM. Standaard weigeren we dat
+  // daarom; alleen met een expliciete bevestiging gaat het door.
+  if (!forceer) {
+    const [{ data: metOffertes }, { data: metFacturen }] = await Promise.all([
+      supabase.from('offertes').select('relatie_id').in('relatie_id', ids),
+      supabase.from('facturen').select('relatie_id').in('relatie_id', ids),
+    ])
+    const geraakt = new Set<string>()
+    for (const o of metOffertes || []) geraakt.add(o.relatie_id as string)
+    for (const f of metFacturen || []) geraakt.add(f.relatie_id as string)
+    if (geraakt.size > 0) {
+      const { data: namen } = await supabase
+        .from('relaties').select('bedrijfsnaam').in('id', [...geraakt]).limit(5)
+      return {
+        heeftHistorie: [...geraakt],
+        namen: (namen || []).map(n => n.bedrijfsnaam as string),
+        error: null,
+      }
+    }
+  }
 
   let verwijderd = 0
   const BATCH = 100

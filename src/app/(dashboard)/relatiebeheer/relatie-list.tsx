@@ -206,6 +206,8 @@ export function RelatieList({ relaties }: { relaties: Relatie[] }) {
   // de balk na een geslaagde verwijdering meteen leeg is.
   const [verwijderDialog, setVerwijderDialog] = useState<{ ids: string[]; clear: () => void } | null>(null)
   const [verwijderBusy, setVerwijderBusy] = useState(false)
+  // Klanten met offertes/facturen: pas verwijderen na een tweede bevestiging.
+  const [historieWaarschuwing, setHistorieWaarschuwing] = useState<string[] | null>(null)
 
   // Filter + (eventueel) sortering op geaccepteerd-bedrag voor de Top-tab.
   let gefilterd: Relatie[]
@@ -404,7 +406,7 @@ export function RelatieList({ relaties }: { relaties: Relatie[] }) {
               </button>
               <button
                 type="button"
-                onClick={() => setVerwijderDialog({ ids: selectedIds, clear: clearSelection })}
+                onClick={() => { setHistorieWaarschuwing(null); setVerwijderDialog({ ids: selectedIds, clear: clearSelection }) }}
                 className="inline-flex items-center gap-1 px-3 py-1.5 bg-red-600 text-white text-xs rounded-md hover:bg-red-700"
               >
                 <Trash2 className="h-3 w-3" />
@@ -469,7 +471,7 @@ export function RelatieList({ relaties }: { relaties: Relatie[] }) {
 
       <Dialog
         open={!!verwijderDialog}
-        onClose={() => { if (!verwijderBusy) setVerwijderDialog(null) }}
+        onClose={() => { if (!verwijderBusy) { setVerwijderDialog(null); setHistorieWaarschuwing(null) } }}
         title={`${verwijderDialog?.ids.length || 0} ${verwijderDialog?.ids.length === 1 ? 'relatie' : 'relaties'} verwijderen`}
       >
         <div className="space-y-4">
@@ -483,6 +485,22 @@ export function RelatieList({ relaties }: { relaties: Relatie[] }) {
               </p>
             </div>
           </div>
+          {historieWaarschuwing && (
+            <div className="flex gap-3 p-3 bg-amber-50 border border-amber-300 rounded-md">
+              <AlertTriangle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
+              <div className="text-sm text-amber-900">
+                <p className="font-medium">Let op: hier hangt werk aan.</p>
+                <p className="mt-1">
+                  {historieWaarschuwing.length > 0 && (
+                    <>Onder andere <strong>{historieWaarschuwing.join(', ')}</strong> {historieWaarschuwing.length === 1 ? 'heeft' : 'hebben'} offertes of facturen. </>
+                  )}
+                  Die verdwijnen mee uit het CRM, terwijl ze in SnelStart blijven staan —
+                  dan loopt uw boekhouding niet meer gelijk. Klik nogmaals op verwijderen
+                  als u dit zeker weet.
+                </p>
+              </div>
+            </div>
+          )}
           <p className="text-sm text-gray-600">
             Wilt u alleen voorkomen dat u deze klanten nog benadert? Zet ze dan op
             &lsquo;voormalig&rsquo; in plaats van verwijderen.
@@ -497,10 +515,16 @@ export function RelatieList({ relaties }: { relaties: Relatie[] }) {
               onClick={async () => {
                 if (!verwijderDialog) return
                 setVerwijderBusy(true)
-                const result = await deleteRelaties(verwijderDialog.ids)
+                const result = await deleteRelaties(verwijderDialog.ids, historieWaarschuwing !== null)
                 setVerwijderBusy(false)
                 if ('error' in result && result.error) {
                   alert(`Verwijderen mislukt: ${result.error}`)
+                  return
+                }
+                // Eerste poging: er hangt historie aan. Toon wie, en laat de
+                // gebruiker pas daarna nog een keer bevestigen.
+                if ('heeftHistorie' in result && result.heeftHistorie) {
+                  setHistorieWaarschuwing(('namen' in result ? result.namen : []) as string[])
                   return
                 }
                 verwijderDialog.clear()
