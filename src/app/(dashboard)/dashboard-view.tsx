@@ -70,10 +70,10 @@ interface DashboardData {
     conversie: number
     maanden: { maand: string; verstuurdAantal: number; geaccepteerdAantal: number }[]
   }
-  gemFactuurwaardeDitJaar?: {
+  gemVerkoopkanswaardeDitJaar?: {
     jaar: number
     gemiddelde: number
-    totaalGefactureerd: number
+    totaalGeaccepteerd: number
     aantalVerkoopkansen: number
   }
   organisaties: { totaal: number; particulier: number; zakelijk: number }
@@ -701,17 +701,17 @@ export function DashboardView({ data }: { data: DashboardData | null }) {
             </div>
           </div>
         </button>
-        {/* Gemiddelde factuurwaarde per gewonnen verkoopkans — huidig jaar, excl. BTW */}
+        {/* Gemiddelde waarde van een gewonnen verkoopkans — huidig jaar, excl. BTW */}
         <div className="relative bg-white rounded-2xl border border-gray-100 p-6 overflow-hidden">
           <div className="absolute top-0 left-0 h-1 w-full bg-gradient-to-r from-teal-500 to-cyan-400" />
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">Gem. factuurwaarde</p>
-              <p className="text-2xl sm:text-3xl font-bold text-gray-900 mt-2 tracking-tight">{formatCurrency(data.gemFactuurwaardeDitJaar?.gemiddelde ?? 0)}</p>
+              <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">Gem. verkoopkanswaarde</p>
+              <p className="text-2xl sm:text-3xl font-bold text-gray-900 mt-2 tracking-tight">{formatCurrency(data.gemVerkoopkanswaardeDitJaar?.gemiddelde ?? 0)}</p>
               <div className="flex items-center gap-2 mt-2 text-xs text-gray-400">
                 <span>excl. BTW</span>
                 <span>·</span>
-                <span>{data.gemFactuurwaardeDitJaar?.aantalVerkoopkansen ?? 0} verkoopkans{(data.gemFactuurwaardeDitJaar?.aantalVerkoopkansen ?? 0) === 1 ? '' : 'en'} ({data.gemFactuurwaardeDitJaar?.jaar ?? new Date().getFullYear()})</span>
+                <span>{data.gemVerkoopkanswaardeDitJaar?.aantalVerkoopkansen ?? 0} verkoopkans{(data.gemVerkoopkanswaardeDitJaar?.aantalVerkoopkansen ?? 0) === 1 ? '' : 'en'} ({data.gemVerkoopkanswaardeDitJaar?.jaar ?? new Date().getFullYear()})</span>
               </div>
             </div>
             <div className="h-12 w-12 rounded-full bg-teal-50 flex items-center justify-center shrink-0">
