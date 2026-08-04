@@ -5068,7 +5068,7 @@ export async function getOfferteConversieDitJaar() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const offertesRaw = await fetchAllRows<any>((from, to) =>
     sb.from('offertes')
-      .select('id, datum, created_at, status, versie_nummer, groep_id, subtotaal')
+      .select('id, datum, created_at, status, versie_nummer, groep_id')
       .eq('administratie_id', adminId)
       .in('status', ['verzonden', 'geaccepteerd'])
       .gte('datum', startStr)
@@ -5162,7 +5162,7 @@ export async function getGemiddeldeVerkoopkanswaardeDitJaar() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const offertesRaw = await fetchAllRows<any>((from, to) =>
     sb.from('offertes')
-      .select('id, datum, created_at, status, versie_nummer, groep_id')
+      .select('id, datum, created_at, status, versie_nummer, groep_id, subtotaal')
       .eq('administratie_id', adminId)
       .in('status', ['verzonden', 'geaccepteerd'])
       .gte('datum', startStr)
