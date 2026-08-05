@@ -71,6 +71,17 @@ export function EindafrekeningView({ rijen }: { rijen: EindafrekeningRij[] }) {
     { id: 'relatie', header: 'Klant', accessorFn: (r) => r.klant },
     { id: 'onderwerp', header: 'Onderwerp', accessorFn: (r) => r.onderwerp },
     {
+      id: 'datum',
+      header: 'Datum',
+      // Datum van de eerste deelfactuur (ISO-string, dus alfabetisch sorteren
+      // is meteen chronologisch). Klik op de kolomkop om te sorteren.
+      accessorFn: (r) => r.facturen[0]?.datum || '',
+      cell: ({ getValue }) => {
+        const v = getValue() as string
+        return v ? formatDate(v) : <span className="text-gray-400 text-xs">-</span>
+      },
+    },
+    {
       id: 'facturen',
       header: 'Deelfacturen',
       cell: ({ row }) => (
