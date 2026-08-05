@@ -3642,15 +3642,19 @@ export async function getProjecten() {
   // Bedrag is excl BTW (subtotaal) — niet het totaal incl BTW.
   return (data || []).map(p => {
     const offertes = (p.offertes || []) as { id: string; offertenummer: string; status: string; datum: string | null; versie_nummer: number; subtotaal: number; totaal: number; created_at?: string | null; facturen?: { id: string; status: string; totaal: number; betaald_bedrag: number | null; factuur_type: string | null }[] }[]
+    // Welke offerte is 'de laatste'? Eerst op wanneer hij in het systeem is
+    // gezet, daarna pas op offertedatum. Andersom ging het mis bij verkoopkansen
+    // met meerdere losse offertes: een offerte die uit een e-mail ontstond kreeg
+    // de datum van die mail en verdrong daarmee een nieuwere, hogere offerte —
+    // waardoor de lijst een oud en te laag bedrag toonde.
     const laatsteOfferte = [...offertes].sort((a, b) => {
+      const ca = a.created_at ? new Date(a.created_at).getTime() : 0
+      const cb = b.created_at ? new Date(b.created_at).getTime() : 0
+      if (cb !== ca) return cb - ca
       const da = a.datum ? new Date(a.datum).getTime() : 0
       const db = b.datum ? new Date(b.datum).getTime() : 0
       if (db !== da) return db - da
-      if ((b.versie_nummer || 0) !== (a.versie_nummer || 0)) return (b.versie_nummer || 0) - (a.versie_nummer || 0)
-      // Beslissende tiebreaker: meest recent aangemaakte revisie (zelfde datum + versie).
-      const ca = a.created_at ? new Date(a.created_at).getTime() : 0
-      const cb = b.created_at ? new Date(b.created_at).getTime() : 0
-      return cb - ca
+      return (b.versie_nummer || 0) - (a.versie_nummer || 0)
     })[0]
     // Betaal-status afleiden uit alle facturen onder dit project.
     // Concept-facturen en credit-facturen tellen niet mee.
