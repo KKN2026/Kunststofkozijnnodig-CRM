@@ -1968,65 +1968,123 @@ export async function maakEindafrekening(aanbetalingId: string) {
 // Aanbetalings-facturen waarvoor (nog) geen rest-/volledige factuur is gemaakt
 // binnen 9 maanden bij dezelfde klant. Helpt om te zien welke klanten nog een
 // eindafrekening moeten krijgen.
-export async function getEindafrekeningen() {
+export interface EindafrekeningRij {
+  klusKey: string
+  klant: string
+  onderwerp: string
+  // Alle deelfacturen (aanbetaling/termijn) van deze klus, oudste eerst.
+  facturen: { id: string; factuurnummer: string; subtotaal: number; status: string; datum: string | null }[]
+  // Voor de maak-knop: maakEindafrekening telt server-side zelf de rest erbij.
+  primaireAanbetalingId: string
+  offerteSubtotaal: number | null
+  offertenummer: string | null
+  // true = geen offerte gekoppeld; bedrag teruggerekend uit het percentage in
+  // het factuuronderwerp ("Aanbetaling 70%"). Indicatief, geen hard gegeven.
+  geschat: boolean
+  gefactureerdSubtotaal: number
+  restSubtotaal: number | null
+}
+
+export async function getEindafrekeningen(): Promise<EindafrekeningRij[]> {
   const adminId = await getAdministratieId()
   if (!adminId) return []
   const supabase = await createClient()
 
-  // Dit overzicht draaide op een vaste lijst factuurnummers uit de migratie
-  // (TRIBE_EINDAFREKENING_NUMMERS). Alles wat daarna ontstond kwam er dus nooit
-  // in — er stonden 19 klussen uit 2026 met een betaalde aanbetaling zonder
-  // eindafrekening, samen ruim €181.000, zonder dat iemand dat zag. Daarom nu
-  // dynamisch: elke aanbetaling zonder eindafrekening verschijnt vanzelf.
-  const [aanbetRes, restRes] = await Promise.all([
+  // Dit overzicht draaide op een vaste lijst factuurnummers uit de migratie;
+  // alles wat daarna ontstond kwam er nooit in. Nu dynamisch, gegroepeerd per
+  // KLUS in plaats van per losse factuur. Geïmporteerde facturen hebben vaak
+  // geen offerte- of orderkoppeling (voorbeeld: Jochemsen had twee 50%-facturen
+  // én een betaalde restbetaling, maar niets verwees naar elkaar — de oude
+  // aanpak toonde die klus dus onterecht als openstaand en zonder bedragen).
+  // Daarom valt de groepering terug op klant + genormaliseerd onderwerp.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const alle = await fetchAllRows<any>((from, to) =>
     supabase.from('facturen')
-      .select('id, factuurnummer, datum, status, subtotaal, totaal, onderwerp, relatie_id, relatie:relaties(bedrijfsnaam), order_id, offerte_id, gerelateerde_factuur_id, offerte:offertes(id, offertenummer, subtotaal, onderwerp, project_id)')
+      .select('id, factuurnummer, datum, status, subtotaal, totaal, onderwerp, factuur_type, relatie_id, relatie:relaties(bedrijfsnaam), order_id, offerte_id, offerte:offertes(id, offertenummer, subtotaal, project_id)')
       .eq('administratie_id', adminId)
-      .eq('factuur_type', 'aanbetaling')
-      .neq('status', 'gecrediteerd'),
-    supabase.from('facturen')
-      .select('gerelateerde_factuur_id, offerte_id, order_id')
-      .eq('administratie_id', adminId)
-      .in('factuur_type', ['restbetaling', 'volledig'])
-      .neq('status', 'gecrediteerd'),
-  ])
+      .neq('status', 'gecrediteerd')
+      .range(from, to),
+  )
 
-  // Een aanbetaling is afgehandeld zodra er een restbetaling naar wijst — via
-  // de directe koppeling, of doordat beide aan dezelfde offerte of order hangen.
-  const viaFactuur = new Set<string>()
-  const viaOfferte = new Set<string>()
-  const viaOrder = new Set<string>()
-  for (const r of restRes.data || []) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const x = r as any
-    if (x.gerelateerde_factuur_id) viaFactuur.add(x.gerelateerde_factuur_id)
-    if (x.offerte_id) viaOfferte.add(x.offerte_id)
-    if (x.order_id) viaOrder.add(x.order_id)
+  // "1e Factuur / Aanbetaling X", "Restbetaling — X", "Aanbetaling 70% - X",
+  // "Credit F-…" → allemaal terugbrengen tot de kale klusomschrijving X.
+  const normaliseer = (onderwerp: string | null): string => (onderwerp || '')
+    .toLowerCase()
+    .replace(/^\s*credit\s+f-[\d-]+\s*/i, '')
+    .replace(/^\s*(?:\d+e\s*factuur\s*[\/\-—]?\s*)?(?:aanbetaling|restbetaling|eindafrekening|deelfactuur)?\s*\d{0,3}\s*%?\s*[\/\-—]?\s*/i, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  type Groep = {
+    klant: string
+    onderwerpen: string[]
+    deposits: { id: string; factuurnummer: string; subtotaal: number; status: string; datum: string | null; onderwerp: string | null }[]
+    offerteSub: number | null
+    offertenummer: string | null
+    heeftRest: boolean
+    creditSub: number
+  }
+  const groepen = new Map<string, Groep>()
+
+  for (const f of alle) {
+    const sleutel = f.offerte?.project_id || f.offerte_id || f.order_id
+      || `${f.relatie_id}|${normaliseer(f.onderwerp)}`
+    let g = groepen.get(sleutel)
+    if (!g) {
+      g = { klant: f.relatie?.bedrijfsnaam || '-', onderwerpen: [], deposits: [], offerteSub: null, offertenummer: null, heeftRest: false, creditSub: 0 }
+      groepen.set(sleutel, g)
+    }
+    if (f.offerte?.subtotaal != null && g.offerteSub == null) {
+      g.offerteSub = Number(f.offerte.subtotaal)
+      g.offertenummer = f.offerte.offertenummer || null
+    }
+    const totaal = Number(f.totaal || 0)
+    if (f.factuur_type === 'credit' || totaal < 0) {
+      // Creditering drukt wat er netto gefactureerd is.
+      g.creditSub += Number(f.subtotaal || 0)
+      continue
+    }
+    if (f.factuur_type === 'aanbetaling' || f.factuur_type === 'termijn') {
+      g.deposits.push({ id: f.id, factuurnummer: f.factuurnummer, subtotaal: Number(f.subtotaal || 0), status: f.status, datum: f.datum, onderwerp: f.onderwerp })
+      if (f.onderwerp) g.onderwerpen.push(normaliseer(f.onderwerp))
+    } else if (f.factuur_type === 'restbetaling' || f.factuur_type === 'volledig') {
+      g.heeftRest = true
+    }
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const open = (aanbetRes.data || []).filter((a: any) => {
-    if (a.gerelateerde_factuur_id) return false      // wijst zelf al naar een rest
-    if (viaFactuur.has(a.id)) return false
-    if (a.offerte_id && viaOfferte.has(a.offerte_id)) return false
-    if (a.order_id && viaOrder.has(a.order_id)) return false
-    return true
-  })
+  const rijen: EindafrekeningRij[] = []
+  for (const [sleutel, g] of groepen) {
+    if (g.heeftRest || g.deposits.length === 0) continue
+    g.deposits.sort((a, b) => (a.datum || '').localeCompare(b.datum || ''))
 
-  // Oudste bovenaan: hoe langer een eindafrekening blijft liggen, hoe
-  // vervelender. Facturen zonder datum achteraan.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  open.sort((a: any, b: any) => {
-    if (!a.datum) return 1
-    if (!b.datum) return -1
-    return a.datum.localeCompare(b.datum)
-  })
+    let offerteSub = g.offerteSub
+    let geschat = false
+    if (offerteSub == null) {
+      // Geen offerte bekend → percentage uit het onderwerp ("Aanbetaling 70%"),
+      // anders de gangbare 70% als aanname. Duidelijk gemarkeerd als schatting.
+      const m = (g.deposits[0].onderwerp || '').match(/(\d{1,3})\s*%/)
+      const pct = Math.min(Math.max(m ? parseInt(m[1]) : 70, 10), 95)
+      offerteSub = Math.round((g.deposits[0].subtotaal / (pct / 100)) * 100) / 100
+      geschat = true
+    }
+    const gefactureerd = g.deposits.reduce((s, d) => s + d.subtotaal, 0) + g.creditSub
+    rijen.push({
+      klusKey: sleutel,
+      klant: g.klant,
+      onderwerp: g.onderwerpen[0] || normaliseer(g.deposits[0].onderwerp) || '-',
+      facturen: g.deposits.map(({ id, factuurnummer, subtotaal, status, datum }) => ({ id, factuurnummer, subtotaal, status, datum })),
+      primaireAanbetalingId: g.deposits[0].id,
+      offerteSubtotaal: offerteSub,
+      offertenummer: g.offertenummer,
+      geschat,
+      gefactureerdSubtotaal: Math.round(gefactureerd * 100) / 100,
+      restSubtotaal: offerteSub != null ? Math.max(0, Math.round((offerteSub - gefactureerd) * 100) / 100) : null,
+    })
+  }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return open.map((f: any) => ({
-    ...f,
-    offerte: f.offerte || { id: null, offertenummer: null, subtotaal: null, onderwerp: f.onderwerp, project_id: null },
-  }))
+  // Oudste bovenaan — hoe langer een eindafrekening blijft liggen, hoe erger.
+  rijen.sort((a, b) => (a.facturen[0]?.datum || '9999').localeCompare(b.facturen[0]?.datum || '9999'))
+  return rijen
 }
 
 // Oude matching-logica wordt niet meer gebruikt; behouden voor eventuele

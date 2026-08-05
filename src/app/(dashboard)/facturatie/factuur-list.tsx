@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/empty-state'
 import { formatCurrency, formatDateShort } from '@/lib/utils'
-import { Plus, Receipt, AlertTriangle, CheckCircle, Clock, ExternalLink, FolderKanban, RefreshCw, Download, Send, Loader2 } from 'lucide-react'
+import { FileText, Plus, Receipt, AlertTriangle, CheckCircle, Clock, ExternalLink, FolderKanban, RefreshCw, Download, Send, Loader2 } from 'lucide-react'
 import { syncSnelstartBetalingen, verstuurFactuurSnel, setFactuurGeplandeDatum } from '@/lib/actions'
 import Link from 'next/link'
 import { showToast } from '@/components/ui/toast'
@@ -521,6 +521,10 @@ export function FactuurList({ facturen, ordersMetStatus, sleutelWaarschuwing }: 
         title="Facturatie"
         actions={
           <div className="flex items-center gap-2 flex-wrap">
+            <Button variant="ghost" size="sm" onClick={() => router.push('/facturatie/eindafrekening')} title="Klussen met een aanbetaling waarvoor nog geen eindafrekening bestaat">
+              <FileText className="h-3.5 w-3.5" />
+              Eindafrekeningen
+            </Button>
             <Button variant="ghost" size="sm" onClick={handleSyncSnelstart} disabled={syncing} title="SnelStart-betalingen ophalen">
               <RefreshCw className={`h-3.5 w-3.5 ${syncing ? 'animate-spin' : ''}`} />
               {syncing ? 'Bezig…' : 'Sync'}
