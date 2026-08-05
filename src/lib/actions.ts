@@ -1973,56 +1973,60 @@ export async function getEindafrekeningen() {
   if (!adminId) return []
   const supabase = await createClient()
 
-  // Ground truth = Tribe's whitelist; lees de bijbehorende aanbetalingen op.
-  const nummers = TRIBE_EINDAFREKENING_NUMMERS
-  const { data: aanbetaligs } = await supabase.from('facturen')
-    .select('id, factuurnummer, datum, status, subtotaal, totaal, onderwerp, relatie_id, relatie:relaties(bedrijfsnaam), order_id, offerte_id, gerelateerde_factuur_id, offerte:offertes(id, offertenummer, subtotaal, onderwerp, project_id)')
-    .eq('administratie_id', adminId)
-    .in('factuurnummer', nummers)
-
-  // Filter dynamisch: sluit aanbetalingen uit waarvoor al een rest- of
-  // volledige factuur is aangemaakt (welke status dan ook). Zodra een
-  // eindafrekening is gemaakt verdwijnt de aanbetaling uit deze lijst.
-  const aanbetIds = (aanbetaligs || []).map(f => f.id)
-  let restFactuurAanwezig: Set<string> = new Set()
-  if (aanbetIds.length > 0) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: rests } = await supabase.from('facturen')
-      .select('gerelateerde_factuur_id, status')
+  // Dit overzicht draaide op een vaste lijst factuurnummers uit de migratie
+  // (TRIBE_EINDAFREKENING_NUMMERS). Alles wat daarna ontstond kwam er dus nooit
+  // in — er stonden 19 klussen uit 2026 met een betaalde aanbetaling zonder
+  // eindafrekening, samen ruim €181.000, zonder dat iemand dat zag. Daarom nu
+  // dynamisch: elke aanbetaling zonder eindafrekening verschijnt vanzelf.
+  const [aanbetRes, restRes] = await Promise.all([
+    supabase.from('facturen')
+      .select('id, factuurnummer, datum, status, subtotaal, totaal, onderwerp, relatie_id, relatie:relaties(bedrijfsnaam), order_id, offerte_id, gerelateerde_factuur_id, offerte:offertes(id, offertenummer, subtotaal, onderwerp, project_id)')
+      .eq('administratie_id', adminId)
+      .eq('factuur_type', 'aanbetaling')
+      .neq('status', 'gecrediteerd'),
+    supabase.from('facturen')
+      .select('gerelateerde_factuur_id, offerte_id, order_id')
       .eq('administratie_id', adminId)
       .in('factuur_type', ['restbetaling', 'volledig'])
-      .neq('status', 'gecrediteerd')
-      .in('gerelateerde_factuur_id', aanbetIds as string[])
-    for (const r of (rests || [])) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const gid = (r as any).gerelateerde_factuur_id as string | null
-      if (gid) restFactuurAanwezig.add(gid)
-    }
-    // Daarnaast: aanbetalingen waar zelf gerelateerde_factuur_id is gevuld
-    // wijzen ook al naar een rest (bidirectionele link wordt gezet bij maakEindafrekening).
+      .neq('status', 'gecrediteerd'),
+  ])
+
+  // Een aanbetaling is afgehandeld zodra er een restbetaling naar wijst — via
+  // de directe koppeling, of doordat beide aan dezelfde offerte of order hangen.
+  const viaFactuur = new Set<string>()
+  const viaOfferte = new Set<string>()
+  const viaOrder = new Set<string>()
+  for (const r of restRes.data || []) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const aanbetMetGerel = (aanbetaligs || []).filter((a: any) => a.gerelateerde_factuur_id)
-    for (const a of aanbetMetGerel) restFactuurAanwezig.add(a.id)
+    const x = r as any
+    if (x.gerelateerde_factuur_id) viaFactuur.add(x.gerelateerde_factuur_id)
+    if (x.offerte_id) viaOfferte.add(x.offerte_id)
+    if (x.order_id) viaOrder.add(x.order_id)
   }
 
-  // Sorteer in exact dezelfde volgorde als Tribe + override offerte-totaal
-  // met de waarden uit Tribe zodat de getallen 1-op-1 overeenkomen.
-  const ordered = nummers.map(nr => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const f = (aanbetaligs || []).find((x: any) => x.factuurnummer === nr)
-    if (!f) return null
-    if (restFactuurAanwezig.has(f.id)) return null  // rest al aangemaakt → niet meer tonen
-    const tribeTotaal = TRIBE_OFFERTE_TOTALEN.get(nr) ?? null
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const fAny = f as any
-    return {
-      ...fAny,
-      offerte: fAny.offerte
-        ? { ...fAny.offerte, subtotaal: tribeTotaal ?? fAny.offerte.subtotaal }
-        : { id: null, offertenummer: null, subtotaal: tribeTotaal, onderwerp: fAny.onderwerp, project_id: null },
-    }
-  }).filter(Boolean)
-  return ordered
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const open = (aanbetRes.data || []).filter((a: any) => {
+    if (a.gerelateerde_factuur_id) return false      // wijst zelf al naar een rest
+    if (viaFactuur.has(a.id)) return false
+    if (a.offerte_id && viaOfferte.has(a.offerte_id)) return false
+    if (a.order_id && viaOrder.has(a.order_id)) return false
+    return true
+  })
+
+  // Oudste bovenaan: hoe langer een eindafrekening blijft liggen, hoe
+  // vervelender. Facturen zonder datum achteraan.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  open.sort((a: any, b: any) => {
+    if (!a.datum) return 1
+    if (!b.datum) return -1
+    return a.datum.localeCompare(b.datum)
+  })
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return open.map((f: any) => ({
+    ...f,
+    offerte: f.offerte || { id: null, offertenummer: null, subtotaal: null, onderwerp: f.onderwerp, project_id: null },
+  }))
 }
 
 // Oude matching-logica wordt niet meer gebruikt; behouden voor eventuele
@@ -2301,12 +2305,26 @@ export async function deleteFactuur(id: string) {
   // Haal factuur op VÓÓR delete — we hebben snelstart_boeking_id én factuurnummer nodig
   const { data: factuur } = await supabase
     .from('facturen')
-    .select('snelstart_boeking_id, factuurnummer')
+    .select('snelstart_boeking_id, factuurnummer, factuur_type, status, totaal, betaald_bedrag, relatie_id, offerte_id, order_id, onderwerp')
     .eq('id', id)
     .maybeSingle()
 
   const { error } = await supabase.from('facturen').delete().eq('id', id)
   if (error) return { error: error.message }
+
+  // Vastleggen wie wat weghaalde. Dit ontbrak, waardoor bij verdwenen facturen
+  // niet te achterhalen was of ze verwijderd waren en door wie — er was alleen
+  // een gat in de nummerreeks. De volledige factuurgegevens gaan mee, zodat een
+  // per ongeluk verwijderde factuur handmatig te reconstrueren is.
+  try {
+    const { logAudit } = await import('@/lib/audit')
+    await logAudit({
+      actie: 'factuur.delete',
+      entiteitType: 'factuur',
+      entiteitId: id,
+      details: (factuur || undefined) as Record<string, unknown> | undefined,
+    })
+  } catch { /* audit mag het verwijderen nooit blokkeren */ }
 
   // Ook uit SnelStart verwijderen (best-effort). Als de boeking_id mist maar
   // het factuurnummer wel bekend is, zoek de orphan-boeking alsnog op.
