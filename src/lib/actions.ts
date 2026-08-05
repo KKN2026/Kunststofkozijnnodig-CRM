@@ -1422,10 +1422,73 @@ async function createOrderFromOfferte(offerteId: string, supabase: Awaited<Retur
   revalidatePath('/')
 }
 
+// Regels rond het accepteren van een offerte, afgesproken 05-08-2026:
+// 1. De laatst verstuurde versie is leidend — een oudere versie binnen dezelfde
+//    verkoopkans kan niet meer geaccepteerd worden zodra er een nieuwere is
+//    verstuurd (geldt ook voor de openbare klantlink van een oude mail).
+// 2. Eén geaccepteerde offerte per verkoopkans: bij acceptatie vervallen de
+//    andere verstuurde/geaccepteerde offertes automatisch. Concepten blijven
+//    staan (daar wordt nog aan gewerkt), en facturen die aan een vervallen
+//    offerte hangen blijven gewoon geldig.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function haalOfferteBroers(sb: any, offerte: { id: string; project_id?: string | null; groep_id?: string | null }) {
+  const filters: string[] = []
+  if (offerte.project_id) filters.push(`project_id.eq.${offerte.project_id}`)
+  if (offerte.groep_id) filters.push(`groep_id.eq.${offerte.groep_id}`)
+  if (filters.length === 0) return []
+  const { data } = await sb
+    .from('offertes')
+    .select('id, offertenummer, status, created_at, versie_nummer')
+    .or(filters.join(','))
+    .neq('id', offerte.id)
+  return (data || []) as { id: string; offertenummer: string; status: string; created_at: string | null; versie_nummer: number | null }[]
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function controleerEnVervangBijAcceptatie(sb: any, offerte: { id: string; offertenummer: string; created_at: string | null; project_id?: string | null; groep_id?: string | null; administratie_id: string }): Promise<{ error?: string }> {
+  const broers = await haalOfferteBroers(sb, offerte)
+
+  // Regel 1: nieuwere verstuurde/geaccepteerde versie? Dan deze niet accepteren.
+  const nieuwere = broers.find(b =>
+    ['verzonden', 'geaccepteerd'].includes(b.status)
+    && (b.created_at || '') > (offerte.created_at || ''))
+  if (nieuwere) {
+    return { error: `Er is inmiddels een nieuwere versie verstuurd (${nieuwere.offertenummer}). Die is leidend — accepteer die versie, of verwijder haar eerst als dit toch de juiste is.` }
+  }
+
+  // Regel 2: andere verstuurde/geaccepteerde offertes van deze verkoopkans vervallen.
+  const teVervallen = broers.filter(b => ['verzonden', 'geaccepteerd'].includes(b.status))
+  if (teVervallen.length > 0) {
+    await sb.from('offertes').update({ status: 'verlopen' }).in('id', teVervallen.map(b => b.id))
+    try {
+      const { logAudit } = await import('@/lib/audit')
+      for (const b of teVervallen) {
+        await logAudit({
+          actie: 'offerte.vervallen_door_acceptatie',
+          entiteitType: 'offerte',
+          entiteitId: b.id,
+          details: { offertenummer: b.offertenummer, vorigeStatus: b.status, geaccepteerd: offerte.offertenummer },
+        })
+      }
+    } catch { /* audit niet-blokkerend */ }
+  }
+  return {}
+}
+
 export async function acceptOfferte(id: string) {
   const supabase = await createClient()
   const adminId = await getAdministratieId()
   if (!adminId) return { error: 'Niet ingelogd' }
+
+  const { data: offerte } = await supabase
+    .from('offertes')
+    .select('id, offertenummer, created_at, project_id, groep_id, administratie_id')
+    .eq('id', id)
+    .maybeSingle()
+  if (!offerte) return { error: 'Offerte niet gevonden' }
+
+  const controle = await controleerEnVervangBijAcceptatie(supabase, offerte)
+  if (controle.error) return { error: controle.error }
 
   const { error } = await supabase
     .from('offertes')
@@ -8270,12 +8333,19 @@ export async function acceptOffertePublic(token: string) {
 
   const { data: offerte, error: fetchError } = await supabaseAdmin
     .from('offertes')
-    .select('id, status, administratie_id, relatie_id, offertenummer, onderwerp, subtotaal, btw_totaal, totaal, relatie:relaties(email, contactpersoon, bedrijfsnaam)')
+    .select('id, status, administratie_id, relatie_id, offertenummer, onderwerp, subtotaal, btw_totaal, totaal, created_at, project_id, groep_id, relatie:relaties(email, contactpersoon, bedrijfsnaam)')
     .eq('publiek_token', token)
     .single()
 
   if (fetchError || !offerte) return { error: 'Offerte niet gevonden' }
   if (offerte.status === 'geaccepteerd') return { error: 'Deze offerte is al geaccepteerd' }
+
+  // De klant kan op een link uit een oude e-mail klikken; de laatst verstuurde
+  // versie is leidend.
+  const controle = await controleerEnVervangBijAcceptatie(supabaseAdmin, offerte)
+  if (controle.error) {
+    return { error: 'Er is inmiddels een nieuwere versie van deze offerte verstuurd. Gebruik de link uit de meest recente e-mail, of neem contact met ons op.' }
+  }
 
   const { error } = await supabaseAdmin
     .from('offertes')
