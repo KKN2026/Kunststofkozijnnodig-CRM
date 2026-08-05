@@ -1983,6 +1983,10 @@ export interface EindafrekeningRij {
   geschat: boolean
   gefactureerdSubtotaal: number
   restSubtotaal: number | null
+  // true = alle deelfacturen komen uit de data-import van april 2026; de
+  // eindafrekening is toen in het oude systeem (Tribe) gedaan. Standaard
+  // verborgen in het overzicht, terug te halen met de schakelaar.
+  oud: boolean
 }
 
 export async function getEindafrekeningen(): Promise<EindafrekeningRij[]> {
@@ -2000,7 +2004,7 @@ export async function getEindafrekeningen(): Promise<EindafrekeningRij[]> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const alle = await fetchAllRows<any>((from, to) =>
     supabase.from('facturen')
-      .select('id, factuurnummer, datum, status, subtotaal, totaal, onderwerp, factuur_type, relatie_id, relatie:relaties(bedrijfsnaam), order_id, offerte_id, offerte:offertes(id, offertenummer, subtotaal, project_id)')
+      .select('id, factuurnummer, datum, created_at, status, subtotaal, totaal, onderwerp, factuur_type, relatie_id, relatie:relaties(bedrijfsnaam), order_id, offerte_id, offerte:offertes(id, offertenummer, subtotaal, project_id)')
       .eq('administratie_id', adminId)
       .neq('status', 'gecrediteerd')
       .range(from, to),
@@ -2019,7 +2023,7 @@ export async function getEindafrekeningen(): Promise<EindafrekeningRij[]> {
     klant: string
     relatieId: string | null
     onderwerpen: string[]
-    deposits: { id: string; factuurnummer: string; subtotaal: number; status: string; datum: string | null; onderwerp: string | null }[]
+    deposits: { id: string; factuurnummer: string; subtotaal: number; status: string; datum: string | null; createdAt: string | null; onderwerp: string | null }[]
     offerteSub: number | null
     offertenummer: string | null
     heeftRest: boolean
@@ -2049,7 +2053,7 @@ export async function getEindafrekeningen(): Promise<EindafrekeningRij[]> {
       continue
     }
     if (f.factuur_type === 'aanbetaling' || f.factuur_type === 'termijn') {
-      g.deposits.push({ id: f.id, factuurnummer: f.factuurnummer, subtotaal: Number(f.subtotaal || 0), status: f.status, datum: f.datum, onderwerp: f.onderwerp })
+      g.deposits.push({ id: f.id, factuurnummer: f.factuurnummer, subtotaal: Number(f.subtotaal || 0), status: f.status, datum: f.datum, createdAt: f.created_at || null, onderwerp: f.onderwerp })
       if (f.onderwerp) g.onderwerpen.push(normaliseer(f.onderwerp))
     } else if (f.factuur_type === 'restbetaling' || f.factuur_type === 'volledig') {
       g.heeftRest = true
@@ -2103,7 +2107,11 @@ export async function getEindafrekeningen(): Promise<EindafrekeningRij[]> {
       const teVeel = !geschat && gefactureerd > offerteSub + 1
       if (!teVeel) continue
     }
+    // Alles dat vóór 24-04-2026 in het systeem kwam is de data-import; die
+    // klussen zijn destijds buiten dit CRM afgerekend (bevestigd 05-08-2026).
+    const oud = g.deposits.every(d => (d.createdAt || '') < '2026-04-24')
     rijen.push({
+      oud,
       klusKey: sleutel,
       klant: g.klant,
       onderwerp: g.onderwerpen[0] || normaliseer(g.deposits[0].onderwerp) || '-',

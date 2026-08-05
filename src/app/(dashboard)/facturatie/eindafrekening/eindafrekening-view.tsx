@@ -40,6 +40,12 @@ export function EindafrekeningView({ rijen }: { rijen: EindafrekeningRij[] }) {
   const router = useRouter()
   const { navigateBack } = useBackNav('eindafrekening')
   const [busyKey, setBusyKey] = useState<string | null>(null)
+  // Klussen uit de data-import zijn destijds in het oude systeem afgerekend;
+  // standaard verborgen zodat alleen echt openstaand werk overblijft.
+  const [toonOud, setToonOud] = useState(false)
+  const oudeRijen = rijen.filter(r => r.oud)
+  const actueleRijen = rijen.filter(r => !r.oud)
+  const zichtbaar = toonOud ? rijen : actueleRijen
 
   async function handleMaak(rij: EindafrekeningRij) {
     const p = detecteerProblemen(rij)
@@ -158,16 +164,22 @@ export function EindafrekeningView({ rijen }: { rijen: EindafrekeningRij[] }) {
     <div>
       <PageHeader
         title="Eindafrekeningen"
-        description={`${rijen.length} klus${rijen.length === 1 ? '' : 'sen'} met deelfacturen waarvoor nog geen eindafrekening bestaat`}
+        description={`${actueleRijen.length} klus${actueleRijen.length === 1 ? '' : 'sen'} met deelfacturen waarvoor nog geen eindafrekening bestaat`}
         actions={<Button variant="ghost" onClick={() => navigateBack('/facturatie')}><ArrowLeft className="h-4 w-4" />Terug</Button>}
       />
-      {rijen.length === 0 ? (
+      {oudeRijen.length > 0 && (
+        <label className="flex items-center gap-2 mb-4 text-sm text-gray-500 select-none cursor-pointer">
+          <input type="checkbox" checked={toonOud} onChange={e => setToonOud(e.target.checked)} className="rounded border-gray-300" />
+          Toon ook {oudeRijen.length} oude klus{oudeRijen.length === 1 ? '' : 'sen'} van vóór de data-import (destijds in het oude systeem afgerekend)
+        </label>
+      )}
+      {zichtbaar.length === 0 ? (
         <div className="text-center py-12 text-gray-400">
           <CheckCircle2 className="h-10 w-10 mx-auto mb-2 text-green-500" />
           <p>Alle aanbetalingen hebben een eindafrekening.</p>
         </div>
       ) : (
-        <DataTable columns={columns} data={rijen} searchPlaceholder="Zoek klant of klus..." />
+        <DataTable columns={columns} data={zichtbaar} searchPlaceholder="Zoek klant of klus..." />
       )}
     </div>
   )
