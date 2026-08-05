@@ -992,18 +992,19 @@ export function RelatieDetail({ detail, notities: initialNotities, klantAccounts
               // als tiebreaker. Voorheen alleen op versie_nummer, waardoor bij meerdere
               // offerte-revisies een oudere versie met hoog versie_nummer onterecht
               // bovenaan stond i.p.v. de laatst verstuurde.
+              // Nieuwste eerst op basis van wanneer de offerte in het systeem is
+              // gezet, daarna pas op offertedatum. Andersom ging het mis bij
+              // verkoopkansen met meerdere losse offertes: een offerte die uit een
+              // e-mail ontstond draagt de datum van die mail en verdrong daarmee
+              // een nieuwere, hogere offerte — de kop toonde dan een oud bedrag.
               const sortedOffertes = [...(p.offertes || [])].sort((a, b) => {
+                const ca = a.created_at ? new Date(a.created_at).getTime() : 0
+                const cb = b.created_at ? new Date(b.created_at).getTime() : 0
+                if (cb !== ca) return cb - ca
                 const da = a.datum ? new Date(a.datum).getTime() : 0
                 const db = b.datum ? new Date(b.datum).getTime() : 0
                 if (db !== da) return db - da
-                if ((b.versie_nummer || 0) !== (a.versie_nummer || 0)) return (b.versie_nummer || 0) - (a.versie_nummer || 0)
-                // Beslissende tiebreaker: meest recent aangemaakte revisie bovenaan.
-                // Cruciaal wanneer meerdere revisies dezelfde datum én versie_nummer
-                // hebben (revisies worden niet altijd opgehoogd) — anders blijft een
-                // oudere revisie onterecht bovenaan i.p.v. de laatst aangepaste/verstuurde.
-                const ca = a.created_at ? new Date(a.created_at).getTime() : 0
-                const cb = b.created_at ? new Date(b.created_at).getTime() : 0
-                return cb - ca
+                return (b.versie_nummer || 0) - (a.versie_nummer || 0)
               })
               const laatsteOfferte = sortedOffertes[0]
               const oudereVersies = sortedOffertes.slice(1)
@@ -1244,6 +1245,9 @@ export function RelatieDetail({ detail, notities: initialNotities, klantAccounts
               <div className="space-y-3 mt-3">
                 {afgerondeProjecten.map(p => {
                   const sortedOffertes = [...(p.offertes || [])].sort((a, b) => {
+                    const ca = a.created_at ? new Date(a.created_at).getTime() : 0
+                    const cb = b.created_at ? new Date(b.created_at).getTime() : 0
+                    if (cb !== ca) return cb - ca
                     const da = a.datum ? new Date(a.datum).getTime() : 0
                     const db = b.datum ? new Date(b.datum).getTime() : 0
                     if (db !== da) return db - da
@@ -1290,6 +1294,9 @@ export function RelatieDetail({ detail, notities: initialNotities, klantAccounts
               <div className="space-y-3 mt-3">
                 {nietDoorgegaanProjecten.map(p => {
                   const sortedOffertes = [...(p.offertes || [])].sort((a, b) => {
+                    const ca = a.created_at ? new Date(a.created_at).getTime() : 0
+                    const cb = b.created_at ? new Date(b.created_at).getTime() : 0
+                    if (cb !== ca) return cb - ca
                     const da = a.datum ? new Date(a.datum).getTime() : 0
                     const db = b.datum ? new Date(b.datum).getTime() : 0
                     if (db !== da) return db - da

@@ -2017,6 +2017,7 @@ export async function getEindafrekeningen(): Promise<EindafrekeningRij[]> {
 
   type Groep = {
     klant: string
+    relatieId: string | null
     onderwerpen: string[]
     deposits: { id: string; factuurnummer: string; subtotaal: number; status: string; datum: string | null; onderwerp: string | null }[]
     offerteSub: number | null
@@ -2025,13 +2026,16 @@ export async function getEindafrekeningen(): Promise<EindafrekeningRij[]> {
     creditSub: number
   }
   const groepen = new Map<string, Groep>()
+  // Alle rest-/eindfactuur-onderwerpen per klant, ongeacht in welke groep ze
+  // vallen. Nodig voor de tweede controle hieronder.
+  const restOnderwerpenPerKlant = new Map<string, string[]>()
 
   for (const f of alle) {
     const sleutel = f.offerte?.project_id || f.offerte_id || f.order_id
       || `${f.relatie_id}|${normaliseer(f.onderwerp)}`
     let g = groepen.get(sleutel)
     if (!g) {
-      g = { klant: f.relatie?.bedrijfsnaam || '-', onderwerpen: [], deposits: [], offerteSub: null, offertenummer: null, heeftRest: false, creditSub: 0 }
+      g = { klant: f.relatie?.bedrijfsnaam || '-', relatieId: f.relatie_id || null, onderwerpen: [], deposits: [], offerteSub: null, offertenummer: null, heeftRest: false, creditSub: 0 }
       groepen.set(sleutel, g)
     }
     if (f.offerte?.subtotaal != null && g.offerteSub == null) {
@@ -2049,12 +2053,35 @@ export async function getEindafrekeningen(): Promise<EindafrekeningRij[]> {
       if (f.onderwerp) g.onderwerpen.push(normaliseer(f.onderwerp))
     } else if (f.factuur_type === 'restbetaling' || f.factuur_type === 'volledig') {
       g.heeftRest = true
+      if (f.relatie_id) {
+        const lijst = restOnderwerpenPerKlant.get(f.relatie_id) || []
+        lijst.push(normaliseer(f.onderwerp))
+        restOnderwerpenPerKlant.set(f.relatie_id, lijst)
+      }
     }
+  }
+
+  // Tweede controle: de restbetaling kan in een ándere groep zitten dan de
+  // aanbetaling — bv. de rest hangt aan een offerte terwijl de aanbetaling los
+  // is geïmporteerd, of het onderwerp wijkt één woord af ("Aanbetaling aanvraag
+  // Deurnestraat" vs "Restbetaling — Deurnestraat"). Daarom vergelijken we per
+  // klant ook op onderwerp: gelijk zonder spaties, of het één bevat het ander
+  // (minimaal 6 tekens, zodat losse woorden als 'werk' geen valse match geven).
+  const zelfdeKlus = (a: string, b: string): boolean => {
+    const x = a.replace(/\s+/g, ''), y = b.replace(/\s+/g, '')
+    if (!x || !y) return false
+    if (x === y) return true
+    const kort = x.length < y.length ? x : y
+    const lang = x.length < y.length ? y : x
+    return kort.length >= 6 && lang.includes(kort)
   }
 
   const rijen: EindafrekeningRij[] = []
   for (const [sleutel, g] of groepen) {
     if (g.heeftRest || g.deposits.length === 0) continue
+    const restElders = g.relatieId ? restOnderwerpenPerKlant.get(g.relatieId) || [] : []
+    const depOnderwerpen = g.deposits.map(d => normaliseer(d.onderwerp))
+    if (depOnderwerpen.some(d => restElders.some(r => zelfdeKlus(d, r)))) continue
     g.deposits.sort((a, b) => (a.datum || '').localeCompare(b.datum || ''))
 
     let offerteSub = g.offerteSub
@@ -2068,6 +2095,14 @@ export async function getEindafrekeningen(): Promise<EindafrekeningRij[]> {
       geschat = true
     }
     const gefactureerd = g.deposits.reduce((s, d) => s + d.subtotaal, 0) + g.creditSub
+    // Niets meer te factureren → geen eindafrekening nodig. Uitzondering: is er
+    // MEER gefactureerd dan de offerte, dan blijft de rij staan met een rode
+    // waarschuwing — dat wijst op een verkeerde koppeling die je wilt zien.
+    const restNu = offerteSub != null ? offerteSub - gefactureerd : null
+    if (restNu != null && restNu <= 0.01) {
+      const teVeel = !geschat && gefactureerd > offerteSub + 1
+      if (!teVeel) continue
+    }
     rijen.push({
       klusKey: sleutel,
       klant: g.klant,
@@ -4038,7 +4073,7 @@ export async function getVerkoopkansenPipeline() {
   const data = await fetchAllRows<any>((from, to) =>
     supabase
       .from('projecten')
-      .select('id, naam, status, created_at, updated_at, verwachte_valmaand, relatie:relaties(id, bedrijfsnaam, contactpersoon), offertes:offertes(id, offertenummer, status, versie_nummer, subtotaal, totaal, datum, geldig_tot, facturen:facturen(id, status, factuur_type))')
+      .select('id, naam, status, created_at, updated_at, verwachte_valmaand, relatie:relaties(id, bedrijfsnaam, contactpersoon), offertes:offertes(id, offertenummer, status, versie_nummer, subtotaal, totaal, datum, created_at, geldig_tot, facturen:facturen(id, status, factuur_type))')
       .neq('status', 'geannuleerd')
       .order('updated_at', { ascending: false })
       .range(from, to),
@@ -4048,7 +4083,13 @@ export async function getVerkoopkansenPipeline() {
     // Meest recente offerte op datum, versie_nummer als tiebreaker. Voorheen
     // alleen op versie_nummer wat bij meerdere aparte offertes per verkoopkans
     // de verkeerde als 'laatste' aanwees.
+    // Zelfde regel als getProjecten: eerst wanneer de offerte in het systeem is
+    // gezet, dan pas offertedatum — anders wint een oude offerte met een
+    // mail-datum en klopt bedrag/status van de verkoopkans niet.
     const laatste = [...offertes].sort((a, b) => {
+      const ca = (a as { created_at?: string | null }).created_at ? new Date((a as { created_at?: string | null }).created_at!).getTime() : 0
+      const cb = (b as { created_at?: string | null }).created_at ? new Date((b as { created_at?: string | null }).created_at!).getTime() : 0
+      if (cb !== ca) return cb - ca
       const da = a.datum ? new Date(a.datum).getTime() : 0
       const db = b.datum ? new Date(b.datum).getTime() : 0
       if (db !== da) return db - da
@@ -4146,7 +4187,7 @@ export async function getMaandPrognose(jaar: number) {
   const projecten = await fetchAllRows<any>((from, to) =>
     supabase
       .from('projecten')
-      .select('id, naam, status, verwachte_valmaand, relatie:relaties(bedrijfsnaam), offertes:offertes(status, subtotaal, totaal, datum, versie_nummer)')
+      .select('id, naam, status, verwachte_valmaand, relatie:relaties(bedrijfsnaam), offertes:offertes(status, subtotaal, totaal, datum, versie_nummer, created_at)')
       .eq('administratie_id', adminId)
       .neq('status', 'geannuleerd')
       .not('verwachte_valmaand', 'is', null)
@@ -4168,6 +4209,9 @@ export async function getMaandPrognose(jaar: number) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const offs = (p.offertes || []) as any[]
     const laatste = [...offs].sort((a, b) => {
+      const ca = a.created_at ? new Date(a.created_at).getTime() : 0
+      const cb = b.created_at ? new Date(b.created_at).getTime() : 0
+      if (cb !== ca) return cb - ca
       const da = a.datum ? new Date(a.datum).getTime() : 0
       const db = b.datum ? new Date(b.datum).getTime() : 0
       if (db !== da) return db - da
