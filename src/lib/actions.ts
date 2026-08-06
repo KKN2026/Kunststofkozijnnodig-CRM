@@ -1497,6 +1497,11 @@ export async function acceptOfferte(id: string) {
 
   if (error) return { error: error.message }
 
+  try {
+    const { logAudit } = await import('@/lib/audit')
+    await logAudit({ actie: 'offerte.geaccepteerd', entiteitType: 'offerte', entiteitId: id, details: { offertenummer: offerte.offertenummer, via: 'intern' } })
+  } catch { /* audit niet-blokkerend */ }
+
   await createOrderFromOfferte(id, supabase, adminId)
 
   revalidatePath('/offertes')
@@ -11991,6 +11996,130 @@ export async function bevestigLeverancierDetectie(input: {
     }).eq('offerte_id', input.offerteId).order('created_at', { ascending: false }).limit(1)
   }
   return { success: true }
+}
+
+
+// === LOGBOEK ===
+// Overzicht van verstuurde offertes: wie stuurde wat, aan welke klant (met
+// herkomst), en wat de ACTUELE status is. De status komt live uit de offerte
+// zelf — verandert er iets in de verkoopkans, dan kleurt de rij mee.
+export interface LogboekOfferteRij {
+  id: string
+  offertenummer: string
+  onderwerp: string | null
+  status: string
+  subtotaal: number
+  verstuurdOp: string | null
+  verstuurdDoor: string | null
+  aan: string | null
+  klant: string | null
+  relatieId: string | null
+  herkomst: string | null
+  projectNaam: string | null
+}
+
+export async function getLogboekOffertes(): Promise<{ rijen: LogboekOfferteRij[]; magZien: boolean }> {
+  const supabase = await createClient()
+  const adminId = await getAdministratieId()
+  if (!adminId) return { rijen: [], magZien: false }
+  const { rol } = await getRolEnEigenMedewerker(supabase, adminId)
+  if (rol !== 'admin') return { rijen: [], magZien: false }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: offertes } = await supabase
+    .from('offertes')
+    .select('id, offertenummer, onderwerp, status, subtotaal, datum, created_at, relatie:relaties(id, bedrijfsnaam, herkomst), project:projecten(naam)')
+    .eq('administratie_id', adminId)
+    .in('status', ['verzonden', 'geaccepteerd', 'afgewezen', 'verlopen'])
+    .order('created_at', { ascending: false })
+    .limit(500)
+
+  const ids = (offertes || []).map(o => o.id)
+  // Laatste verzending per offerte uit het e-maillog, inclusief wie hem stuurde.
+  const verzendingPerOfferte = new Map<string, { op: string; door: string | null; aan: string | null }>()
+  const verzenderIds = new Set<string>()
+  if (ids.length > 0) {
+    for (let i = 0; i < ids.length; i += 150) {
+      const { data: logs } = await supabase
+        .from('email_log')
+        .select('offerte_id, verstuurd_op, verstuurd_door, aan')
+        .in('offerte_id', ids.slice(i, i + 150))
+        .order('verstuurd_op', { ascending: true })
+      for (const l of logs || []) {
+        if (!l.offerte_id) continue
+        verzendingPerOfferte.set(l.offerte_id, { op: l.verstuurd_op, door: l.verstuurd_door, aan: l.aan })
+        if (l.verstuurd_door) verzenderIds.add(l.verstuurd_door)
+      }
+    }
+  }
+  const naamPerId = new Map<string, string>()
+  if (verzenderIds.size > 0) {
+    const { data: profielen } = await supabase
+      .from('profielen')
+      .select('id, naam, email')
+      .in('id', [...verzenderIds])
+    for (const p of profielen || []) naamPerId.set(p.id, p.naam || p.email || '?')
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const rijen = (offertes || []).map((o: any) => {
+    const v = verzendingPerOfferte.get(o.id)
+    return {
+      id: o.id,
+      offertenummer: o.offertenummer,
+      onderwerp: o.onderwerp,
+      status: o.status,
+      subtotaal: Number(o.subtotaal || 0),
+      // Zonder maillog (bv. handmatig op verzonden gezet): val terug op de
+      // offertedatum, zodat de rij niet zonder datum staat.
+      verstuurdOp: v?.op || o.datum || null,
+      verstuurdDoor: v?.door ? (naamPerId.get(v.door) || null) : null,
+      aan: v?.aan || null,
+      klant: o.relatie?.bedrijfsnaam || null,
+      relatieId: o.relatie?.id || null,
+      herkomst: o.relatie?.herkomst || null,
+      projectNaam: o.project?.naam || null,
+    }
+  })
+  return { rijen, magZien: true }
+}
+
+// Ruwe activiteitenlog voor het tweede tabblad: wat deed welke werknemer.
+export interface LogboekActiviteit {
+  id: string
+  actie: string
+  wie: string
+  entiteitType: string | null
+  entiteitId: string | null
+  details: Record<string, unknown> | null
+  op: string
+}
+
+export async function getLogboekActiviteiten(): Promise<{ items: LogboekActiviteit[]; magZien: boolean }> {
+  const supabase = await createClient()
+  const adminId = await getAdministratieId()
+  if (!adminId) return { items: [], magZien: false }
+  const { rol } = await getRolEnEigenMedewerker(supabase, adminId)
+  if (rol !== 'admin') return { items: [], magZien: false }
+
+  const { data } = await supabase
+    .from('audit_log')
+    .select('id, actie, user_email, entiteit_type, entiteit_id, details, created_at')
+    .eq('administratie_id', adminId)
+    .order('created_at', { ascending: false })
+    .limit(400)
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const items = (data || []).map((r: any) => ({
+    id: r.id,
+    actie: r.actie,
+    wie: r.user_email || 'systeem',
+    entiteitType: r.entiteit_type,
+    entiteitId: r.entiteit_id,
+    details: r.details,
+    op: r.created_at,
+  }))
+  return { items, magZien: true }
 }
 
 // === INSTELLINGEN ===
