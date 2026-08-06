@@ -1384,7 +1384,7 @@ async function createOrderFromOfferte(offerteId: string, supabase: Awaited<Retur
 
   const ordernummer = await getVolgendeNummer('order')
 
-  const { data: order } = await supabase
+  const { data: order, error: orderError } = await supabase
     .from('orders')
     .insert({
       administratie_id: adminId,
@@ -1401,6 +1401,14 @@ async function createOrderFromOfferte(offerteId: string, supabase: Awaited<Retur
     })
     .select('id')
     .single()
+
+  // Insert-fout NIET stil negeren: als de order niet aangemaakt kan worden
+  // (bv. status niet in de CHECK-constraint) faalt de hele acceptatie zichtbaar,
+  // i.p.v. een geaccepteerde offerte zónder order achter te laten.
+  if (orderError || !order) {
+    console.error('createOrderFromOfferte: order-insert mislukt', orderError?.message)
+    throw new Error(`Order aanmaken mislukt: ${orderError?.message || 'onbekende fout'}`)
+  }
 
   if (order && offerte.regels && offerte.regels.length > 0) {
     await supabase.from('order_regels').insert(
@@ -1717,34 +1725,16 @@ export async function deleteOrder(id: string) {
   return { success: true }
 }
 
-// De 22 aanbetalings-factuurnummers die Tribe als 'eindafrekening nodig'
-// toont + het bijbehorende offerte-totaal excl BTW zoals in Tribe weergegeven.
-// Volgorde komt exact overeen met Tribe's view (nieuwste eerst).
-const TRIBE_EINDAFREKENING: { nummer: string; offerteTotaal: number }[] = [
-  { nummer: 'F-2026-00133', offerteTotaal: 10833.33 },  // Kees Beentjes — Linden Zonneveld
-  { nummer: 'F-2026-00143', offerteTotaal: 13149.53 },  // offerte broertje — Boendermaker
-  { nummer: 'F-2026-00172', offerteTotaal: 25344.28 },  // glennstraat 7 — Klaas Winter
-  { nummer: 'F-2025-00398', offerteTotaal: 5732.47 },   // Kunststof schuifpui — Bouw Legion
-  { nummer: 'F-2025-00401', offerteTotaal: 12860.72 },  // Callantsogervaart — Bouwbedrijf de Wijn
-  { nummer: 'F-2026-00033', offerteTotaal: 40489.00 },  // Verzoek om offerte — Leon Hartenberg
-  { nummer: 'F-2026-00049', offerteTotaal: 5595.69 },   // voordeur en keuken raam — Michael Segveld
-  { nummer: 'F-2026-00095', offerteTotaal: 5607.85 },   // bram de goede en Petra — Geerlofs
-  { nummer: 'F-2026-00106', offerteTotaal: 15852.21 },  // Adri en Ron — Jochemsen
-  { nummer: 'F-2026-00126', offerteTotaal: 12289.03 },  // Yusuf en Valerie — RIHO
-  { nummer: 'F-2026-00127', offerteTotaal: 13053.53 },  // lijnden — Bijl
-  { nummer: 'F-2026-00134', offerteTotaal: 10814.12 },  // nieuwemeerdijk 287 — DS Bouw
-  { nummer: 'F-2026-00147', offerteTotaal: 6016.26 },   // alu schuifpui — Aanbouw West-Friesland
-  { nummer: 'F-2026-00171', offerteTotaal: 5066.63 },   // Beenen timmerwerken
-  { nummer: 'F-2026-00152', offerteTotaal: 11429.91 },  // Deurnestraat — A. Bax
-  { nummer: 'F-2026-00094', offerteTotaal: 7156.80 },   // sam leijen — Geerlofs
-  { nummer: 'F-2026-00148', offerteTotaal: 5800.00 },   // openslaande deuren — Nike Verhoeven
-  { nummer: 'F-2026-00145', offerteTotaal: 13156.15 },  // 2x aanbouw — Andy Stoutenburg
-  { nummer: 'F-2026-00150', offerteTotaal: 4049.54 },   // john de lange
-  { nummer: 'F-2026-00156', offerteTotaal: 7553.39 },   // schuifpui — Klaver
-  { nummer: 'F-2026-00165', offerteTotaal: 4150.12 },   // Sint Jansteen — Benjamin van Vliet
-  { nummer: 'F-2026-00169', offerteTotaal: 6029.56 },   // 4 delige schuifpui — Amadeus
-]
-const TRIBE_EINDAFREKENING_NUMMERS = TRIBE_EINDAFREKENING.map(x => x.nummer)
+// Tribe-override map. LET OP: dit is legacy data uit het oude Rebu/Tribe-
+// systeem, gekeyed op factuurnummer (F-2026-000xx). Deze fork
+// (Kunststofkozijnnodig.nl) heeft een VERSE database zonder geïmporteerde
+// offertes/facturen en begint de factuurnummering opnieuw bij F-2026-00001.
+// De verse nummerreeks loopt daardoor gegarandeerd tegen deze legacy-nummers
+// aan, waarna de override een volstrekt verkeerd offerte-totaal zou forceren
+// (en zelfs de onderwerp-guard uitschakelt). Daarom hier LEEG gelaten: de
+// override mag in deze fork nooit vuren. Vul dit alleen als er echt legacy
+// Tribe-aanbetalingen in DEZE database geïmporteerd worden.
+const TRIBE_EINDAFREKENING: { nummer: string; offerteTotaal: number }[] = []
 const TRIBE_OFFERTE_TOTALEN = new Map(TRIBE_EINDAFREKENING.map(x => [x.nummer, x.offerteTotaal]))
 
 // Maak een concept-restbetalingsfactuur voor een bestaande aanbetaling.

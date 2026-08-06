@@ -58,7 +58,7 @@ export type RelatieType = (typeof relatieTypes)[number]
 export const offerteStatussen = ['concept', 'verzonden', 'geaccepteerd', 'afgewezen', 'verlopen'] as const
 export type OfferteStatus = (typeof offerteStatussen)[number]
 
-export const orderStatussen = ['nieuw', 'moet_besteld', 'besteld', 'in_behandeling', 'geleverd', 'gefactureerd', 'geannuleerd'] as const
+export const orderStatussen = ['nieuw', 'wacht_op_betaling', 'moet_besteld', 'besteld', 'in_behandeling', 'geleverd', 'gefactureerd', 'geannuleerd'] as const
 export type OrderStatus = (typeof orderStatussen)[number]
 
 export const factuurStatussen = ['concept', 'verzonden', 'betaald', 'deels_betaald', 'vervallen', 'gecrediteerd'] as const
@@ -79,6 +79,7 @@ export const statusKleuren: Record<string, string> = {
   afgewezen: 'bg-red-100 text-red-700',
   verlopen: 'bg-yellow-100 text-yellow-700',
   nieuw: 'bg-blue-100 text-blue-700',
+  wacht_op_betaling: 'bg-amber-100 text-amber-700',
   in_behandeling: 'bg-yellow-100 text-yellow-700',
   geleverd: 'bg-green-100 text-green-700',
   gefactureerd: 'bg-purple-100 text-purple-700',
