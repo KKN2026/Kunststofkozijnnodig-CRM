@@ -12112,6 +12112,127 @@ export async function getLogboekActiviteiten(): Promise<{ items: LogboekActivite
   return { items, magZien: true }
 }
 
+// === OFFERTE-DASHBOARD ===
+// Conversiecijfers per verkoper en per afkomst. Zelfde bron als het logboek
+// (offertes + e-maillog voor wie hem stuurde), maar zonder 'verlopen': die
+// versies zijn vervangen door een nieuwere en zouden de conversie vertekenen.
+export interface OfferteDashboardRij {
+  id: string
+  offertenummer: string
+  onderwerp: string | null
+  projectNaam: string | null
+  klant: string | null
+  relatieId: string | null
+  herkomst: string | null
+  status: string
+  subtotaal: number
+  verstuurdOp: string | null
+  verstuurdDoorId: string | null
+  verstuurdDoorNaam: string | null
+  /** Moment waarop de offerte akkoord/afgewezen werd (voor de doorlooptijd). */
+  beslistOp: string | null
+}
+
+export interface OfferteDashboardData {
+  rijen: OfferteDashboardRij[]
+  verkopers: { id: string; naam: string }[]
+  magZien: boolean
+  rol: string
+  eigenProfielId: string | null
+}
+
+export async function getOfferteDashboard(): Promise<OfferteDashboardData> {
+  const supabase = await createClient()
+  const adminId = await getAdministratieId()
+  if (!adminId) return { rijen: [], verkopers: [], magZien: false, rol: 'medewerker', eigenProfielId: null }
+  const { userId, rol } = await getRolEnEigenMedewerker(supabase, adminId)
+
+  const { data: offertes } = await supabase
+    .from('offertes')
+    .select('id, offertenummer, onderwerp, status, subtotaal, datum, updated_at, relatie:relaties(id, bedrijfsnaam, herkomst), project:projecten(naam)')
+    .eq('administratie_id', adminId)
+    .in('status', ['verzonden', 'geaccepteerd', 'afgewezen'])
+    .order('created_at', { ascending: false })
+    .limit(1000)
+
+  const ids = (offertes || []).map(o => o.id)
+  const verzendingPerOfferte = new Map<string, { op: string; door: string | null }>()
+  const verzenderIds = new Set<string>()
+  const beslistPerOfferte = new Map<string, string>()
+  for (let i = 0; i < ids.length; i += 150) {
+    const chunk = ids.slice(i, i + 150)
+    const [{ data: logs }, { data: beslissingen }] = await Promise.all([
+      supabase
+        .from('email_log')
+        .select('offerte_id, verstuurd_op, verstuurd_door')
+        .in('offerte_id', chunk)
+        .order('verstuurd_op', { ascending: true }),
+      supabase
+        .from('audit_log')
+        .select('entiteit_id, created_at')
+        .eq('administratie_id', adminId)
+        .eq('entiteit_type', 'offerte')
+        .in('actie', ['offerte.geaccepteerd', 'offerte.afgewezen'])
+        .in('entiteit_id', chunk)
+        .order('created_at', { ascending: true }),
+    ])
+    for (const l of logs || []) {
+      if (!l.offerte_id) continue
+      verzendingPerOfferte.set(l.offerte_id, { op: l.verstuurd_op, door: l.verstuurd_door })
+      if (l.verstuurd_door) verzenderIds.add(l.verstuurd_door)
+    }
+    for (const b of beslissingen || []) {
+      if (b.entiteit_id) beslistPerOfferte.set(b.entiteit_id, b.created_at)
+    }
+  }
+
+  const naamPerId = new Map<string, string>()
+  if (verzenderIds.size > 0) {
+    const { data: profielen } = await supabase
+      .from('profielen')
+      .select('id, naam, email')
+      .in('id', [...verzenderIds])
+    for (const p of profielen || []) naamPerId.set(p.id, p.naam || p.email || '?')
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let rijen: OfferteDashboardRij[] = (offertes || []).map((o: any) => {
+    const v = verzendingPerOfferte.get(o.id)
+    const beslist = o.status === 'geaccepteerd' || o.status === 'afgewezen'
+    return {
+      id: o.id,
+      offertenummer: o.offertenummer,
+      onderwerp: o.onderwerp,
+      projectNaam: o.project?.naam || null,
+      klant: o.relatie?.bedrijfsnaam || null,
+      relatieId: o.relatie?.id || null,
+      herkomst: o.relatie?.herkomst || null,
+      status: o.status,
+      subtotaal: Number(o.subtotaal || 0),
+      verstuurdOp: v?.op || o.datum || null,
+      verstuurdDoorId: v?.door || null,
+      verstuurdDoorNaam: v?.door ? (naamPerId.get(v.door) || null) : null,
+      // Geen audit-regel (bv. via het klantportaal beslist)? Dan is updated_at
+      // de beste benadering van het beslismoment.
+      beslistOp: beslist ? (beslistPerOfferte.get(o.id) || o.updated_at || null) : null,
+    }
+  })
+
+  // Niet-admins (bv. een verkoper met een eigen pagina) zien alleen wat ze
+  // zelf verstuurd hebben.
+  if (rol !== 'admin') {
+    if (!userId) return { rijen: [], verkopers: [], magZien: false, rol, eigenProfielId: null }
+    rijen = rijen.filter(r => r.verstuurdDoorId === userId)
+  }
+
+  const verkopers = [...verzenderIds]
+    .map(id => ({ id, naam: naamPerId.get(id) || '?' }))
+    .filter(v => rol === 'admin' || v.id === userId)
+    .sort((a, b) => a.naam.localeCompare(b.naam))
+
+  return { rijen, verkopers, magZien: true, rol, eigenProfielId: userId }
+}
+
 // === INSTELLINGEN ===
 // Vrij instelbare voorkeuren per administratie. De definities (label, type,
 // default) staan in lib/instellingen.ts; hier alleen lezen en opslaan.
