@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { parseLeverancierPdfText, type LeverancierKey } from '@/lib/pdf-parser'
+import { parseLeverancierPdfText, detectLeverancierFromText, SCHUCO_ENCODED_RE, type LeverancierKey } from '@/lib/pdf-parser'
 import { Button } from '@/components/ui/button'
 import { Dialog } from '@/components/ui/dialog'
 import { ArrowLeft, Upload, FileText, Trash2, ArrowRight, Loader2, CheckCircle, AlertTriangle, Plus, Building2 } from 'lucide-react'
@@ -14,6 +14,7 @@ interface DetectieResultaat {
   confidence: number
   reden: string
   regex_hint?: string | null
+  parser_key?: string | null
   auto_added?: boolean
 }
 
@@ -214,22 +215,37 @@ export function StapTekeningen({
         }
       }
 
-      // Stap A.1: detect leverancier via Haiku 4.5
+      // Stap A.1: detect leverancier via Haiku 4.5.
+      // De regex-detectie draait client-side over de VOLLEDIGE tekst (de
+      // AI-route ziet maar een fragment — Schüco-markers kunnen na een
+      // voorblad pas op pagina 3+ staan) en gaat als hint mee. Faalt de
+      // AI-route, dan is de regex-detectie de fallback i.p.v. 'onbekend'.
       setProgress('Leverancier herkennen...')
+      const regexHintVolledig = detectLeverancierFromText(fullText)
+      // Stuur naast de kop ook een fragment rond de eerste element-marker mee,
+      // zodat de AI bij een lang voorblad tóch element-structuur ziet.
+      let detectSample = fullText.slice(0, 8000)
+      const markerIdx = fullText.search(/Merk\s+[A-Z0-9]+\s|1IVO/)
+      if (markerIdx > 8000) {
+        detectSample += '\n[...]\n' + fullText.slice(markerIdx, markerIdx + 2000)
+      }
+      const regexFallback = (reden: string): DetectieResultaat => regexHintVolledig
+        ? { leverancier: regexHintVolledig, display_naam: regexHintVolledig, profiel: '', confidence: 0.75, reden: `${reden} — regex-detectie gebruikt`, regex_hint: regexHintVolledig }
+        : { leverancier: 'onbekend', display_naam: '', profiel: '', confidence: 0, reden }
       let detectie: DetectieResultaat
       try {
         const res = await fetch('/api/ai/detect-leverancier', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: fullText.slice(0, 8000), offerteId: offerteId || undefined }),
+          body: JSON.stringify({ text: detectSample, regexHint: regexHintVolledig || undefined, offerteId: offerteId || undefined }),
         })
         if (res.ok) {
           detectie = await res.json() as DetectieResultaat
         } else {
-          detectie = { leverancier: 'onbekend', display_naam: '', profiel: '', confidence: 0, reden: 'AI-detectie faalde' }
+          detectie = regexFallback('AI-detectie faalde')
         }
       } catch {
-        detectie = { leverancier: 'onbekend', display_naam: '', profiel: '', confidence: 0, reden: 'AI-detectie faalde' }
+        detectie = regexFallback('AI-detectie faalde')
       }
 
       // Bij onzekerheid: pauzeer en vraag de gebruiker
@@ -253,7 +269,10 @@ export function StapTekeningen({
         showToast(`Nieuwe leverancier toegevoegd: ${detectie.display_naam}`, 'success')
       }
       onLeverancierDetected(detectie)
-      await runScanFase(file, fullText, pdf, totalPages, detectie.leverancier as LeverancierKey, detectie.display_naam || detectie.leverancier)
+      // parser_key (uit de registry) bepaalt het parser-pad; de slug kan een
+      // dealer-/registrynaam zijn die geen geldig parser-pad is. De parser
+      // valt bij een onbekende key zelf terug op inhouds-detectie.
+      await runScanFase(file, fullText, pdf, totalPages, (detectie.parser_key || detectie.leverancier) as LeverancierKey, detectie.display_naam || detectie.leverancier)
     } catch (err) {
       console.error('PDF processing error:', err)
       setError(`Fout bij verwerken van PDF: ${err instanceof Error ? err.message : String(err)}`)
@@ -459,8 +478,9 @@ export function StapTekeningen({
       // Scan all pages for element names and drawing markers
       const elementHeaderPattern = /(?:Gekoppeld\s+element|Deur|Element)\s+\d{3}(?:\/\d+)?|Merk\s+[\dA-Z]+|Positie\s*\d{3}(?!\d|[.,]\d)/i
       const gealanNLHeaderPattern = /Productie\s+maten\s+([\s\S]+?)\s+Aantal\s*:\s*\d+\s+Verbinding\s*:/i
-      // Schüco: encoded "1IVO" + letter (%=A, &=B, ...)
-      const schucoEncodedPattern = /1IVO\s*([%&'()*+,\-.])/i
+      // Schüco: encoded "1IVO" + letter (%=A … >=Z) — zelfde alfabet als
+      // SCHUCO_ENCODED_RE in pdf-parser, maar met capture voor de Merk-letter.
+      const schucoEncodedPattern = /1IVO\s*([%->])/
       const standaloneProductPattern = /\b(Rolluik|Rolladen|Rollo|Zonwering|Screen|Hor(?:re)?|Insecten\s*hor|Fly\s*screen)\b/i
       const allPageScans: { pageNum: number; naam: string | null; hasDrawing: boolean; isStandaloneProduct: boolean }[] = []
       for (let pageNum = 2; pageNum <= totalPages; pageNum++) {
@@ -484,7 +504,8 @@ export function StapTekeningen({
         // 'Productie maten' header + Aantal/Verbinding samen = sterke indicator van een
         // element-tekening-pagina ook als de aanzicht-markers ontbreken/uitelkaar gebroken
         // zijn door pdfjs text-extractie.
-        const hasDrawing = /Binnenaanzicht|Binnenzicht|Buitenaanzicht|Buitenzicht|BUITEN\s*ZICHT|BINNEN\s*ZICHT|AANZICHT\s*:\s*BUITEN|AANZICHT|%%2>-',8|1IVO\s*[%&'()*+,\-.]|Productie\s+maten|Widok\s*z\s*(?:zewn|wewn)|Skala\s*\d\s*:/i.test(pageText)
+        const hasDrawing = /Binnenaanzicht|Binnenzicht|Buitenaanzicht|Buitenzicht|BUITEN\s*ZICHT|BINNEN\s*ZICHT|AANZICHT\s*:\s*BUITEN|AANZICHT|%%2>-',8|Productie\s+maten|Widok\s*z\s*(?:zewn|wewn)|Skala\s*\d\s*:/i.test(pageText)
+          || SCHUCO_ENCODED_RE.test(pageText)
           || (/Aantal\s*:\s*\d+/i.test(pageText) && /Verbinding\s*:/i.test(pageText))
         const isStandaloneProduct = standaloneProductPattern.test(pageText)
         let elementNaam: string | null = null
@@ -703,9 +724,9 @@ export function StapTekeningen({
         // SKIP voor Schüco — daar heeft de 'Beschrijving | Kleur' specs-tabel
         // header ook een lichtblauwe achtergrond die anders als Totalen-balk
         // zou worden gedetecteerd en de hele specs-rij zou wegwissen.
-        const isSchucoPageEarly = /1IVO\s*[%&'()*+,\-.]|Sch[¿u]co|Brutopr|&VYXSTV/i.test(
-          textItems.map((t: { str: string }) => t.str).join(' ')
-        )
+        const schucoPageText = textItems.map((t: { str: string }) => t.str).join(' ')
+        const isSchucoPageEarly = SCHUCO_ENCODED_RE.test(schucoPageText)
+          || /Sch[¿uü]co|Brutopr|&VYXSTV/i.test(schucoPageText)
         const blueBarRows: boolean[] = new Array(h).fill(false)
         if (!isSchucoPageEarly) for (let y = Math.floor(h * 0.4); y < h; y++) {
           let blueCount = 0
@@ -874,7 +895,7 @@ export function StapTekeningen({
         // volledig zichtbaar blijven. Alleen aangewezen regio's worden wit.
         // Skip AI Vision voor Schüco: daar doen regex-wipes al goed werk
         // en Vision had specs verwijderd die eigenlijk moesten blijven.
-        const isSchucoPage = !!brutoprItem || /1IVO\s*[%&'()*+,\-.]|Sch[¿u]co/i.test(pageTextAll)
+        const isSchucoPage = !!brutoprItem || SCHUCO_ENCODED_RE.test(pageTextAll) || /Sch[¿uü]co/i.test(pageTextAll)
         try {
           if (isSchucoPage) throw new Error('skip-ai-for-schuco')
           const previewScale = 0.5
@@ -966,6 +987,11 @@ export function StapTekeningen({
 
       setProgress('')
       setProcessing(false)
+      // Nooit stilzwijgend met 0 elementen doorgaan: dat betekent vrijwel
+      // altijd een parsing-probleem en zou verderop een offerte van €0 geven.
+      if (parsed.aantalElementen === 0) {
+        setError(`Geen elementen herkend in deze PDF (leverancier: ${leverancierDisplay}). Controleer of de juiste leverancier is gekozen (verwijder de PDF en upload opnieuw), of voeg de regels straks handmatig toe bij Controleren.`)
+      }
       onPdfProcessed(parsed, tekeningen, wipedRegionsCollector)
       } catch (renderErr) {
         // Tekening-rendering faalde, maar prijs/elementen zijn al verwerkt.
@@ -1129,12 +1155,16 @@ export function StapTekeningen({
     setProgress('Tekeningen extraheren...')
 
     try {
+      // parser_key uit de registry bepaalt het parser-pad (de slug kan een
+      // vrije registrynaam zijn); onbekende keys vallen in de parser terug
+      // op inhouds-detectie.
+      const gekozen = bekendeLijst.find(l => l.naam === chosenSlug)
       await runScanFase(
         pendingPdfFile,
         pendingFullText,
         pendingPdf,
         pendingTotalPages,
-        chosenSlug as LeverancierKey,
+        (gekozen?.parser_key || chosenSlug) as LeverancierKey,
         chosenDisplay,
       )
     } finally {

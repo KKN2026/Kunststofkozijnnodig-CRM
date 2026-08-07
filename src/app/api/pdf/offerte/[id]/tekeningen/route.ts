@@ -3,7 +3,7 @@ import { renderToBuffer } from '@react-pdf/renderer'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { TekeningenDocument, TekeningenElement } from '@/lib/pdf/tekeningen-template'
-import { parseLeverancierPdfText } from '@/lib/pdf-parser'
+import { parseLeverancierPdfText, type LeverancierKey } from '@/lib/pdf-parser'
 
 type ParsedElement = ReturnType<typeof parseLeverancierPdfText>['elementen'][number]
 
@@ -105,11 +105,16 @@ export async function GET(
       .from('documenten')
       .download(leverancierDoc.storage_path)
 
+    // Her-parse met de leverancier-hint uit de wizard-metadata: zonder hint
+    // kan de autodetectie op de (anders gestructureerde) unpdf-tekst falen en
+    // komen de specs leeg in de tekeningen-PDF terecht.
+    const savedLeverancierKey: LeverancierKey | undefined =
+      (!Array.isArray(rawMeta) && rawMeta.leverancierKey) ? rawMeta.leverancierKey as LeverancierKey : undefined
     let elementData: ParsedElement[] = []
     if (pdfFile) {
       const pdfBuffer = Buffer.from(await pdfFile.arrayBuffer())
       const parsed = await pdfParse(pdfBuffer)
-      elementData = parseLeverancierPdfText(parsed.text).elementen
+      elementData = parseLeverancierPdfText(parsed.text, savedLeverancierKey).elementen
     }
     function findParsedElement(naam: string): ParsedElement | undefined {
       const exact = elementData.find(e => e.naam === naam)

@@ -37,50 +37,68 @@ export interface KozijnElement {
   krukBuiten: string
 }
 
+// Herkent Schüco's encoded font (shift −28) op RAUWE tekst: "1IVO" is het
+// encoded "Merk", gevolgd door een encoded Merk-letter A–Z ('%' t/m '>').
+// Gedeeld door parser, detectie en frontend zodat de drempels gelijk zijn.
+export const SCHUCO_ENCODED_RE = /1IVO[\s\u0004]*[%->]/
+
+const KNOWN_LEVERANCIER_KEYS: LeverancierKey[] = ['eko-okna', 'schuco', 'gealan', 'gealan-nl', 'kochs', 'aluplast', 'reynaers', 'default']
+
 export function parseLeverancierPdfText(text: string, hint?: LeverancierKey): { totaal: number; elementen: KozijnElement[] } {
+  const rawText = text
+  // Een hint die geen bekend parser-pad is (bv. een registry-slug als
+  // 'sch-co') mag de parsing nooit uitschakelen — dan autodetect op inhoud.
+  if (hint && !KNOWN_LEVERANCIER_KEYS.includes(hint)) hint = undefined
   const cleanField = (val: string) => val.replace(/\s*Geen\s*[Gg]arantie!?\s*/gi, '').replace(/\s*No\s*warranty!?\s*/gi, '').trim()
 
   // Schüco PDF-fonts worden soms door pdfjs niet correct gedecoded — elke
-  // letter is shift -28 van ASCII ('M'→'1', 'e'→'I', 'r'→'V', enz.) en er
-  // zitten onzichtbare control-chars tussen (- etc). Eerst die
-  // strippen, dan detecteren via "1IVO" (encoded "Merk") en shift toepassen.
-  text = text.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '')
-  if (/1IVO\s*[%&'()*]/.test(text) && !/Merk\s+[A-Z]\s+Aantal/i.test(text)) {
-    // Schüco-offertes hebben een mix van encoded (shift -28) headers en
-    // normale ASCII specs. Universeel shiften breekt de normale delen, dus
-    // we vervangen alleen de bekende encoded labels per-string.
-    const repl: [string | RegExp, string][] = [
-      ['4VSHYGXMIQEXIR', 'Productie maten'],
-      ['1IVO', 'Merk'],
-      ['%ERXEPWXYOW', 'Aantal stuks'],
-      [':IVFMRHMRK', 'Verbinding'],
-      ['7]WXIIQ', 'Systeem'],
-      [/7GL[¿ü]GS/g, 'Schüco'],
-      ['7PMHI', 'Slide'],
-      [':IVHMITXs', 'Verdiept 15°'],
-      [':IVHMITX', 'Verdiept'],
-      ['&IWGLVMNZMRK', 'Beschrijving'],
-      ['/PIYV', 'Kleur'],
-      ['2IXXS', 'Netto'],
-      ['TVMNW', 'prijs'],
-      ['XSXEEP', 'totaal'],
-      ['&VYXSTV', 'Brutopr'],
-      ['/SVXMRK', 'Korting'],
-      ['6EEQ', 'Raam'],
-      ['8SXEEP', 'Totaal'],
+  // glyph is shift −28 van ASCII ('M'→'1', 'e'→'I', 'r'→'V'). Cijfers,
+  // dubbele punten en spaties uit die font komen daardoor binnen als
+  // ONZICHTBARE control-chars ('1'→\u0015, ':'→\u001E, ' '→\u0004). Die eerst
+  // TERUGvertalen (+28) en pas daarna strippen — anders zijn alle prijzen,
+  // maten en aantallen al weggegooid voordat er iets te decoderen valt.
+  if (SCHUCO_ENCODED_RE.test(text) && !/Merk\s+[A-Z]\s+Aantal/i.test(text)) {
+    // Merk-letter decoderen zolang de tekst nog rauw is: letters zijn hier
+    // printable ('A'→'%' … 'Z'→'>') terwijl cijfers control-chars zijn.
+    // Dekt dus ook Merk L–Z, die ná de +28-vertaling niet meer van
+    // genummerde merken ('Merk 1') te onderscheiden zouden zijn.
+    text = text.replace(/1IVO[\s\u0004]*([%->])/g, (_, ch) => 'Merk ' + String.fromCharCode(ch.charCodeAt(0) + 28))
+    // Encoded control-chars terugvertalen naar cijfers/leestekens/spaties.
+    // \u0009 (tab) is het encoded '%' — binnen een encoded Schüco-document
+    // produceert pdfjs zelf geen tabs, dus meevertalen is daar veilig.
+    text = text.replace(/[\u0001-\u0009\u000B\u000C\u000E-\u001F]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) + 28))
+    // Bekende encoded labels vervangen. Meerwoordige labels kunnen nu een
+    // echte spatie bevatten (de encoded spatie is hierboven ' ' geworden).
+    const repl: [RegExp, string][] = [
+      [/4VSHYGXMI ?QEXIR/g, 'Productie maten'],
+      [/1IVO/g, 'Merk'],
+      [/%ERXEP ?WXYOW/g, 'Aantal stuks'],
+      [/:IVFMRHMRK/g, 'Verbinding'],
+      [/7\]WXIIQ/g, 'Systeem'],
+      [/7GL[¿üà]GS/g, 'Schüco'],
+      [/7PMHI/g, 'Slide'],
+      [/:IVHMITX ?(\d+)s/g, 'Verdiept $1°'],
+      [/:IVHMITXs/g, 'Verdiept 15°'],
+      [/:IVHMITX/g, 'Verdiept'],
+      [/&IWGLVMNZMRK/g, 'Beschrijving'],
+      [/\/PIYV/g, 'Kleur'],
+      [/2IXXS/g, 'Netto'],
+      [/TVMNW/g, 'prijs'],
+      [/XSXEEP/g, 'totaal'],
+      [/&VYXSTV/g, 'Brutopr'],
+      [/\/SVXMRK/g, 'Korting'],
+      [/6EEQ/g, 'Raam'],
+      [/8SXEEP/g, 'Totaal'],
     ]
-    for (const [from, to] of repl) {
-      if (typeof from === 'string') text = text.split(from).join(to)
-      else text = text.replace(from, to)
-    }
-    // Merk-letter kan direct aan 'Merk' geplakt zijn (geen spatie) — A=%, B=&, enz.
-    text = text.replace(/Merk\s*([%&'()*+,\-./])/g, (_, ch) => 'Merk ' + String.fromCharCode(ch.charCodeAt(0) + 28))
+    for (const [from, to] of repl) text = text.replace(from, to)
     // Spatie tussen 'Systeem' en 'Schüco' herstellen voor regex-match
     text = text.replace(/Systeem([A-Z])/g, 'Systeem: $1')
-    // Lossen 'Aantal stuks' zonder getal op: plaats ':1' zodat bestaande
-    // Schüco pattern matcht (Schüco-PDF toont aantal zelden, vrijwel altijd 1).
-    text = text.replace(/(Merk\s+[A-Z0-9]+)\s+Aantal\s+stuks(?!\s*:)/g, '$1 Aantal stuks:1')
+    // Vangnet voor exports waar het aantal alsnog ontbreekt: ':1' plaatsen
+    // zodat het Schüco-patroon matcht (aantal is vrijwel altijd 1).
+    text = text.replace(/(Merk\s+[A-Z0-9]+)\s+Aantal\s+stuks(?!\s*:?\s*\d)/g, '$1 Aantal stuks:1')
   }
+  // Overgebleven control-chars (niet-Schüco documenten of restruis) strippen
+  text = text.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '')
 
   // Detect format - flexible whitespace to handle different PDF text extractors
   // Belangrijk: Aluplast/Deur-Element format (originele) eerst testen. Gealan-detectie
@@ -262,10 +280,13 @@ export function parseLeverancierPdfText(text: string, hint?: LeverancierKey): { 
     // Patroon is flexibel: Merk-letter, Aantal stuks (optionele :N), Verbinding
     // (tot iets dat lijkt op Systeem), dan Systeem-naam tot EOL.
     // Merk-label is meestal een losse letter (A, B, C) maar sommige Schüco-
-    // exports nummeren ze juist (Merk 1 … Merk 10). Beide toestaan: [A-Z0-9]+.
-    const elementPattern = /Merk\s+([A-Z0-9]+)\s+Aantal\s*stuks\s*:?\s*(\d*)[\s\S]{0,40}?Systeem\s*:?\s*([^\n]+(?:\n(?!Merk|Productie)[^\n]+)?)/gi
+    // exports nummeren ze juist (Merk 1 … Merk 10). Nieuwere platte-tekst-
+    // exports gebruiken vrije namen vóór 'Aantal stuks' ("Poz 1", "Pos. 2",
+    // "Voordeur", "Erker boven") — daarom vangen we de hele naam op de regel
+    // vóór 'Aantal stuks' (het 'Merk'-voorvoegsel is daar een deelgeval van).
+    const elementPattern = /(?:^|\n)[ \t]*([A-Za-z0-9][^\n]*?)\s+Aantal\s*stuks\s*:?\s*(\d*)[\s\S]{0,60}?Systeem\s*:?\s*([^\n]+(?:\n(?!Merk|Productie)[^\n]+)?)/gi
     while ((match = elementPattern.exec(text)) !== null) {
-      const nextPat = /Merk\s+[A-Z0-9]+\s+Aantal\s*stuks/gi
+      const nextPat = /(?:^|\n)[ \t]*[A-Za-z0-9][^\n]*?\s+Aantal\s*stuks/gi
       nextPat.lastIndex = match.index + match[0].length
       const next = nextPat.exec(text)
       const sectionEnd = next ? next.index : text.length
@@ -279,8 +300,16 @@ export function parseLeverancierPdfText(text: string, hint?: LeverancierKey): { 
       const sysVerdiept = /Schüco[\s\S]{0,20}?Verdiept\s*(\d+°)?/i.exec(match[3])
       if (sysSlide) systeem = 'Schüco Slide'
       else if (sysVerdiept) systeem = 'Schüco Verdiept' + (sysVerdiept[1] ? ' ' + sysVerdiept[1] : '')
+      // "Merk A" normaliseren zoals voorheen; vrije namen ("Poz 1",
+      // "Voordeur") ongewijzigd overnemen.
+      const rawNaam = match[1].trim().replace(/\s+/g, ' ')
+      const naam = /^Merk\s+/i.test(rawNaam)
+        ? 'Merk ' + rawNaam.replace(/^Merk\s+/i, '').toUpperCase()
+        : /^[A-Z0-9]{1,2}$/.test(rawNaam)
+          ? 'Merk ' + rawNaam
+          : rawNaam
       headers.push({
-        naam: 'Merk ' + match[1].toUpperCase(),
+        naam,
         hoeveelheid: parseInt(match[2]) || 1,
         systeem,
         kleur: kleurMatch ? kleurMatch[1].trim() : '',
@@ -488,7 +517,7 @@ export function parseLeverancierPdfText(text: string, hint?: LeverancierKey): { 
       //   Totaal  4.165,92  4.165,92
       // In de tekst wordt "Raam" gevolgd door: bruto, korting%, korting€, netto.
       // Het laatste getal is per-stuk netto prijs.
-      const m = searchText.match(/Raam[\s\n]+([\d.,]+)[\s\n]+[\d.,]+\s*%[\s\n]+[\d.,]+[\s\n]+([\d.,]+)/)
+      const m = searchText.match(/Raam[\s\n]+([\d.,]+)[\s\n]+[\d.,]+\s*%?[\s\n]+[\d.,]+[\s\n]+([\d.,]+)/)
       if (m) {
         prijs = parseFloat(m[2].replace(/\./g, '').replace(',', '.'))
       } else {
@@ -875,15 +904,33 @@ export function parseLeverancierPdfText(text: string, hint?: LeverancierKey): { 
     })
   }
 
-  // Vangnet: als element-som significant afwijkt van PDF totaal, schaal prijzen proportioneel
+  // Vangnet: als element-som significant afwijkt van PDF totaal, schaal prijzen proportioneel.
+  // NIET schalen zolang één of meer elementprijzen op 0 staan — dan is de
+  // afwijking een extractieprobleem en zou schalen de wél-gelezen prijzen
+  // kunstmatig opblazen naar het totaal.
   if (totaal > 0 && elementen.length > 0) {
     const elementSum = elementen.reduce((sum, e) => sum + e.prijs * e.hoeveelheid, 0)
-    if (elementSum > 0 && Math.abs(elementSum - totaal) / totaal > 0.05) {
+    const heeftNulprijzen = elementen.some(e => e.prijs <= 0)
+    if (elementSum > 0 && !heeftNulprijzen && Math.abs(elementSum - totaal) / totaal > 0.05) {
       const factor = totaal / elementSum
       for (const e of elementen) {
         e.prijs = Math.round(e.prijs * factor * 100) / 100
       }
     }
+  }
+
+  // Vangnet: leverde het hint-pad niets op, probeer dan alsnog autodetectie
+  // op inhoud (één niveau diep — de retry draait zonder hint).
+  if (elementen.length === 0 && hint) {
+    const retry = parseLeverancierPdfText(rawText)
+    if (retry.elementen.length > 0) return retry
+  }
+
+  // Vangnet: geen totaalregel gevonden (nieuwere Aluplast/Eko-exports missen
+  // 'Prijs TOT') maar wél elementprijzen → som van de elementen als totaal.
+  if (totaal === 0 && elementen.length > 0) {
+    const som = elementen.reduce((sum, e) => sum + e.prijs * e.hoeveelheid, 0)
+    if (som > 0) totaal = Math.round(som * 100) / 100
   }
 
   return { totaal, elementen }
@@ -892,11 +939,15 @@ export function parseLeverancierPdfText(text: string, hint?: LeverancierKey): { 
 // Autodetect op basis van regex-patronen. Wordt gebruikt als second-opinion
 // voor de AI-detectie (om confidence te verhogen) of als fallback bij AI-fout.
 export function detectLeverancierFromText(text: string): LeverancierKey | null {
-  const cleaned = text.replace(/[--]/g, '')
+  // Schüco-encoded eerst op de RAUWE tekst testen — de control-char-strip
+  // hieronder gooit de encoded spaties/cijfers weg. Zelfde drempel als de
+  // decoder in parseLeverancierPdfText (SCHUCO_ENCODED_RE, Merk A–Z).
+  if (SCHUCO_ENCODED_RE.test(text)) return 'schuco'
+  const cleaned = text.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '')
   if (/(?:Deur|Element)\s+\d{3}[\s\n]+Hoeveelheid\s*:/i.test(cleaned)) return 'aluplast'
   if (/Productie\s+maten/i.test(cleaned) && /Netto\s*prijs/i.test(cleaned) && /Aantal\s*:\s*\d+\s+Verbinding\s*:/i.test(cleaned) && !/Merk\s+[\dA-Z]+\s*Aantal/.test(cleaned)) return 'gealan-nl'
   if (/Merk\s+[\dA-Z]+\s*Aantal\s*:\s*\d+/.test(cleaned) && /Netto\s*totaal/i.test(cleaned) && !/Merk\s+[A-Z0-9]+\s*Aantal\s*stuks/i.test(cleaned)) return 'gealan'
-  if (/Merk\s+[A-Z0-9]+\s*Aantal\s*stuks\s*:\s*\d+/i.test(cleaned) || /Sch[ü¿u\s][cCG][oO]\s+(?:Slide|Verdiept)/i.test(cleaned) || /1IVO\s*[%&'()*+,\-.]/.test(cleaned)) return 'schuco'
+  if (/Merk\s+[A-Z0-9]+\s*Aantal\s*stuks\s*:\s*\d+/i.test(cleaned) || /Sch[ü¿u\s][cCG][oO]\s+(?:Slide|Verdiept)/i.test(cleaned)) return 'schuco'
   if (/K-Vision\s+\d+/.test(cleaned) || /KOCHS|Primus\s*MD|Premidoor\s*\d+/i.test(cleaned)) return 'kochs'
   if (/Hoev\.\s*:\s*\d+/.test(cleaned)) return 'eko-okna'
   return null

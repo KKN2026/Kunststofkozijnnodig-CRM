@@ -3,7 +3,7 @@ import { renderToBuffer } from '@react-pdf/renderer'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { OfferteDocument, KozijnElement } from '@/lib/pdf/offerte-template'
-import { parseLeverancierPdfText } from '@/lib/pdf-parser'
+import { parseLeverancierPdfText, type LeverancierKey } from '@/lib/pdf-parser'
 
 export const dynamic = 'force-dynamic'
 
@@ -58,18 +58,8 @@ export async function GET(
           .from('documenten')
           .download(leverancierDoc.storage_path)
 
-        let elementData: ReturnType<typeof parseLeverancierPdfText>['elementen'] = []
-        let leverancierTotaalRaw = 0
-
-        if (pdfFile) {
-          const pdfBuffer = Buffer.from(await pdfFile.arrayBuffer())
-          const parsed = await pdfParse(pdfBuffer)
-          const parsedPdf = parseLeverancierPdfText(parsed.text)
-          elementData = parsedPdf.elementen
-          leverancierTotaalRaw = parsedPdf.totaal
-        }
-
-        // Load tekening metadata + marge data
+        // Load tekening metadata + marge data (vóór de parse: de opgeslagen
+        // leverancier-hint bepaalt het parser-pad, cruciaal voor Schüco).
         const { data: metaDoc } = await supabaseAdmin
           .from('documenten')
           .select('*')
@@ -81,6 +71,7 @@ export async function GET(
         let margePercentage = 0
         let perElementMarges: Record<string, number> = {}
         let savedPrijzen: Record<string, { prijs: number; hoeveelheid: number }> = {}
+        let savedLeverancierKey: LeverancierKey | undefined
 
         if (metaDoc) {
           const rawMeta = JSON.parse(metaDoc.storage_path)
@@ -91,7 +82,19 @@ export async function GET(
             margePercentage = rawMeta.margePercentage || 0
             perElementMarges = rawMeta.marges || {}
             savedPrijzen = rawMeta.prijzen || {}
+            savedLeverancierKey = rawMeta.leverancierKey || undefined
           }
+        }
+
+        let elementData: ReturnType<typeof parseLeverancierPdfText>['elementen'] = []
+        let leverancierTotaalRaw = 0
+
+        if (pdfFile) {
+          const pdfBuffer = Buffer.from(await pdfFile.arrayBuffer())
+          const parsed = await pdfParse(pdfBuffer)
+          const parsedPdf = parseLeverancierPdfText(parsed.text, savedLeverancierKey)
+          elementData = parsedPdf.elementen
+          leverancierTotaalRaw = parsedPdf.totaal
         }
 
         // Also load prices saved at PDF upload time (most reliable source)

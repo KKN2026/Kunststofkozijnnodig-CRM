@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: `Te veel verzoeken — probeer over ${Math.ceil(rl.resetIn / 1000)}s opnieuw` }, { status: 429 })
   }
 
-  const { text, offerteId } = (await req.json()) as { text: string; offerteId?: string }
+  const { text, offerteId, regexHint: clientRegexHint } = (await req.json()) as { text: string; offerteId?: string; regexHint?: string }
 
   if (!text || text.length < 50) {
     return NextResponse.json({ error: 'PDF-tekst te kort' }, { status: 400 })
@@ -56,8 +56,12 @@ export async function POST(req: NextRequest) {
     return `- ${l.naam}: "${l.display_naam}"${aliases}${profielen}`
   }).join('\n')
 
-  // Regex second opinion — geeft hint waarover AI zekerder kan zijn
-  const regexHint = detectLeverancierFromText(text)
+  // Regex second opinion — geeft hint waarover AI zekerder kan zijn.
+  // De client rekent de hint over de VOLLEDIGE PDF-tekst uit (wij zien hier
+  // maar een fragment), dus die heeft voorrang op onze eigen detectie.
+  const geldigeHints = ['eko-okna', 'schuco', 'gealan', 'gealan-nl', 'kochs', 'aluplast', 'reynaers', 'default']
+  const regexHint = (clientRegexHint && geldigeHints.includes(clientRegexHint) ? clientRegexHint : null)
+    || detectLeverancierFromText(text)
 
   const system = `Je bent een classifier voor kozijn-leveranciers offertes. Je krijgt de eerste paar pagina's tekst van een PDF en moet bepalen welke leverancier deze offerte heeft uitgebracht.
 
@@ -132,22 +136,39 @@ ${text.slice(0, 5000)}
     let effectiveSlug = object.leverancier_slug
     let autoAdded = false
     if (object.leverancier_slug === 'onbekend' && object.display_naam?.trim().length >= 2 && finalConfidence >= 0.7) {
-      const newSlug = object.display_naam.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+      // Diakrieten eerst normaliseren ("Schüco" → "schuco"), anders wordt de
+      // ü een streepje en ontstaat een kapotte dubbelganger-slug ("sch-co")
+      // met parser_key 'default' die alle volgende uploads verpest.
+      const newSlug = object.display_naam
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
       if (newSlug) {
         try {
-          const { data: bestaand } = await sb.from('bekende_leveranciers').select('naam').eq('naam', newSlug).maybeSingle()
-          if (!bestaand) {
-            await sb.from('bekende_leveranciers').insert({
-              naam: newSlug,
-              display_naam: object.display_naam.trim(),
-              profielen: object.profiel ? [object.profiel.trim()] : [],
-              parser_key: 'default',
-              added_by_user: false,
-              detect_count: 1,
-            })
-            autoAdded = true
+          // Match ook op display_naam en aliases: een "nieuwe" leverancier die
+          // qua naam al bekend is (andere spelling) mag nooit dubbel de
+          // registry in.
+          const bekend = (bekendeLeveranciers || []).find(l =>
+            l.naam === newSlug
+            || l.display_naam?.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase() === newSlug.replace(/-/g, ' ')
+            || ((l.aliases as string[] | null) || []).some(a => a.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-') === newSlug)
+          )
+          if (bekend) {
+            effectiveSlug = bekend.naam
+          } else {
+            const { data: bestaand } = await sb.from('bekende_leveranciers').select('naam').eq('naam', newSlug).maybeSingle()
+            if (!bestaand) {
+              await sb.from('bekende_leveranciers').insert({
+                naam: newSlug,
+                display_naam: object.display_naam.trim(),
+                profielen: object.profiel ? [object.profiel.trim()] : [],
+                parser_key: 'default',
+                added_by_user: false,
+                detect_count: 1,
+              })
+              autoAdded = true
+            }
+            effectiveSlug = newSlug
           }
-          effectiveSlug = newSlug
         } catch (addErr) {
           console.warn('Auto-toevoegen nieuwe leverancier mislukt:', addErr)
         }
@@ -168,6 +189,12 @@ ${text.slice(0, 5000)}
       }
     }
 
+    // parser_key uit de registry meesturen: dat is het pad dat de tekst-parser
+    // moet nemen. Auto-toegevoegde leveranciers krijgen 'default'.
+    const parserKey = autoAdded
+      ? 'default'
+      : (bekendeLeveranciers || []).find(l => l.naam === effectiveSlug)?.parser_key || null
+
     return NextResponse.json({
       leverancier: effectiveSlug,
       display_naam: object.display_naam,
@@ -175,6 +202,7 @@ ${text.slice(0, 5000)}
       confidence: finalConfidence,
       reden: object.reden,
       regex_hint: regexHint,
+      parser_key: parserKey,
       auto_added: autoAdded,
     })
   } catch (e) {

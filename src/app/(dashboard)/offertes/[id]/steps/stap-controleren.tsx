@@ -548,7 +548,7 @@ export function StapControleren({
       for (const el of elementen) {
         elPrijzen[el.naam] = { prijs: el.prijs, hoeveelheid: el.hoeveelheid }
       }
-      await saveLeverancierTekeningen(offerteId, tekeningData, undefined, undefined, elPrijzen)
+      await saveLeverancierTekeningen(offerteId, tekeningData, undefined, undefined, elPrijzen, detectedLeverancier?.leverancier)
 
       if (pdfTotaal > 0) {
         const updated = [...regels]
@@ -640,7 +640,7 @@ export function StapControleren({
           elementPrijzen[el.naam] = { prijs: el.prijs, hoeveelheid: el.hoeveelheid }
         }
       }
-      const saveResult = await saveLeverancierTekeningen(offerteId, tekeningData, margePercentage, elementMarges, elementPrijzen)
+      const saveResult = await saveLeverancierTekeningen(offerteId, tekeningData, margePercentage, elementMarges, elementPrijzen, detectedLeverancier?.leverancier)
       if (saveResult && 'error' in saveResult && saveResult.error) {
         console.error('saveLeverancierTekeningen error:', saveResult.error)
         setError(`Opslaan van tekeningen mislukt: ${saveResult.error}`)

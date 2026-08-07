@@ -7841,6 +7841,7 @@ export async function sendOfferteEmail(offerteId: string, options: {
   // vervangen door downloadlinks, en die moeten in de tekst terechtkomen.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let kozijnElementen: any[] | undefined
+  let verwachtTekeningen = false
 
   try {
     const { data: leverancierDoc } = await supabaseAdmin
@@ -7869,6 +7870,7 @@ export async function sendOfferteEmail(offerteId: string, options: {
         // re-geparste PDF-prijzen — anders zie je in de verzonden offerte
         // alsnog de originele AI-waarde i.p.v. de gecorrigeerde.
         let prijzen: Record<string, { prijs: number; hoeveelheid: number }> = {}
+        let savedLeverancierKey: string | undefined
         if (Array.isArray(rawMeta)) {
           tekeningData = rawMeta
         } else {
@@ -7876,17 +7878,28 @@ export async function sendOfferteEmail(offerteId: string, options: {
           margePercentage = rawMeta.margePercentage || 0
           marges = rawMeta.marges || {}
           prijzen = rawMeta.prijzen || {}
+          savedLeverancierKey = rawMeta.leverancierKey || undefined
         }
+        verwachtTekeningen = tekeningData.length > 0
 
         const { parsePdfBuffer: pdfParse } = await import('@/lib/pdf-extract')
-        const { data: pdfFile } = await supabaseAdmin.storage
+        const { data: pdfFile, error: pdfDownloadError } = await supabaseAdmin.storage
           .from('documenten')
           .download(leverancierDoc.storage_path)
+
+        // Er hóren tekeningen bij deze offerte. Kan de leverancier-PDF niet
+        // geladen worden (bv. storage-probleem), dan mag de mail niet stil
+        // zonder tekeningen-bijlage vertrekken — dat is een halve offerte.
+        if (!pdfFile && tekeningData.length > 0) {
+          return { error: `Tekeningen-bijlage kan niet worden samengesteld (leverancier-PDF niet leesbaar uit opslag: ${pdfDownloadError?.message || 'onbekende fout'}). Mail is NIET verstuurd.` }
+        }
 
         if (pdfFile) {
           const pdfBuffer = Buffer.from(await pdfFile.arrayBuffer())
           const parsed = await pdfParse(pdfBuffer)
-          const elementData = parseLeverancierPdfText(parsed.text).elementen
+          // Zelfde leverancier-hint als de wizard gebruikte — cruciaal voor
+          // encoded Schüco-PDF's waar autodetectie op unpdf-tekst kan falen.
+          const elementData = parseLeverancierPdfText(parsed.text, savedLeverancierKey as Parameters<typeof parseLeverancierPdfText>[1]).elementen
 
           // Groepeer tekeningen per element-naam ZODAT we niet 2 elementen
           // pushen wanneer een leverancier-PDF binnen- én buitenaanzicht
@@ -7974,6 +7987,11 @@ export async function sendOfferteEmail(offerteId: string, options: {
     }
   } catch (err) {
     console.error('Error loading kozijn elements for email:', err)
+    // Horen er tekeningen bij deze offerte, dan is een mail zonder
+    // tekeningen-bijlage een halve offerte — blokkeren i.p.v. stil doorgaan.
+    if (verwachtTekeningen) {
+      return { error: `Tekeningen-bijlage kan niet worden samengesteld (${err instanceof Error ? err.message : 'onbekende fout'}). Mail is NIET verstuurd.` }
+    }
   }
 
   // Beide PDF's tegelijk renderen — ze stonden achter elkaar terwijl ze niets
@@ -8013,7 +8031,15 @@ export async function sendOfferteEmail(offerteId: string, options: {
   ])
   console.log(`[offerte-mail] PDF's gerenderd in ${Date.now() - tRender}ms`)
 
-  if (offertePdf) attachments.push({ filename: `Offerte-${offerte.offertenummer}.pdf`, content: offertePdf })
+  // Zonder offerte-PDF of (bij kozijnelementen) zonder tekeningen-PDF mag de
+  // mail niet weg — een halve offerte versturen is erger dan een foutmelding.
+  if (!offertePdf) {
+    return { error: 'De offerte-PDF kon niet worden gegenereerd. Mail is NIET verstuurd — probeer het opnieuw of controleer de offerte.' }
+  }
+  if (kozijnElementen && kozijnElementen.length > 0 && !tekeningenPdf) {
+    return { error: 'De tekeningen-PDF kon niet worden gegenereerd. Mail is NIET verstuurd — probeer het opnieuw.' }
+  }
+  attachments.push({ filename: `Offerte-${offerte.offertenummer}.pdf`, content: offertePdf })
   if (tekeningenPdf) attachments.push({ filename: `Tekeningen-${offerte.offertenummer}.pdf`, content: tekeningenPdf })
 
   // Extra bijlagen (tekeningen etc.)
@@ -10108,7 +10134,7 @@ export async function uploadLeverancierTekening(offerteId: string, pageNum: numb
   return { path }
 }
 
-export async function saveLeverancierTekeningen(offerteId: string, elementen: { naam: string; tekeningPath: string; pageIndex?: number; totalPages?: number }[], margePercentage?: number, elementMarges?: Record<string, number>, elementPrijzen?: Record<string, { prijs: number; hoeveelheid: number }>) {
+export async function saveLeverancierTekeningen(offerteId: string, elementen: { naam: string; tekeningPath: string; pageIndex?: number; totalPages?: number }[], margePercentage?: number, elementMarges?: Record<string, number>, elementPrijzen?: Record<string, { prijs: number; hoeveelheid: number }>, leverancierKey?: string) {
   const adminId = await getAdministratieId()
   if (!adminId) return { error: 'Niet ingelogd' }
 
@@ -10125,9 +10151,14 @@ export async function saveLeverancierTekeningen(offerteId: string, elementen: { 
   if (!doc) return { error: 'Geen leverancier PDF gevonden' }
 
   // Store tekening data + optional marge + element prices as JSON
-  const metadata: { tekeningen: typeof elementen; margePercentage?: number; marges?: Record<string, number>; prijzen?: Record<string, { prijs: number; hoeveelheid: number }> } = { tekeningen: elementen }
+  const metadata: { tekeningen: typeof elementen; margePercentage?: number; marges?: Record<string, number>; prijzen?: Record<string, { prijs: number; hoeveelheid: number }>; leverancierKey?: string } = { tekeningen: elementen }
   if (margePercentage && margePercentage > 0) {
     metadata.margePercentage = margePercentage
+  }
+  // Leverancier-parserpad bewaren zodat her-parses (PDF-routes, mail) met
+  // dezelfde hint draaien als de wizard — cruciaal voor encoded Schüco-PDF's.
+  if (leverancierKey) {
+    metadata.leverancierKey = leverancierKey
   }
   if (elementMarges && Object.keys(elementMarges).length > 0) {
     metadata.marges = elementMarges
@@ -10181,7 +10212,7 @@ export async function updateLeverancierOverrides(
 
   if (!metaDoc) return { error: 'Geen leverancier-metadata gevonden' }
 
-  let existing: { tekeningen?: unknown[]; margePercentage?: number; marges?: Record<string, number>; prijzen?: Record<string, { prijs: number; hoeveelheid: number }> } = {}
+  let existing: { tekeningen?: unknown[]; margePercentage?: number; marges?: Record<string, number>; prijzen?: Record<string, { prijs: number; hoeveelheid: number }>; leverancierKey?: string } = {}
   try {
     const parsed = JSON.parse(metaDoc.storage_path)
     if (Array.isArray(parsed)) {
@@ -10198,6 +10229,7 @@ export async function updateLeverancierOverrides(
     margePercentage: (margePercentage && margePercentage > 0) ? margePercentage : existing.margePercentage,
     marges: (elementMarges && Object.keys(elementMarges).length > 0) ? elementMarges : existing.marges,
     prijzen: (elementPrijzen && Object.keys(elementPrijzen).length > 0) ? elementPrijzen : existing.prijzen,
+    leverancierKey: existing.leverancierKey,
   }
 
   const { error } = await supabaseAdmin

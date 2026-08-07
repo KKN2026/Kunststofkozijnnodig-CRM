@@ -49,6 +49,7 @@ interface DetectedLev {
   display_naam: string
   profiel: string
   confidence: number
+  parser_key?: string | null
 }
 
 // Visibility state per element-naam: AI-aangepast (geel) of door gebruiker verborgen
@@ -845,7 +846,7 @@ export function StapPreview({
         const prijs = prijsOverrides[e.naam] ?? e.prijs
         elementPrijzen[e.naam] = { prijs, hoeveelheid: hoeveelheidOverrides[e.naam] ?? e.hoeveelheid }
       }
-      await saveLeverancierTekeningen(offerteId, tekeningenPayload, margePercentage, elementMarges, elementPrijzen)
+      await saveLeverancierTekeningen(offerteId, tekeningenPayload, margePercentage, elementMarges, elementPrijzen, detectedLeverancier?.parser_key || detectedLeverancier?.leverancier)
       return { ok: true }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'PDF upload mislukt')

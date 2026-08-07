@@ -258,7 +258,9 @@ export function OfferteForm({ offerte, relaties, producten, initialRelatieId, in
   // Berekent verkoopprijs op basis van globale marge en zet de kozijn-regel.
   function applyMargeToRegels(parsed: ParsedPdfResult, marge: number) {
     if (parsed.elementen.length === 0) return
-    const verkoopTotaal = parsed.elementen.reduce((sum, e) => sum + e.prijs * (1 + marge / 100) * e.hoeveelheid, 0)
+    // Per element op de cent afronden — exact zoals de PDF-routes doen, anders
+    // wijkt het scherm-totaal centen af van de gegenereerde offerte-PDF.
+    const verkoopTotaal = parsed.elementen.reduce((sum, e) => sum + Math.round(e.prijs * (1 + marge / 100) * 100) / 100 * e.hoeveelheid, 0)
     setRegels(prev => findOrCreateKozijnRegel(prev, verkoopTotaal))
   }
 
