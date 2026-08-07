@@ -7,7 +7,7 @@ export function buildRebuEmailHtml(
   medewerker?: { naam?: string; email?: string; telefoon?: string },
 ): string {
   const baseUrl = getAppUrl()
-  const logoUrl = `${baseUrl}/images/logo-mail-v2.png`
+  const logoUrl = `${baseUrl}/images/logo-mail-v3.png`
 
   // Body kan HTML (uit rich-text-editor) of plain text zijn.
   // Detecteer HTML en laat het dan ongemoeid (met default font/kleur wrapper).
@@ -140,7 +140,7 @@ export function buildFactuurEmailHtml(opts: {
   medewerker?: { naam?: string; email?: string; telefoon?: string }
 }): string {
   const baseUrl = getAppUrl()
-  const logoUrl = `${baseUrl}/images/logo-mail-v2.png`
+  const logoUrl = `${baseUrl}/images/logo-mail-v3.png`
   const euro = (n: number) => new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR' }).format(n || 0)
   const datumNL = (d?: string | null) => d ? new Date(d).toLocaleDateString('nl-NL') : '—'
 
