@@ -188,13 +188,20 @@ export function TakenView({ taken, isAdmin, currentUserId, alleMedewerkers = [] 
   // Unieke medewerkers voor dropdown (groepeer op naam, niet op ID)
   const medewerkers = useMemo(() => {
     const naamToIds = new Map<string, string>()
+    // Alle actieve medewerkers eerst, zodat ook collega's zónder taken (bv.
+    // Jimmy en Jordy) in het filter verschijnen. profiel_id heeft voorrang zodat
+    // het "mijn taken"-filter (default = ingelogde gebruiker) blijft matchen.
+    for (const m of alleMedewerkers) {
+      if (m.naam && !naamToIds.has(m.naam)) naamToIds.set(m.naam, m.profiel_id || m.id)
+    }
+    // Daarna personen die nog taken hebben maar niet meer als actieve medewerker bestaan.
     taken.forEach(t => {
       const id = t.medewerker_id || t.toegewezen_aan
       const naam = t.medewerker?.naam || t.toegewezen?.naam
       if (id && naam && !naamToIds.has(naam)) naamToIds.set(naam, id)
     })
     return Array.from(naamToIds.entries()).map(([naam, id]) => [id, naam] as [string, string]).sort((a, b) => a[1].localeCompare(b[1]))
-  }, [taken])
+  }, [taken, alleMedewerkers])
 
   // Medewerker-filter + tab persisteren in localStorage, default medewerker = ingelogde gebruiker
   const [filterMedewerker, setFilterMedewerker] = useState<string>('')
@@ -258,6 +265,11 @@ export function TakenView({ taken, isAdmin, currentUserId, alleMedewerkers = [] 
   // eerst als sectie op het dashboard met een eigen — afwijkende — telling.)
   const perCollega = useMemo(() => {
     const map = new Map<string, { naam: string; aantal: number; opvolgen: number; offerte: number }>()
+    // Alle actieve medewerkers alvast opnemen (0 taken), zodat elke collega een
+    // kaart krijgt — ook zonder open taken (bv. Jimmy en Jordy).
+    for (const m of alleMedewerkers) {
+      if (m.naam && !map.has(m.naam)) map.set(m.naam, { naam: m.naam, aantal: 0, opvolgen: 0, offerte: 0 })
+    }
     for (const t of taken) {
       if (t.status === 'afgerond') continue
       const naam = t.medewerker?.naam || t.toegewezen?.naam || 'Niet toegewezen'
@@ -269,7 +281,7 @@ export function TakenView({ taken, isAdmin, currentUserId, alleMedewerkers = [] 
       else if (cat === 'offerte') e.offerte++
     }
     return [...map.values()].sort((a, b) => b.aantal - a.aantal)
-  }, [taken])
+  }, [taken, alleMedewerkers])
 
   // Filter op basis van tab + URL params + medewerker dropdown
   const gefilterd = takenGesorteerd.filter(t => {

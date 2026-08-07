@@ -4801,6 +4801,25 @@ export async function getCurrentMedewerkerId(): Promise<string | null> {
   return data?.id || null
 }
 
+// Gedeelde weergavenaam-per-profiel map. De naam van de gekoppelde medewerker
+// wint van de profielnaam, zodat een gedeeld login-account (bv. het
+// 'Kunststofkozijnnodig.nl'-account) overal verschijnt als de medewerker die
+// erachter zit ('Nick Burgers'). Zelfde logica als getOfferteDashboard, hier
+// als herbruikbare helper zodat taken/logboek/aanvragen consistent zijn.
+export async function getNaamPerProfiel(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  adminId: string,
+): Promise<Map<string, string>> {
+  const [{ data: profielen }, { data: medewerkers }] = await Promise.all([
+    supabase.from('profielen').select('id, naam, email').eq('administratie_id', adminId),
+    supabase.from('medewerkers').select('naam, profiel_id').eq('administratie_id', adminId).not('profiel_id', 'is', null),
+  ])
+  const naamPerId = new Map<string, string>()
+  for (const p of profielen || []) naamPerId.set(p.id as string, (p.naam || p.email || '?') as string)
+  for (const m of medewerkers || []) if (m.profiel_id && m.naam) naamPerId.set(m.profiel_id as string, m.naam as string)
+  return naamPerId
+}
+
 export async function getTaken() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -4832,6 +4851,20 @@ export async function getTaken() {
   // plakten zijn verwijderd: dat koppelde offertes aan taken die er niets mee te
   // maken hebben. De afvink-popup verschijnt dus alleen bij een taak die echt aan
   // een verzonden offerte hangt (bv. de automatische opvolgtaak met offerte_id).
+
+  // Weergavenaam van de toegewezen persoon: laat de gekoppelde medewerkernaam
+  // winnen van de profielnaam, zodat taken op het gedeelde login-account als
+  // 'Nick Burgers' verschijnen i.p.v. 'Kunststofkozijnnodig.nl'.
+  const adminId = await getAdministratieId()
+  if (adminId) {
+    const naamPerId = await getNaamPerProfiel(supabase, adminId)
+    for (const t of taken) {
+      if (t.toegewezen_aan && naamPerId.has(t.toegewezen_aan)) {
+        t.toegewezen = { naam: naamPerId.get(t.toegewezen_aan) }
+      }
+    }
+  }
+
   return { taken, rol, currentUserId: user.id }
 }
 
@@ -4848,13 +4881,16 @@ export async function getMijnTakenVandaag() {
   const vandaag = new Date().toISOString().slice(0, 10)
   let query = supabase
     .from('taken')
-    .select('id, titel, deadline, deadline_tijd, prioriteit, relatie:relaties(bedrijfsnaam), toegewezen:profielen(naam)')
+    .select('id, titel, deadline, deadline_tijd, prioriteit, toegewezen_aan, relatie:relaties(bedrijfsnaam), toegewezen:profielen(naam)')
     .neq('status', 'afgerond')
     .not('deadline', 'is', null)
     .lte('deadline', vandaag)
     .order('deadline', { ascending: true })
   if (rol === 'medewerker') query = query.eq('toegewezen_aan', user.id)
   const { data } = await query
+  // Gedeeld account als medewerkernaam tonen (bv. 'Nick Burgers').
+  const adminId = await getAdministratieId()
+  const naamPerId = adminId ? await getNaamPerProfiel(supabase, adminId) : new Map<string, string>()
   return (data || []).map(t => ({
     id: t.id as string,
     titel: t.titel as string,
@@ -4862,7 +4898,8 @@ export async function getMijnTakenVandaag() {
     deadline_tijd: t.deadline_tijd as string | null,
     prioriteit: t.prioriteit as string,
     relatieNaam: (Array.isArray(t.relatie) ? t.relatie[0] : t.relatie)?.bedrijfsnaam || null,
-    toegewezenNaam: (Array.isArray(t.toegewezen) ? t.toegewezen[0] : t.toegewezen)?.naam || null,
+    toegewezenNaam: (t.toegewezen_aan && naamPerId.get(t.toegewezen_aan as string))
+      || (Array.isArray(t.toegewezen) ? t.toegewezen[0] : t.toegewezen)?.naam || null,
   }))
 }
 
@@ -6804,6 +6841,9 @@ export async function getAanvragen() {
   const adminId = await getAdministratieId()
   if (!adminId) return []
 
+  // Gedeeld account als medewerkernaam tonen (bv. 'Nick Burgers').
+  const naamPerId = await getNaamPerProfiel(supabase, adminId)
+
   const supabaseAdmin = createAdminClient()
   const [takenRes, emailsRes] = await Promise.all([
     supabaseAdmin
@@ -6878,7 +6918,8 @@ export async function getAanvragen() {
       relatie_id,
       relatie_naam,
       offerte_id,
-      toegewezen_naam: (Array.isArray(taak.toegewezen) ? taak.toegewezen[0] : taak.toegewezen)?.naam || null,
+      toegewezen_naam: (taak.toegewezen_aan && naamPerId.get(taak.toegewezen_aan as string))
+        || (Array.isArray(taak.toegewezen) ? taak.toegewezen[0] : taak.toegewezen)?.naam || null,
     }
   })
 }
