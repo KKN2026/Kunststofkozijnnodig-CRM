@@ -220,19 +220,22 @@ Twee staan bewust **uit**:
 ## 10. Overstap vanuit Rebu (aug 2026)
 
 Rebu wordt niet meer gebruikt voor nieuw werk. Op 7 aug 2026 is het lopende
-werk gemigreerd (`scripts/migreer-rebu-lopend.mjs`, idempotent — kan opnieuw
-draaien): 315 offertes (concept/verzonden vanaf 1 juni + alles met een
-lopende order), 77 orders, 564 open taken, 267 verkoopkansen, 154 relaties en
-de leveranciers-PDF's/tekeningen. Facturen zijn bewust NIET gemigreerd:
-open Rebu-facturen worden in Rebu geïnd (ander IBAN/Mollie/B.V.).
+werk eerst gemigreerd en later diezelfde dag op verzoek weer teruggedraaid
+(`scripts/verwijder-rebu-migratie.mjs`): het team houdt de Rebu-historie in
+Rebu en werkt in KKN alleen met nieuw aangemaakt werk. Wat wél uit die dag
+overbleef: de herkomst-labels op het klantenbestand
+(`scripts/sync-herkomst-uit-rebu.mjs`). Alle migratie-scripts staan klaar om
+opnieuw te draaien mocht dat ooit alsnog gewenst zijn
+(`scripts/migreer-rebu-lopend.mjs`, `migreer-rebu-notities.mjs`,
+`zet-verkopers-uit-rebu.mjs` — idempotent, met DRY_RUN=1-modus).
 
 Oude offerte-mails linken naar de Rebu-acceptatiepagina. De cron
 `/api/cron/rebu-acceptaties` (elke 15 min, env `REBU_SUPABASE_URL` +
-`REBU_SUPABASE_SERVICE_ROLE_KEY`) ziet zo'n acceptatie, zet de KKN-kopie ook
-op geaccepteerd en maakt een taak "factureren via KKN?" aan.
+`REBU_SUPABASE_SERVICE_ROLE_KEY`) ziet zo'n acceptatie en maakt in KKN een
+taak aan; omdat de offerte niet in KKN staat, vermeldt de taak dat hij
+handmatig moet worden overgezet of in Rebu afgehandeld.
 
 **Afbouw**: zodra de laatste Rebu-offertes verlopen zijn (± november 2026)
 de twee `REBU_SUPABASE_*`-variabelen uit Vercel verwijderen (cron meldt zich
-dan netjes uit) en het Rebu-project stilzetten. Let op: orders die in Rebu al
-een aanbetaling hadden, worden financieel in Rebu afgerond — de lijst staat
-in de uitvoer van het migratiescript.
+dan netjes uit) en het Rebu-project stilzetten. Facturen: open Rebu-facturen
+en klussen met aanbetalingen worden volledig in Rebu afgewikkeld.
