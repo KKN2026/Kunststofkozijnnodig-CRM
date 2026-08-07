@@ -1,6 +1,6 @@
 import React from 'react'
 import { Document, Page, Text, View, Image } from '@react-pdf/renderer'
-import { sharedStyles as s, COMPANY, COLORS, formatCurrencyPdf, formatDatePdf } from './shared-styles'
+import { sharedStyles as s, COMPANY, COLORS, formatCurrencyPdf, formatDatePdf, NAAM_WIJZIGING_MELDING } from './shared-styles'
 import path from 'path'
 
 interface Regel {
@@ -211,6 +211,11 @@ export function OfferteDocument({ offerte, hidePrices }: { offerte: OfferteData;
               </Text>
             )}
           </View>
+        </View>
+
+        {/* TIJDELIJK — rebrand-aankondiging, zie NAAM_WIJZIGING_MELDING */}
+        <View style={s.naamWijzigingBanner}>
+          <Text style={s.naamWijzigingText}>{NAAM_WIJZIGING_MELDING}</Text>
         </View>
 
         <View style={s.table}>

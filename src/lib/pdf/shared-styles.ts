@@ -12,6 +12,11 @@ export const COLORS = {
   textLight: '#6B7280',
 }
 
+// TIJDELIJK — rebrand-aankondiging (tekst in src/lib/rebrand-melding.ts);
+// hier her-geëxporteerd zodat offerte-template.tsx het uit './shared-styles'
+// kan blijven importeren.
+export { NAAM_WIJZIGING_MELDING } from '@/lib/rebrand-melding'
+
 export const COMPANY = {
   naam: 'Kunststofkozijnnodig.nl',
   adres: 'Samsonweg 26F',
@@ -370,6 +375,23 @@ export const sharedStyles = StyleSheet.create({
     flex: 1,
     fontSize: 9,
     color: '#111827',
+  },
+
+  // TIJDELIJK — rebrand-aankondiging banner (zie NAAM_WIJZIGING_MELDING)
+  naamWijzigingBanner: {
+    marginBottom: 20,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: COLORS.green,
+    backgroundColor: '#F0FBF6',
+  },
+  naamWijzigingText: {
+    fontSize: 9,
+    fontFamily: 'Helvetica-Bold',
+    color: COLORS.text,
+    lineHeight: 1.4,
   },
 
   // Remarks
