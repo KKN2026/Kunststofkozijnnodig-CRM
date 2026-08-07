@@ -22,6 +22,7 @@ import { revalidatePath } from 'next/cache'
 import { cookies, headers } from 'next/headers'
 import { sendEmail, normaliseerOntvangers } from '@/lib/email'
 import { buildRebuEmailHtml, buildFactuurEmailHtml } from '@/lib/email-template'
+import { NAAM_WIJZIGING_MELDING } from '@/lib/rebrand-melding'
 import { getAppUrl } from '@/lib/utils'
 import { FACTUUR_OVERRIDE_EMBED, pasFactuurAdresToe } from '@/lib/factuur-adres'
 
@@ -7724,6 +7725,8 @@ export async function getOfferteEmailDefaults(offerteId: string) {
 
 Dank u wel voor uw interesse in onze diensten.
 
+${NAAM_WIJZIGING_MELDING}
+
 Bijgevoegd in deze e-mail treft u de offerte aan betreft aanvraag ${projectNaam}:
 - Onze gedetailleerde offerte PDF voor de door u aangevraagde diensten. (offertenummer ${offerte.offertenummer})
 
@@ -12136,6 +12139,8 @@ export interface OfferteDashboardRij {
 export interface OfferteDashboardData {
   rijen: OfferteDashboardRij[]
   verkopers: { id: string; naam: string }[]
+  /** Profielen waar een offerte op naam gezet kan worden (alleen voor admins). */
+  toewijsbaar: { id: string; naam: string }[]
   magZien: boolean
   rol: string
   eigenProfielId: string | null
@@ -12144,12 +12149,12 @@ export interface OfferteDashboardData {
 export async function getOfferteDashboard(): Promise<OfferteDashboardData> {
   const supabase = await createClient()
   const adminId = await getAdministratieId()
-  if (!adminId) return { rijen: [], verkopers: [], magZien: false, rol: 'medewerker', eigenProfielId: null }
+  if (!adminId) return { rijen: [], verkopers: [], toewijsbaar: [], magZien: false, rol: 'medewerker', eigenProfielId: null }
   const { userId, rol } = await getRolEnEigenMedewerker(supabase, adminId)
 
   const { data: offertes } = await supabase
     .from('offertes')
-    .select('id, offertenummer, onderwerp, status, subtotaal, datum, updated_at, relatie:relaties(id, bedrijfsnaam, herkomst), project:projecten(naam)')
+    .select('id, offertenummer, onderwerp, status, subtotaal, datum, updated_at, verkoper_id, relatie:relaties(id, bedrijfsnaam, herkomst), project:projecten(naam)')
     .eq('administratie_id', adminId)
     .in('status', ['verzonden', 'geaccepteerd', 'afgewezen'])
     .order('created_at', { ascending: false })
@@ -12186,19 +12191,27 @@ export async function getOfferteDashboard(): Promise<OfferteDashboardData> {
     }
   }
 
+  // Weergavenaam per profiel: de naam van de gekoppelde medewerker wint van
+  // de profielnaam. Zo verschijnt het gedeelde info@-account als de verkoper
+  // die erachter zit (bv. 'Nick Burgers' i.p.v. 'Kunststofkozijnnodig.nl').
+  const [{ data: profielen }, { data: medewerkers }] = await Promise.all([
+    supabase.from('profielen').select('id, naam, email').eq('administratie_id', adminId),
+    supabase.from('medewerkers').select('naam, profiel_id').eq('administratie_id', adminId).not('profiel_id', 'is', null),
+  ])
   const naamPerId = new Map<string, string>()
-  if (verzenderIds.size > 0) {
-    const { data: profielen } = await supabase
-      .from('profielen')
-      .select('id, naam, email')
-      .in('id', [...verzenderIds])
-    for (const p of profielen || []) naamPerId.set(p.id, p.naam || p.email || '?')
-  }
+  for (const p of profielen || []) naamPerId.set(p.id, p.naam || p.email || '?')
+  for (const m of medewerkers || []) if (m.profiel_id && m.naam) naamPerId.set(m.profiel_id, m.naam)
 
+  const verkoperIds = new Set<string>()
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let rijen: OfferteDashboardRij[] = (offertes || []).map((o: any) => {
     const v = verzendingPerOfferte.get(o.id)
     const beslist = o.status === 'geaccepteerd' || o.status === 'afgewezen'
+    // Handmatig toegewezen verkoper wint van het e-maillog: zo kan een offerte
+    // die via het gedeelde account of door een collega is verstuurd toch op
+    // naam van de juiste verkoper staan.
+    const doorId = o.verkoper_id || v?.door || null
+    if (doorId) verkoperIds.add(doorId)
     return {
       id: o.id,
       offertenummer: o.offertenummer,
@@ -12210,27 +12223,53 @@ export async function getOfferteDashboard(): Promise<OfferteDashboardData> {
       status: o.status,
       subtotaal: Number(o.subtotaal || 0),
       verstuurdOp: v?.op || o.datum || null,
-      verstuurdDoorId: v?.door || null,
-      verstuurdDoorNaam: v?.door ? (naamPerId.get(v.door) || null) : null,
+      verstuurdDoorId: doorId,
+      verstuurdDoorNaam: doorId ? (naamPerId.get(doorId) || null) : null,
       // Geen audit-regel (bv. via het klantportaal beslist)? Dan is updated_at
       // de beste benadering van het beslismoment.
       beslistOp: beslist ? (beslistPerOfferte.get(o.id) || o.updated_at || null) : null,
     }
   })
 
-  // Niet-admins (bv. een verkoper met een eigen pagina) zien alleen wat ze
-  // zelf verstuurd hebben.
+  // Niet-admins (bv. een verkoper met een eigen pagina) zien alleen wat op
+  // hun eigen naam staat.
   if (rol !== 'admin') {
-    if (!userId) return { rijen: [], verkopers: [], magZien: false, rol, eigenProfielId: null }
+    if (!userId) return { rijen: [], verkopers: [], toewijsbaar: [], magZien: false, rol, eigenProfielId: null }
     rijen = rijen.filter(r => r.verstuurdDoorId === userId)
   }
 
-  const verkopers = [...verzenderIds]
+  const verkopers = [...verkoperIds]
     .map(id => ({ id, naam: naamPerId.get(id) || '?' }))
     .filter(v => rol === 'admin' || v.id === userId)
     .sort((a, b) => a.naam.localeCompare(b.naam))
 
-  return { rijen, verkopers, magZien: true, rol, eigenProfielId: userId }
+  const toewijsbaar = rol === 'admin'
+    ? (profielen || [])
+        .map(p => ({ id: p.id, naam: naamPerId.get(p.id) || '?' }))
+        .sort((a, b) => a.naam.localeCompare(b.naam))
+    : []
+
+  return { rijen, verkopers, toewijsbaar, magZien: true, rol, eigenProfielId: userId }
+}
+
+// Zet een offerte op naam van een (andere) verkoper. Het e-maillog blijft
+// onaangetast — dit stuurt alleen de toeschrijving in het offerte-dashboard.
+export async function setOfferteVerkoper(offerteId: string, verkoperId: string | null) {
+  const supabase = await createClient()
+  const adminId = await getAdministratieId()
+  if (!adminId) return { error: 'Niet ingelogd' }
+  const { rol } = await getRolEnEigenMedewerker(supabase, adminId)
+  if (rol !== 'admin') return { error: 'Alleen een beheerder kan de verkoper wijzigen' }
+
+  const { error } = await supabase
+    .from('offertes')
+    .update({ verkoper_id: verkoperId })
+    .eq('id', offerteId)
+    .eq('administratie_id', adminId)
+  if (error) return { error: error.message }
+
+  revalidatePath('/offerte-dashboard')
+  return { success: true }
 }
 
 // === INSTELLINGEN ===

@@ -28,5 +28,5 @@ export default async function OfferteDashboardPage() {
     redirect(`/offerte-dashboard/${data.eigenProfielId}`)
   }
 
-  return <OfferteDashboardView rijen={data.rijen} verkopers={data.verkopers} />
+  return <OfferteDashboardView rijen={data.rijen} verkopers={data.verkopers} toewijsbaar={data.toewijsbaar} />
 }

@@ -29,5 +29,5 @@ export default async function VerkoperDashboardPage({ params }: {
     )
   }
 
-  return <OfferteDashboardView rijen={data.rijen} verkopers={data.verkopers} vasteVerkoper={verkoper} />
+  return <OfferteDashboardView rijen={data.rijen} verkopers={data.verkopers} toewijsbaar={data.toewijsbaar} vasteVerkoper={verkoper} />
 }

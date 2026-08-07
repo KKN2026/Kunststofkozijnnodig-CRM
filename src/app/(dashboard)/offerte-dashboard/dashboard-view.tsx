@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { type ColumnDef } from '@tanstack/react-table'
@@ -10,7 +10,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { HerkomstBadge, herkomstLabels } from '@/components/ui/herkomst-badge'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { ArrowRight, ArrowLeft, RefreshCw, TrendingUp, TrendingDown } from 'lucide-react'
-import type { OfferteDashboardRij } from '@/lib/actions'
+import { setOfferteVerkoper, type OfferteDashboardRij } from '@/lib/actions'
 
 // Zelfde stoplicht als in het logboek: groen = akkoord, geel = openstaand,
 // rood = afgewezen.
@@ -52,9 +52,11 @@ function conversie(t: Telling): number | null {
   return beslist > 0 ? Math.round((t.akkoord / beslist) * 100) : null
 }
 
-export function OfferteDashboardView({ rijen, verkopers, vasteVerkoper }: {
+export function OfferteDashboardView({ rijen, verkopers, toewijsbaar = [], vasteVerkoper }: {
   rijen: OfferteDashboardRij[]
   verkopers: { id: string; naam: string }[]
+  /** Profielen waar een offerte op naam gezet kan worden; leeg = geen rechten. */
+  toewijsbaar?: { id: string; naam: string }[]
   /** Gezet op de persoonlijke pagina: alle cijfers gaan alleen over deze verkoper. */
   vasteVerkoper?: { id: string; naam: string }
 }) {
@@ -62,6 +64,14 @@ export function OfferteDashboardView({ rijen, verkopers, vasteVerkoper }: {
   const [periode, setPeriode] = useState<Periode>('90')
   const [filterHerkomst, setFilterHerkomst] = useState<string>('alle')
   const [filterVerkoper, setFilterVerkoper] = useState<string>('alle')
+  const [, startTransition] = useTransition()
+
+  const wijzigVerkoper = (offerteId: string, verkoperId: string | null) => {
+    startTransition(async () => {
+      await setOfferteVerkoper(offerteId, verkoperId)
+      router.refresh()
+    })
+  }
 
   // Status volgt de verkoopkans live; ververs op de achtergrond mee.
   useEffect(() => {
@@ -143,9 +153,26 @@ export function OfferteDashboardView({ rijen, verkopers, vasteVerkoper }: {
       accessorFn: r => r.verstuurdOp || '',
       cell: ({ getValue }) => { const v = getValue() as string; return v ? formatDate(v) : '-' },
     },
-    ...(vasteVerkoper ? [] : [{
+    // Admins kunnen een offerte hier direct op naam van een (andere) verkoper
+    // zetten — bv. verstuurd via het gedeelde account, maar eigenlijk van Nick.
+    ...(vasteVerkoper && toewijsbaar.length === 0 ? [] : [{
       id: 'door', header: 'Door',
       accessorFn: (r: OfferteDashboardRij) => r.verstuurdDoorNaam || '—',
+      cell: ({ row }: { row: { original: OfferteDashboardRij } }) => {
+        if (toewijsbaar.length === 0) return row.original.verstuurdDoorNaam || '—'
+        return (
+          <select
+            value={row.original.verstuurdDoorId || ''}
+            onClick={e => e.stopPropagation()}
+            onChange={e => wijzigVerkoper(row.original.id, e.target.value || null)}
+            title="Zet deze offerte op naam van een andere verkoper"
+            className="text-sm text-gray-900 border border-transparent hover:border-gray-300 rounded-md bg-transparent py-0.5 pr-1 cursor-pointer"
+          >
+            {!row.original.verstuurdDoorId && <option value="">—</option>}
+            {toewijsbaar.map(t => <option key={t.id} value={t.id}>{t.naam}</option>)}
+          </select>
+        )
+      },
     } satisfies ColumnDef<OfferteDashboardRij, unknown>]),
     {
       id: 'offerte', header: 'Offerte',
