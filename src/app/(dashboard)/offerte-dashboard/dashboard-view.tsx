@@ -9,8 +9,13 @@ import { PageHeader } from '@/components/ui/page-header'
 import { Card, CardContent } from '@/components/ui/card'
 import { HerkomstBadge, herkomstLabels } from '@/components/ui/herkomst-badge'
 import { formatCurrency, formatDate } from '@/lib/utils'
-import { ArrowRight, ArrowLeft, RefreshCw, TrendingUp, TrendingDown } from 'lucide-react'
+import { ArrowRight, ArrowLeft, FileDown, RefreshCw, TrendingUp, TrendingDown } from 'lucide-react'
 import { setOfferteVerkoper, type OfferteDashboardRij } from '@/lib/actions'
+import {
+  type DashboardPeriode as Periode, dashboardPeriodeLabels as periodeLabels,
+  telStatussen as tel, conversiePct as conversie, periodeVenster, matchtHerkomst,
+  gemiddeldeDoorlooptijdDagen,
+} from '@/lib/offerte-dashboard-data'
 
 // Zelfde stoplicht als in het logboek: groen = akkoord, geel = openstaand,
 // rood = afgewezen.
@@ -18,14 +23,6 @@ const statusStoplicht: Record<string, { label: string; dot: string; chip: string
   geaccepteerd: { label: 'Akkoord', dot: 'bg-green-500', chip: 'bg-green-50 text-green-700 border-green-200' },
   verzonden: { label: 'Openstaand', dot: 'bg-amber-400', chip: 'bg-amber-50 text-amber-700 border-amber-200' },
   afgewezen: { label: 'Afgewezen', dot: 'bg-red-500', chip: 'bg-red-50 text-red-700 border-red-200' },
-}
-
-type Periode = '30' | '90' | 'jaar'
-
-const periodeLabels: Record<Periode, string> = {
-  '30': 'Laatste 30 dagen',
-  '90': 'Laatste 90 dagen',
-  jaar: 'Dit jaar',
 }
 
 // Statusfilter voor de offertelijst onderaan. 'beslist' = akkoord + afgewezen
@@ -38,30 +35,6 @@ const statusFilterLabels: Record<StatusFilter, string> = {
   verzonden: 'Openstaand',
   afgewezen: 'Afgewezen',
   beslist: 'Beslist',
-}
-
-interface Telling {
-  totaal: number
-  akkoord: number
-  afgewezen: number
-  openstaand: number
-}
-
-function tel(rijen: OfferteDashboardRij[]): Telling {
-  const t: Telling = { totaal: rijen.length, akkoord: 0, afgewezen: 0, openstaand: 0 }
-  for (const r of rijen) {
-    if (r.status === 'geaccepteerd') t.akkoord++
-    else if (r.status === 'afgewezen') t.afgewezen++
-    else t.openstaand++
-  }
-  return t
-}
-
-// Conversie = akkoord als aandeel van wat beslist is (akkoord + afgewezen).
-// Openstaande offertes tellen niet mee: daar is nog niets over te zeggen.
-function conversie(t: Telling): number | null {
-  const beslist = t.akkoord + t.afgewezen
-  return beslist > 0 ? Math.round((t.akkoord / beslist) * 100) : null
 }
 
 export function OfferteDashboardView({ rijen, verkopers, toewijsbaar = [], vasteVerkoper }: {
@@ -110,19 +83,10 @@ export function OfferteDashboardView({ rijen, verkopers, toewijsbaar = [], vaste
 
   // Grens van de gekozen periode plus een even lang venster ervoor, zodat we
   // de conversie kunnen vergelijken met de vorige periode.
-  const { vanaf, vorigeVanaf } = useMemo(() => {
-    const nu = Date.now()
-    const dag = 24 * 60 * 60 * 1000
-    if (periode === 'jaar') {
-      const start = new Date(new Date().getFullYear(), 0, 1).getTime()
-      return { vanaf: start, vorigeVanaf: start - (nu - start || dag) }
-    }
-    const dagen = periode === '30' ? 30 : 90
-    return { vanaf: nu - dagen * dag, vorigeVanaf: nu - 2 * dagen * dag }
-  }, [periode])
+  const { vanaf, vorigeVanaf } = useMemo(() => periodeVenster(periode), [periode])
 
   const matchtFilters = (r: OfferteDashboardRij) =>
-    (filterHerkomst === 'alle' || (filterHerkomst === 'onbekend' ? !r.herkomst : r.herkomst === filterHerkomst))
+    matchtHerkomst(r, filterHerkomst)
     && (vasteVerkoper ? r.verstuurdDoorId === vasteVerkoper.id : (filterVerkoper === 'alle' || r.verstuurdDoorId === filterVerkoper))
 
   const huidig = useMemo(
@@ -146,14 +110,7 @@ export function OfferteDashboardView({ rijen, verkopers, toewijsbaar = [], vaste
   const delta = conv !== null && vorigeConv !== null ? conv - vorigeConv : null
 
   // Gemiddelde doorlooptijd van versturen tot beslissing, in dagen.
-  const doorlooptijd = useMemo(() => {
-    const duren = huidig
-      .filter(r => r.beslistOp && r.verstuurdOp)
-      .map(r => (new Date(r.beslistOp!).getTime() - new Date(r.verstuurdOp!).getTime()) / (24 * 60 * 60 * 1000))
-      .filter(d => d >= 0)
-    if (duren.length === 0) return null
-    return duren.reduce((a, b) => a + b, 0) / duren.length
-  }, [huidig])
+  const doorlooptijd = useMemo(() => gemiddeldeDoorlooptijdDagen(huidig), [huidig])
 
   const perVerkoper = useMemo(() => {
     if (vasteVerkoper) return []
@@ -300,6 +257,15 @@ export function OfferteDashboardView({ rijen, verkopers, toewijsbaar = [], vaste
               <RefreshCw className="h-3.5 w-3.5" />
               Vernieuwen
             </button>
+            {/* Rapport volgt de actieve filters: je downloadt wat je ziet */}
+            <a
+              href={`/api/pdf/offerte-dashboard?periode=${periode}&herkomst=${filterHerkomst}&verkoper=${vasteVerkoper ? vasteVerkoper.id : filterVerkoper}`}
+              title="Download dit overzicht als PDF (met de actieve filters)"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm text-white bg-primary rounded-md hover:bg-primary/90"
+            >
+              <FileDown className="h-3.5 w-3.5" />
+              Download PDF
+            </a>
           </div>
         }
       />
