@@ -214,3 +214,25 @@ Twee staan bewust **uit**:
 - **Twee administraties**: dit CRM en dat van Rebu Kozijnen delen code
   maar hebben een eigen database, eigen Vercel-project en een eigen
   SnelStart-client-key. Ze staan volledig los van elkaar.
+
+---
+
+## 10. Overstap vanuit Rebu (aug 2026)
+
+Rebu wordt niet meer gebruikt voor nieuw werk. Op 7 aug 2026 is het lopende
+werk gemigreerd (`scripts/migreer-rebu-lopend.mjs`, idempotent — kan opnieuw
+draaien): 315 offertes (concept/verzonden vanaf 1 juni + alles met een
+lopende order), 77 orders, 564 open taken, 267 verkoopkansen, 154 relaties en
+de leveranciers-PDF's/tekeningen. Facturen zijn bewust NIET gemigreerd:
+open Rebu-facturen worden in Rebu geïnd (ander IBAN/Mollie/B.V.).
+
+Oude offerte-mails linken naar de Rebu-acceptatiepagina. De cron
+`/api/cron/rebu-acceptaties` (elke 15 min, env `REBU_SUPABASE_URL` +
+`REBU_SUPABASE_SERVICE_ROLE_KEY`) ziet zo'n acceptatie, zet de KKN-kopie ook
+op geaccepteerd en maakt een taak "factureren via KKN?" aan.
+
+**Afbouw**: zodra de laatste Rebu-offertes verlopen zijn (± november 2026)
+de twee `REBU_SUPABASE_*`-variabelen uit Vercel verwijderen (cron meldt zich
+dan netjes uit) en het Rebu-project stilzetten. Let op: orders die in Rebu al
+een aanbetaling hadden, worden financieel in Rebu afgerond — de lijst staat
+in de uitvoer van het migratiescript.
