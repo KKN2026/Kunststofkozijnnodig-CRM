@@ -100,6 +100,11 @@ export function parseLeverancierPdfText(text: string, hint?: LeverancierKey): { 
   // Overgebleven control-chars (niet-Schüco documenten of restruis) strippen
   text = text.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '')
 
+  // WinPro-paginavoetteksten (Eko-Okna/OFAL-exports) staan midden in de tekst
+  // en breken o.a. de prijsregexes ("Deurprijs\nPagina 3 / 20 - WinPro …\n
+  // 2 013,89 E"). Ze dragen nooit informatie — wegstrippen.
+  text = text.replace(/^Pagina\s+\d+\s*\/\s*\d+\s*-\s*WinPro[^\n]*$/gm, '')
+
   // Detect format - flexible whitespace to handle different PDF text extractors
   // Belangrijk: Aluplast/Deur-Element format (originele) eerst testen. Gealan-detectie
   // was te breed en ving ook Aluplast PDFs waar 'Merk A Aantal: 1' toevallig voorkomt.
@@ -219,7 +224,7 @@ export function parseLeverancierPdfText(text: string, hint?: LeverancierKey): { 
   }
 
   // Find element headers (name, hoeveelheid, systeem, kleur)
-  const headers: { naam: string; hoeveelheid: number; systeem: string; kleur: string; idx: number; endIdx: number }[] = []
+  const headers: { naam: string; hoeveelheid: number; systeem: string; kleur: string; idx: number; endIdx: number; afm?: string }[] = []
   let match
   if (isGealanNL) {
     // Element header format: "<Naam (mogelijk multi-line)>\nAantal:N Verbinding:XX Systeem: Gealan\nS9000NL (Basis|Hef-schuif)"
@@ -340,6 +345,9 @@ export function parseLeverancierPdfText(text: string, hint?: LeverancierKey): { 
         kleur: kleurMatch ? kleurMatch[1].replace(/\n/g, ' ').trim() : '',
         idx: match.index,
         endIdx: match.index + match[0].length,
+        // De Afmeting-regel valt binnen de header-match zelf en is daarna
+        // niet meer terug te vinden in searchText — hier direct bewaren.
+        afm: `${match[3]} mm x ${match[4]} mm`,
       })
     }
   } else if (isEkoOkna) {
@@ -505,8 +513,16 @@ export function parseLeverancierPdfText(text: string, hint?: LeverancierKey): { 
         prijs = parseFloat(gnlPriceMatch[1].replace(/\./g, '').replace(',', '.'))
       }
     } else if (isGealan) {
-      const gealanPriceMatch = searchText.match(/Netto\s*prijs[\s\n]+\w+?\s*([\d.,]+)/)
-      if (gealanPriceMatch) {
+      // De eerste 'Totaal'-regel na 'Netto prijs' is het NETTO-elementtotaal
+      // (alle stuks samen). Bij de kortingsvariant staan er twee bedragen
+      // ("Totaal <bruto> <netto>") — dan telt het laatste. Per stuk = totaal
+      // gedeeld door het aantal ("Merk 1 Aantal:2" heeft één totaalbedrag).
+      const gealanTotaalMatch = searchText.match(/Netto\s*prijs[\s\S]{0,120}?Totaal[ \t]+(?:([\d.,]+)[ \t]+)?([\d.,]+)/)
+      const gealanPriceMatch = !gealanTotaalMatch ? searchText.match(/Netto\s*prijs[\s\n]+\w+?\s*([\d.,]+)/) : null
+      if (gealanTotaalMatch) {
+        const nettoTotaal = parseFloat(gealanTotaalMatch[2].replace(/\./g, '').replace(',', '.'))
+        prijs = Math.round((nettoTotaal / (header.hoeveelheid || 1)) * 100) / 100
+      } else if (gealanPriceMatch) {
         prijs = parseFloat(gealanPriceMatch[1].replace(/\./g, '').replace(',', '.'))
       }
     } else if (isSchuco) {
@@ -561,11 +577,14 @@ export function parseLeverancierPdfText(text: string, hint?: LeverancierKey): { 
       // We proberen eerst het oude format binnen de sectie. Als dat niets
       // oplevert, gebruiken we de globale prijs-volgorde-mapping (zie hieronder
       // bij `ekoNieuwFormatPrijzen`) en pakken de i-de prijs uit die lijst.
+      // 'N x' vóór het bedrag is de hoeveelheid ("Deurprijs\n2 x 2 602,95
+      // 5 205,90 E") — we willen de stukprijs. De capture is lui en stopt bij
+      // het eerste volledige bedrag, anders plakt hij stukprijs en totaal aan
+      // elkaar.
       const patterns = [
-        /Prijs\s+van\s+het\s+element[\s\n]*\d+\s*x\s*([\d\s.]+,\d{2})/i,
-        /Prijs\s+van\s+het\s+element[\s\n]*([\d\s.]+,\d{2})/i,
-        /Deurprijs[\s\n]*([\d\s.]+[.,]\d{2})/i,
-        /Prijs\s+gekoppeld\s+element[\s\n]*([\d\s.]+[.,]\d{2})/i,
+        /Prijs\s+van\s+het\s+element[\s\n]*(?:\d+\s*x\s*)?(\d[\d\s.]*?,\d{2})(?!\d)/i,
+        /Deurprijs[\s\n]*(?:\d+\s*x\s*)?(\d[\d\s.]*?,\d{2})(?!\d)/i,
+        /Prijs\s+gekoppeld\s+element[\s\n]*(?:\d+\s*x\s*)?(\d[\d\s.]*?,\d{2})(?!\d)/i,
       ]
       let ekoPriceMatch: RegExpMatchArray | null = null
       for (const p of patterns) {
@@ -715,10 +734,14 @@ export function parseLeverancierPdfText(text: string, hint?: LeverancierKey): { 
                      searchText.match(/Afmeting\s*:\s*(\d+\s*x\s*\d+\s*mm)/)
     if (afmMatch) {
       afmetingen = afmMatch[1]
-    } else if (isGealanNL) {
+    } else if (header.afm) {
+      // Kochs: de Afmeting-regel viel binnen de header-match en is daar bewaard.
+      afmetingen = header.afm
+    } else if (isGealanNL || isGealan) {
       // In S9000NL zijn totale afmetingen de laatste 2 stand-alone integer regels VOOR
       // "Beschrijving Kleur test" (volgorde: height, width). Kleinere sub-breedtes staan
-      // op regels met meerdere getallen en worden genegeerd.
+      // op regels met meerdere getallen en worden genegeerd. Oude-Gealan-PDF's
+      // ("Merk 1 Aantal:1") gebruiken exact dezelfde tekening-layout.
       const beschrIdx = searchText.search(/Beschrijving\s+Kleur\s+test/i)
       if (beschrIdx > 0) {
         const before = searchText.substring(0, beschrIdx)
@@ -911,7 +934,13 @@ export function parseLeverancierPdfText(text: string, hint?: LeverancierKey): { 
   if (totaal > 0 && elementen.length > 0) {
     const elementSum = elementen.reduce((sum, e) => sum + e.prijs * e.hoeveelheid, 0)
     const heeftNulprijzen = elementen.some(e => e.prijs <= 0)
-    if (elementSum > 0 && !heeftNulprijzen && Math.abs(elementSum - totaal) / totaal > 0.05) {
+    if (elementSum > totaal * 1.05 && !heeftNulprijzen) {
+      // Som is GROTER dan het totaal: bij samengevoegde offertes dekt de
+      // totaalregel maar één deel-offerte. De per-element gelezen prijzen
+      // zijn dan de betrouwbare bron — totaal daarop bijstellen i.p.v. alle
+      // prijzen omlaag te schalen.
+      totaal = Math.round(elementSum * 100) / 100
+    } else if (elementSum > 0 && !heeftNulprijzen && Math.abs(elementSum - totaal) / totaal > 0.05) {
       const factor = totaal / elementSum
       for (const e of elementen) {
         e.prijs = Math.round(e.prijs * factor * 100) / 100
