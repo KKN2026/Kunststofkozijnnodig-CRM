@@ -222,9 +222,12 @@ Twee staan bewust **uit**:
 Rebu wordt niet meer gebruikt voor nieuw werk. Op 7 aug 2026 is het lopende
 werk eerst gemigreerd en later diezelfde dag op verzoek weer teruggedraaid
 (`scripts/verwijder-rebu-migratie.mjs`): het team houdt de Rebu-historie in
-Rebu en werkt in KKN alleen met nieuw aangemaakt werk. Wat wél uit die dag
-overbleef: de herkomst-labels op het klantenbestand
-(`scripts/sync-herkomst-uit-rebu.mjs`). Alle migratie-scripts staan klaar om
+Rebu en werkt in KKN alleen met nieuw aangemaakt werk. Twee uitzonderingen
+bleven/kwamen wél in KKN: de herkomst-labels op het klantenbestand
+(`scripts/sync-herkomst-uit-rebu.mjs`) en de open takenlijst met
+taaknotities — dat is de dagelijkse werklijst van het team
+(`scripts/herstel-taken-uit-rebu.mjs`; koppelingen naar offertes/kansen die
+niet in KKN staan zijn leeg, de relatie-koppelingen werken). Alle migratie-scripts staan klaar om
 opnieuw te draaien mocht dat ooit alsnog gewenst zijn
 (`scripts/migreer-rebu-lopend.mjs`, `migreer-rebu-notities.mjs`,
 `zet-verkopers-uit-rebu.mjs` — idempotent, met DRY_RUN=1-modus).
