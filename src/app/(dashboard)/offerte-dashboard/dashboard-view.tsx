@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState, useTransition } from 'react'
+import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { type ColumnDef } from '@tanstack/react-table'
@@ -26,6 +26,18 @@ const periodeLabels: Record<Periode, string> = {
   '30': 'Laatste 30 dagen',
   '90': 'Laatste 90 dagen',
   jaar: 'Dit jaar',
+}
+
+// Statusfilter voor de offertelijst onderaan. 'beslist' = akkoord + afgewezen
+// (de offertes waar de conversie en doorlooptijd over gaan).
+type StatusFilter = 'alle' | 'geaccepteerd' | 'verzonden' | 'afgewezen' | 'beslist'
+
+const statusFilterLabels: Record<StatusFilter, string> = {
+  alle: 'Alle',
+  geaccepteerd: 'Akkoord',
+  verzonden: 'Openstaand',
+  afgewezen: 'Afgewezen',
+  beslist: 'Beslist',
 }
 
 interface Telling {
@@ -64,6 +76,7 @@ export function OfferteDashboardView({ rijen, verkopers, toewijsbaar = [], vaste
   const [periode, setPeriode] = useState<Periode>('90')
   const [filterHerkomst, setFilterHerkomst] = useState<string>('alle')
   const [filterVerkoper, setFilterVerkoper] = useState<string>('alle')
+  const [filterStatus, setFilterStatus] = useState<StatusFilter>('alle')
   const [, startTransition] = useTransition()
 
   const wijzigVerkoper = (offerteId: string, verkoperId: string | null) => {
@@ -71,6 +84,20 @@ export function OfferteDashboardView({ rijen, verkopers, toewijsbaar = [], vaste
       await setOfferteVerkoper(offerteId, verkoperId)
       router.refresh()
     })
+  }
+
+  // Alles op het dashboard is aanklikbaar en filtert de offertelijst onderaan:
+  // KPI-kaarten en statusverloop op status, balksegmenten op verkoper + status,
+  // afkomst-balken op herkomst. Na een klik scrollen we naar de lijst zodat
+  // het effect direct zichtbaar is.
+  const tabelRef = useRef<HTMLDivElement>(null)
+  const gaNaarLijst = (status: StatusFilter) => {
+    setFilterStatus(status)
+    tabelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+  const klikSegment = (verkoperId: string, status: StatusFilter) => {
+    if (!vasteVerkoper) setFilterVerkoper(verkoperId)
+    gaNaarLijst(status)
   }
 
   // Status volgt de verkoopkans live; ververs op de achtergrond mee.
@@ -147,6 +174,15 @@ export function OfferteDashboardView({ rijen, verkopers, toewijsbaar = [], vaste
       .sort((a, b) => (b.conversie ?? -1) - (a.conversie ?? -1))
   }, [huidig, heeftOnbekendeHerkomst])
 
+  // Het statusfilter werkt alleen op de lijst onderaan; de kaarten en
+  // grafieken blijven over de hele periode gaan, anders klopt de conversie
+  // niet meer zodra je op 'Openstaand' klikt.
+  const tabelRijen = useMemo(() => {
+    if (filterStatus === 'alle') return huidig
+    if (filterStatus === 'beslist') return huidig.filter(r => r.status === 'geaccepteerd' || r.status === 'afgewezen')
+    return huidig.filter(r => r.status === filterStatus)
+  }, [huidig, filterStatus])
+
   const columns: ColumnDef<OfferteDashboardRij, unknown>[] = [
     {
       id: 'verstuurd', header: 'Verstuurd',
@@ -189,7 +225,16 @@ export function OfferteDashboardView({ rijen, verkopers, toewijsbaar = [], vaste
       accessorFn: r => r.klant || '',
       cell: ({ row }) => (
         <span className="flex items-center gap-2">
-          {row.original.klant || '-'}
+          {row.original.relatieId ? (
+            <Link
+              href={`/relatiebeheer/${row.original.relatieId}`}
+              onClick={e => e.stopPropagation()}
+              className="hover:text-primary hover:underline"
+              title="Open de klantkaart"
+            >
+              {row.original.klant || '-'}
+            </Link>
+          ) : (row.original.klant || '-')}
           <HerkomstBadge herkomst={row.original.herkomst} />
         </span>
       ),
@@ -218,15 +263,23 @@ export function OfferteDashboardView({ rijen, verkopers, toewijsbaar = [], vaste
   const pill = (actief: boolean) =>
     `px-3 py-1.5 text-sm rounded-md font-medium transition-colors ${actief ? 'bg-primary text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`
 
-  const segment = (aantal: number, totaal: number, kleur: string) => {
+  const segment = (aantal: number, totaal: number, kleur: string, label: string, onClick: () => void) => {
     if (aantal === 0 || totaal === 0) return null
     const pct = (aantal / totaal) * 100
     return (
-      <div className={`${kleur} h-full flex items-center justify-center text-xs font-semibold text-white`} style={{ width: `${pct}%` }}>
+      <button
+        type="button"
+        onClick={onClick}
+        title={`${label}: ${aantal} — klik om deze offertes te bekijken`}
+        className={`${kleur} h-full flex items-center justify-center text-xs font-semibold text-white cursor-pointer hover:opacity-85 transition-opacity`}
+        style={{ width: `${pct}%` }}
+      >
         {pct >= 8 ? aantal : ''}
-      </div>
+      </button>
     )
   }
+
+  const klikbareKaart = 'cursor-pointer hover:border-primary/40 hover:shadow transition-all text-left w-full'
 
   return (
     <div>
@@ -276,16 +329,18 @@ export function OfferteDashboardView({ rijen, verkopers, toewijsbaar = [], vaste
         ))}
       </div>
 
-      {/* KPI-kaarten */}
+      {/* KPI-kaarten — klikken filtert de offertelijst onderaan */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <Card>
+        <Card className={klikbareKaart} role="button" tabIndex={0} title="Bekijk alle offertes in deze periode"
+          onClick={() => gaNaarLijst('alle')} onKeyDown={e => { if (e.key === 'Enter') gaNaarLijst('alle') }}>
           <CardContent>
             <p className="text-sm text-gray-500">Offertes verstuurd</p>
             <p className="text-3xl font-bold text-gray-900 mt-1">{telling.totaal}</p>
             <p className="text-xs text-gray-400 mt-1">{periodeLabels[periode]}</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className={klikbareKaart} role="button" tabIndex={0} title="Bekijk de geaccepteerde offertes"
+          onClick={() => gaNaarLijst('geaccepteerd')} onKeyDown={e => { if (e.key === 'Enter') gaNaarLijst('geaccepteerd') }}>
           <CardContent>
             <p className="text-sm text-gray-500">Conversie (akkoord / beslist)</p>
             <p className="text-3xl font-bold text-gray-900 mt-1">{conv !== null ? `${conv}%` : '—'}</p>
@@ -299,14 +354,16 @@ export function OfferteDashboardView({ rijen, verkopers, toewijsbaar = [], vaste
             )}
           </CardContent>
         </Card>
-        <Card>
+        <Card className={klikbareKaart} role="button" tabIndex={0} title="Bekijk de openstaande offertes"
+          onClick={() => gaNaarLijst('verzonden')} onKeyDown={e => { if (e.key === 'Enter') gaNaarLijst('verzonden') }}>
           <CardContent>
             <p className="text-sm text-gray-500">Nog openstaand</p>
             <p className="text-3xl font-bold text-gray-900 mt-1">{telling.openstaand}</p>
             <p className="text-xs text-gray-400 mt-1">Wacht op reactie klant</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className={klikbareKaart} role="button" tabIndex={0} title="Bekijk de besliste offertes (akkoord + afgewezen)"
+          onClick={() => gaNaarLijst('beslist')} onKeyDown={e => { if (e.key === 'Enter') gaNaarLijst('beslist') }}>
           <CardContent>
             <p className="text-sm text-gray-500">Gem. doorlooptijd tot beslissing</p>
             <p className="text-3xl font-bold text-gray-900 mt-1">
@@ -339,15 +396,17 @@ export function OfferteDashboardView({ rijen, verkopers, toewijsbaar = [], vaste
                   return (
                     <div key={v.id}>
                       <div className="flex items-center justify-between mb-1">
-                        <Link href={`/offerte-dashboard/${v.id}`} className="font-medium text-gray-900 hover:text-primary hover:underline">
+                        <Link href={`/offerte-dashboard/${v.id}`} title={`Open de pagina van ${v.naam}`} className="font-medium text-gray-900 hover:text-primary hover:underline">
                           {v.naam}
                         </Link>
-                        <span className="text-xs text-gray-500">{v.telling.totaal} offertes</span>
+                        <button type="button" onClick={() => klikSegment(v.id, 'alle')} title={`Bekijk alle offertes van ${v.naam}`} className="text-xs text-gray-500 hover:text-primary hover:underline cursor-pointer">
+                          {v.telling.totaal} offertes
+                        </button>
                       </div>
                       <div className="flex h-7 rounded-md overflow-hidden bg-gray-100">
-                        {segment(v.telling.akkoord, v.telling.totaal, 'bg-green-500')}
-                        {segment(v.telling.afgewezen, v.telling.totaal, 'bg-red-500')}
-                        {segment(v.telling.openstaand, v.telling.totaal, 'bg-amber-400')}
+                        {segment(v.telling.akkoord, v.telling.totaal, 'bg-green-500', `Akkoord bij ${v.naam}`, () => klikSegment(v.id, 'geaccepteerd'))}
+                        {segment(v.telling.afgewezen, v.telling.totaal, 'bg-red-500', `Afgewezen bij ${v.naam}`, () => klikSegment(v.id, 'afgewezen'))}
+                        {segment(v.telling.openstaand, v.telling.totaal, 'bg-amber-400', `Openstaand bij ${v.naam}`, () => klikSegment(v.id, 'verzonden'))}
                       </div>
                       <p className="text-xs text-gray-500 mt-1">
                         {c !== null
@@ -369,21 +428,30 @@ export function OfferteDashboardView({ rijen, verkopers, toewijsbaar = [], vaste
             {perHerkomst.length === 0 && (
               <p className="text-sm text-gray-500 py-4">Geen verstuurde offertes in deze periode</p>
             )}
-            <div className="space-y-4">
-              {perHerkomst.map(h => (
-                <div key={h.key} className="flex items-center gap-3">
-                  <div className="w-28 shrink-0">
-                    <p className="text-sm font-medium text-gray-900">{h.label}</p>
-                    <p className="text-xs text-gray-400">n = {h.telling.totaal}</p>
-                  </div>
-                  <div className="flex-1 h-4 rounded-full bg-primary/10 overflow-hidden">
-                    <div className="h-full rounded-full bg-primary" style={{ width: `${h.conversie ?? 0}%` }} />
-                  </div>
-                  <span className="w-12 text-right text-sm font-semibold text-gray-900">
-                    {h.conversie !== null ? `${h.conversie}%` : '—'}
-                  </span>
-                </div>
-              ))}
+            <div className="space-y-2">
+              {perHerkomst.map(h => {
+                const actief = filterHerkomst === h.key
+                return (
+                  <button
+                    key={h.key}
+                    type="button"
+                    onClick={() => setFilterHerkomst(actief ? 'alle' : h.key)}
+                    title={actief ? 'Klik om dit afkomst-filter weer uit te zetten' : `Filter alle cijfers op afkomst ${h.label}`}
+                    className={`flex items-center gap-3 w-full rounded-md px-2 py-1.5 -mx-2 cursor-pointer transition-colors ${actief ? 'bg-primary/5 ring-1 ring-primary/30' : 'hover:bg-gray-50'}`}
+                  >
+                    <span className="w-28 shrink-0 text-left">
+                      <span className="block text-sm font-medium text-gray-900">{h.label}</span>
+                      <span className="block text-xs text-gray-400">n = {h.telling.totaal}</span>
+                    </span>
+                    <span className="flex-1 h-4 rounded-full bg-primary/10 overflow-hidden">
+                      <span className="block h-full rounded-full bg-primary" style={{ width: `${h.conversie ?? 0}%` }} />
+                    </span>
+                    <span className="w-12 text-right text-sm font-semibold text-gray-900">
+                      {h.conversie !== null ? `${h.conversie}%` : '—'}
+                    </span>
+                  </button>
+                )
+              })}
             </div>
           </CardContent>
         </Card>
@@ -395,18 +463,23 @@ export function OfferteDashboardView({ rijen, verkopers, toewijsbaar = [], vaste
           <h2 className="font-semibold text-gray-900">Statusverloop (automatisch bijgewerkt)</h2>
           <p className="text-xs text-gray-500 mb-4">Elke offerte beweegt live mee met de status die in het CRM wordt gezet</p>
           <div className="flex items-center gap-2 flex-wrap">
-            {[
-              { label: 'Verstuurd', aantal: telling.totaal, klasse: 'bg-gray-50 border-gray-200 text-gray-900' },
-              { label: 'Openstaand', aantal: telling.openstaand, klasse: 'bg-amber-50 border-amber-200 text-amber-800' },
-              { label: 'Akkoord', aantal: telling.akkoord, klasse: 'bg-green-50 border-green-200 text-green-800' },
-              { label: 'Afgewezen', aantal: telling.afgewezen, klasse: 'bg-red-50 border-red-200 text-red-800' },
-            ].map((stap, i) => (
+            {([
+              { label: 'Verstuurd', aantal: telling.totaal, status: 'alle', klasse: 'bg-gray-50 border-gray-200 text-gray-900' },
+              { label: 'Openstaand', aantal: telling.openstaand, status: 'verzonden', klasse: 'bg-amber-50 border-amber-200 text-amber-800' },
+              { label: 'Akkoord', aantal: telling.akkoord, status: 'geaccepteerd', klasse: 'bg-green-50 border-green-200 text-green-800' },
+              { label: 'Afgewezen', aantal: telling.afgewezen, status: 'afgewezen', klasse: 'bg-red-50 border-red-200 text-red-800' },
+            ] as { label: string; aantal: number; status: StatusFilter; klasse: string }[]).map((stap, i) => (
               <div key={stap.label} className="flex items-center gap-2 flex-1 min-w-[140px]">
                 {i > 0 && <ArrowRight className="h-4 w-4 text-gray-300 shrink-0" />}
-                <div className={`flex-1 border rounded-lg py-3 text-center ${stap.klasse}`}>
+                <button
+                  type="button"
+                  onClick={() => gaNaarLijst(stap.status)}
+                  title={`Bekijk deze offertes in de lijst`}
+                  className={`flex-1 border rounded-lg py-3 text-center cursor-pointer hover:shadow transition-shadow ${stap.klasse}`}
+                >
                   <p className="text-2xl font-bold">{stap.aantal}</p>
                   <p className="text-[11px] uppercase tracking-wide opacity-70">{stap.label}</p>
-                </div>
+                </button>
               </div>
             ))}
           </div>
@@ -414,14 +487,27 @@ export function OfferteDashboardView({ rijen, verkopers, toewijsbaar = [], vaste
       </Card>
 
       {/* Offertes in de gekozen periode */}
-      <h2 className="font-semibold text-gray-900 mb-1">{vasteVerkoper ? 'Verstuurde offertes' : 'Offertes in deze periode'}</h2>
-      <p className="text-xs text-gray-500 mb-3">Status-badge synchroniseert automatisch — geen handmatige invoer nodig</p>
-      <DataTable
-        columns={columns}
-        data={huidig}
-        searchPlaceholder="Zoek offerte, klant of project..."
-        onRowClick={r => router.push(`/offertes/${r.id}`)}
-      />
+      <div ref={tabelRef} className="scroll-mt-6">
+        <div className="flex items-end justify-between gap-3 flex-wrap mb-3">
+          <div>
+            <h2 className="font-semibold text-gray-900 mb-1">{vasteVerkoper ? 'Verstuurde offertes' : 'Offertes in deze periode'}</h2>
+            <p className="text-xs text-gray-500">Status-badge synchroniseert automatisch — geen handmatige invoer nodig</p>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            {(Object.keys(statusFilterLabels) as StatusFilter[]).map(st => (
+              <button key={st} onClick={() => setFilterStatus(st)} className={pill(filterStatus === st)}>
+                {statusFilterLabels[st]}
+              </button>
+            ))}
+          </div>
+        </div>
+        <DataTable
+          columns={columns}
+          data={tabelRijen}
+          searchPlaceholder="Zoek offerte, klant of project..."
+          onRowClick={r => router.push(`/offertes/${r.id}`)}
+        />
+      </div>
     </div>
   )
 }
