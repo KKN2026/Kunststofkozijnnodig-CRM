@@ -3,8 +3,13 @@
 // exporteren; dit bestand wordt zowel client-side (snelle feedback) als
 // server-side (autoritaire check) gebruikt.
 
-/** Maximale bestandsgrootte voor uploads in de documenten-inbox. */
-export const MAX_BESTAND_BYTES = 25 * 1024 * 1024 // 25 MB
+/**
+ * Maximale bestandsgrootte voor uploads in de documenten-inbox.
+ * Bewust ruim onder de serverActions bodySizeLimit van 20mb (next.config.ts):
+ * boven die limiet faalt het request op transportniveau met een vage fout,
+ * vóór onze eigen validatie kan draaien.
+ */
+export const MAX_BESTAND_BYTES = 15 * 1024 * 1024 // 15 MB
 
 /**
  * Toegestane extensies. Bewust een allowlist (geen blocklist) zodat
