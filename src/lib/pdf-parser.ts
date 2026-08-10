@@ -463,6 +463,57 @@ export function parseLeverancierPdfText(text: string, hint?: LeverancierKey): { 
     }
   }
 
+  // EKO-Okna OUD format: prijsvakken staan in een aparte layout-kolom en
+  // schuiven bij de pdfjs-tekstreconstructie soms door de elementtekst heen
+  // (zie OFAL/26/0062328): spec-regels tussen "Deurprijs" en het bedrag, of
+  // een prijs die pas ná de header van het vólgende element opduikt. Daarom
+  // een pre-pass in drie stappen:
+  //   1. strak matchen direct na het prijslabel — ongewijzigd gedrag voor
+  //      alle reguliere oud-format PDF's;
+  //   2. anders: het eerste bedrag mét "E"-valutamarker ná het label in
+  //      dezelfde sectie (de marker voorkomt dat tussenliggende specs met
+  //      losse getallen als prijs worden gelezen);
+  //   3. verschuivingscorrectie: een sectie mét label maar zónder bedrag,
+  //      gevolgd door een sectie met twee gestapelde bedragen direct na haar
+  //      label, betekent dat het eerste bedrag daar bij het element ervóór
+  //      hoort. De volgorde van prijsvakken blijft bij het schuiven altijd
+  //      gelijk aan de elementvolgorde.
+  const ekoOudFormatPrijzen: (number | null)[] = []
+  if (isEkoOkna) {
+    const parsePrijs = (s: string) => parseFloat(s.replace(/\s/g, '').replace(/\./g, '').replace(',', '.'))
+    const strakkePatronen = [
+      /Prijs\s+van\s+het\s+element[\s\n]*(?:\d+\s*x\s*)?(\d[\d\s.]*?,\d{2})(?!\d)/i,
+      /Deurprijs[\s\n]*(?:\d+\s*x\s*)?(\d[\d\s.]*?,\d{2})(?!\d)/i,
+      /Prijs\s+gekoppeld\s+element[\s\n]*(?:\d+\s*x\s*)?(\d[\d\s.]*?,\d{2})(?!\d)/i,
+    ]
+    const labelRe = /Prijs\s+van\s+het\s+element|Deurprijs|Prijs\s+gekoppeld\s+element/i
+    const secties = headers.map((h, i) => {
+      const eind = i + 1 < headers.length ? headers[i + 1].idx : text.length
+      const sectie = text.substring(h.endIdx, eind)
+      const label = sectie.match(labelRe)
+      const naLabel = label ? sectie.substring((label.index ?? 0) + label[0].length) : ''
+      const bedragenNaLabel = [...naLabel.matchAll(/(\d[\d\s.]*?,\d{2})(?!\d)\s*E\b/g)].map(b => parsePrijs(b[1]))
+      return { sectie, heeftLabel: !!label, bedragenNaLabel }
+    })
+    for (let i = 0; i < secties.length; i++) {
+      const { sectie, heeftLabel, bedragenNaLabel } = secties[i]
+      let prijs: number | null = null
+      for (const p of strakkePatronen) {
+        const m = sectie.match(p)
+        if (m) { prijs = parsePrijs(m[1]); break }
+      }
+      if (prijs === null && heeftLabel && bedragenNaLabel.length > 0) prijs = bedragenNaLabel[0]
+      ekoOudFormatPrijzen.push(prijs)
+    }
+    for (let i = 0; i + 1 < secties.length; i++) {
+      const volgende = secties[i + 1]
+      if (ekoOudFormatPrijzen[i] === null && secties[i].heeftLabel && volgende.bedragenNaLabel.length >= 2) {
+        ekoOudFormatPrijzen[i] = volgende.bedragenNaLabel[0]
+        ekoOudFormatPrijzen[i + 1] = volgende.bedragenNaLabel[1]
+      }
+    }
+  }
+
   const elementen: KozijnElement[] = []
 
   for (let i = 0; i < headers.length; i++) {
@@ -574,29 +625,15 @@ export function parseLeverancierPdfText(text: string, hint?: LeverancierKey): { 
       //    of "Prijs Deur € 2.077,11". Het aantal vóór "x" geeft hoeveelheid,
       //    het eerste bedrag is de stukprijs en het tweede is totaal.
       //
-      // We proberen eerst het oude format binnen de sectie. Als dat niets
-      // oplevert, gebruiken we de globale prijs-volgorde-mapping (zie hieronder
-      // bij `ekoNieuwFormatPrijzen`) en pakken de i-de prijs uit die lijst.
-      // 'N x' vóór het bedrag is de hoeveelheid ("Deurprijs\n2 x 2 602,95
-      // 5 205,90 E") — we willen de stukprijs. De capture is lui en stopt bij
-      // het eerste volledige bedrag, anders plakt hij stukprijs en totaal aan
-      // elkaar.
-      const patterns = [
-        /Prijs\s+van\s+het\s+element[\s\n]*(?:\d+\s*x\s*)?(\d[\d\s.]*?,\d{2})(?!\d)/i,
-        /Deurprijs[\s\n]*(?:\d+\s*x\s*)?(\d[\d\s.]*?,\d{2})(?!\d)/i,
-        /Prijs\s+gekoppeld\s+element[\s\n]*(?:\d+\s*x\s*)?(\d[\d\s.]*?,\d{2})(?!\d)/i,
-      ]
-      let ekoPriceMatch: RegExpMatchArray | null = null
-      for (const p of patterns) {
-        const m = searchText.match(p)
-        if (m) { ekoPriceMatch = m; break }
-      }
-      if (ekoPriceMatch) {
-        const prijsStr = ekoPriceMatch[1].trim()
-        prijs = parseFloat(prijsStr.replace(/\s/g, '').replace(/\./g, '').replace(',', '.'))
+      // Het oude format is per sectie voorbereid in `ekoOudFormatPrijzen`
+      // (inclusief correctie voor prijsvakken die door de layout heen
+      // schuiven — zie de pre-pass hierboven). Levert dat niets op, dan is
+      // het een nieuw-format PDF en pakken we de i-de prijs uit de globale
+      // volgorde-lijst `ekoNieuwFormatPrijzen`.
+      const ekoOudPrijs = ekoOudFormatPrijzen[i]
+      if (ekoOudPrijs != null) {
+        prijs = ekoOudPrijs
       } else {
-        // Nieuw format — pak via index uit de globale lijst (verzameld vóór
-        // deze loop, in volgorde van verschijning in de PDF).
         const ekoPrijs = ekoNieuwFormatPrijzen[i]
         if (ekoPrijs != null) prijs = ekoPrijs
       }
