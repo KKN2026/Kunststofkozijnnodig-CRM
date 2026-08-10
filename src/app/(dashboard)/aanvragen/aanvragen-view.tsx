@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -59,7 +59,13 @@ export function AanvragenView({ aanvragen, gebruikers }: { aanvragen: Aanvraag[]
   const router = useRouter()
   const [filter, setFilter] = useState<'open' | 'afgerond' | 'alle'>('open')
   const [loadingId, setLoadingId] = useState<string | null>(null)
-  const nu = Date.now()
+  // Date.now() mag niet tijdens render (react-hooks/purity); bovendien ververst
+  // een interval de SLA-aftelling zodat "nog Xu Ym" niet bevriest op laadmoment.
+  const [nu, setNu] = useState(() => Date.now())
+  useEffect(() => {
+    const timer = setInterval(() => setNu(Date.now()), 60_000)
+    return () => clearInterval(timer)
+  }, [])
 
   const open = aanvragen.filter(a => a.status !== 'afgerond' && !a.teruggestuurd_op)
   const afgerond = aanvragen.filter(a => a.status === 'afgerond' || a.teruggestuurd_op)
