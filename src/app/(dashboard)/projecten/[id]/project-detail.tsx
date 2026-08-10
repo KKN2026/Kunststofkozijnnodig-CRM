@@ -614,6 +614,7 @@ export function ProjectDetail({ timeline, relaties, isNew, emails = [], document
                       onClick={async () => {
                         const url = await getDocumentUrl(doc.storage_path)
                         if (url) window.open(url, '_blank')
+                        else showToast('Document kon niet geopend worden', 'error')
                       }}
                       className="flex items-center gap-3 py-2.5 w-full text-left hover:bg-gray-50 rounded-md px-2 -mx-2 transition-colors"
                     >
