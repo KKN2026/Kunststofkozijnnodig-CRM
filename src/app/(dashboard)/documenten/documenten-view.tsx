@@ -1,15 +1,16 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { type ColumnDef } from '@tanstack/react-table'
 import { DataTable } from '@/components/ui/data-table'
 import { PageHeader } from '@/components/ui/page-header'
-import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
+import { showToast } from '@/components/ui/toast'
 import { formatDateShort } from '@/lib/utils'
-import { createClient } from '@/lib/supabase/client'
-import { deleteDocument } from '@/lib/actions'
 import { Upload, Inbox, Trash2, Download } from 'lucide-react'
+import { uploadDocument, getDocumentDownloadUrl, verwijderDocument } from './actions'
+import { UPLOAD_ACCEPT, valideerUploadBestand } from './upload-limieten'
 
 interface Document {
   id: string
@@ -37,44 +38,37 @@ const columns: ColumnDef<Document, unknown>[] = [
 ]
 
 export function DocumentenView({ documenten }: { documenten: Document[] }) {
+  const router = useRouter()
   const [uploading, setUploading] = useState(false)
-  const supabase = createClient()
+  const [busyId, setBusyId] = useState<string | null>(null)
 
+  // De bucket 'documenten' is privé zonder storage-policies: uploads en
+  // downloads moeten via de server-actions in ./actions.ts lopen — een
+  // rechtstreekse client-side storage-call wordt door RLS geweigerd.
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     // Reset de input zodat hetzelfde bestand na een fout direct opnieuw kan.
     e.target.value = ''
     if (!file) return
+
+    // Snelle client-side check; de server-action valideert nogmaals.
+    const validatiefout = valideerUploadBestand(file)
+    if (validatiefout) {
+      showToast(validatiefout, 'error')
+      return
+    }
+
     setUploading(true)
-    const { showToast } = await import('@/components/ui/toast')
     try {
-      // Storage-keys staan geen spaties/accenten/rare tekens toe; saneer de naam
-      // anders faalt de upload stil. De originele naam bewaren we in de DB-rij.
-      const veiligeNaam = file.name.normalize('NFKD').replace(/[^a-zA-Z0-9._-]/g, '_')
-      const path = `uploads/${Date.now()}_${veiligeNaam}`
-      const { error: uploadError } = await supabase.storage.from('documenten').upload(path, file)
-      if (uploadError) {
-        showToast('Upload mislukt: ' + uploadError.message, 'error')
-        return
-      }
-      const { data: profiel } = await supabase.from('profielen').select('administratie_id').single()
-      const { error: insertError } = await supabase.from('documenten').insert({
-        naam: file.name,
-        bestandsnaam: file.name,
-        bestandstype: file.type || null,
-        bestandsgrootte: file.size,
-        storage_path: path,
-        administratie_id: profiel?.administratie_id,
-      })
-      if (insertError) {
-        // Rij kon niet worden aangemaakt → opgeslagen bestand opruimen zodat er
-        // geen wees-bestand in storage achterblijft.
-        await supabase.storage.from('documenten').remove([path])
-        showToast('Opslaan mislukt: ' + insertError.message, 'error')
+      const formData = new FormData()
+      formData.append('bestand', file)
+      const res = await uploadDocument(formData)
+      if (res.error) {
+        showToast(res.error, 'error')
         return
       }
       showToast('Document geüpload', 'success')
-      window.location.reload()
+      router.refresh()
     } catch (err) {
       showToast('Upload mislukt: ' + (err instanceof Error ? err.message : String(err)), 'error')
     } finally {
@@ -83,21 +77,34 @@ export function DocumentenView({ documenten }: { documenten: Document[] }) {
   }
 
   async function handleDownload(doc: Document) {
-    const { data } = await supabase.storage.from('documenten').download(doc.storage_path)
-    if (data) {
-      const url = URL.createObjectURL(data)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = doc.bestandsnaam
-      a.click()
-      URL.revokeObjectURL(url)
+    setBusyId(doc.id)
+    try {
+      const res = await getDocumentDownloadUrl(doc.id)
+      if (res.error || !res.url) {
+        showToast(res.error || 'Download mislukt', 'error')
+        return
+      }
+      // Signed URL met download-header: browser bewaart de originele naam.
+      window.location.assign(res.url)
+    } finally {
+      setBusyId(null)
     }
   }
 
-  async function handleDelete(id: string) {
-    if (!confirm('Verwijderen?')) return
-    await deleteDocument(id)
-    window.location.reload()
+  async function handleDelete(doc: Document) {
+    if (!confirm(`"${doc.naam}" verwijderen?`)) return
+    setBusyId(doc.id)
+    try {
+      const res = await verwijderDocument(doc.id)
+      if (res.error) {
+        showToast(res.error, 'error')
+        return
+      }
+      showToast('Document verwijderd', 'success')
+      router.refresh()
+    } finally {
+      setBusyId(null)
+    }
   }
 
   return (
@@ -108,10 +115,17 @@ export function DocumentenView({ documenten }: { documenten: Document[] }) {
         actions={
           <label className="cursor-pointer">
             <span className="inline-flex items-center justify-center gap-2 rounded-md font-medium transition-colors bg-primary text-white hover:bg-primary-hover px-4 py-2 text-sm">
-              <Upload className="h-4 w-4" />
+              <Upload className="h-4 w-4" aria-hidden="true" />
               {uploading ? 'Uploaden...' : 'Document uploaden'}
             </span>
-            <input type="file" className="hidden" onChange={handleUpload} />
+            <input
+              type="file"
+              className="hidden"
+              accept={UPLOAD_ACCEPT}
+              onChange={handleUpload}
+              disabled={uploading}
+              aria-label="Document uploaden"
+            />
           </label>
         }
       />
@@ -127,8 +141,24 @@ export function DocumentenView({ documenten }: { documenten: Document[] }) {
               header: '',
               cell: ({ row }) => (
                 <div className="flex gap-2">
-                  <button onClick={() => handleDownload(row.original)} className="text-gray-400 hover:text-blue-500"><Download className="h-4 w-4" /></button>
-                  <button onClick={() => handleDelete(row.original.id)} className="text-gray-400 hover:text-red-500"><Trash2 className="h-4 w-4" /></button>
+                  <button
+                    onClick={() => handleDownload(row.original)}
+                    disabled={busyId === row.original.id}
+                    className="text-gray-400 hover:text-blue-500 disabled:opacity-50"
+                    aria-label={`Download ${row.original.naam}`}
+                    title="Downloaden"
+                  >
+                    <Download className="h-4 w-4" aria-hidden="true" />
+                  </button>
+                  <button
+                    onClick={() => handleDelete(row.original)}
+                    disabled={busyId === row.original.id}
+                    className="text-gray-400 hover:text-red-500 disabled:opacity-50"
+                    aria-label={`Verwijder ${row.original.naam}`}
+                    title="Verwijderen"
+                  >
+                    <Trash2 className="h-4 w-4" aria-hidden="true" />
+                  </button>
                 </div>
               ),
             },
