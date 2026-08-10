@@ -1,8 +1,14 @@
+// Draai de echte parser over één PDF: node scripts/_run-schuco-parse.mjs [pad]
+// Zonder argument: de encoded Schüco-testcase (Merron) uit scripts/data.
 import { readFileSync } from 'fs'
+import { resolve, dirname } from 'path'
+import { fileURLToPath } from 'url'
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs'
 import { parseLeverancierPdfText } from '../src/lib/pdf-parser.ts'
 
-const data = new Uint8Array(readFileSync('/Users/houterminiopslag/Downloads/Merron .pdf'))
+const __dirname = dirname(fileURLToPath(import.meta.url))
+const pad = process.argv[2] || resolve(__dirname, 'data', 'leverancier-pdfs', '2026-04-24__Merron .pdf')
+const data = new Uint8Array(readFileSync(pad))
 const pdf = await getDocument({ data }).promise
 let text = ''
 for (let p = 1; p <= pdf.numPages; p++) {
