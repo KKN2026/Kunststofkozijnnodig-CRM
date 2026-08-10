@@ -5071,12 +5071,29 @@ export async function getProjectDocumenten(projectId: string) {
 }
 
 export async function getDocumentUrl(storagePath: string) {
-  const supabase = await createClient()
-  const { data } = await supabase.storage.from('documenten').createSignedUrl(storagePath, 3600)
+  // De bucket 'documenten' is privé zonder storage-policies (migratie 072):
+  // signed URLs kunnen alleen via de service role. Omdat de admin-client RLS
+  // omzeilt, eerst verifiëren dat het pad bij een document van de eigen
+  // administratie hoort.
+  const adminId = await getAdministratieId()
+  if (!adminId) return null
+  const supabaseAdmin = createAdminClient()
+  const { data: doc } = await supabaseAdmin
+    .from('documenten')
+    .select('id')
+    .eq('storage_path', storagePath)
+    .eq('administratie_id', adminId)
+    .maybeSingle()
+  if (!doc) return null
+  const { data } = await supabaseAdmin.storage.from('documenten').createSignedUrl(storagePath, 3600)
   return data?.signedUrl || null
 }
 
 export async function deleteDocument(id: string) {
+  // Rij-toegang loopt via de user-scoped client (RLS bewaakt de administratie);
+  // alleen de storage-remove moet via de admin-client, want de privé-bucket
+  // heeft geen storage-policies — de user-scoped remove faalde hier stil en
+  // liet weesbestanden achter.
   const supabase = await createClient()
   const { data: doc } = await supabase
     .from('documenten')
@@ -5085,7 +5102,11 @@ export async function deleteDocument(id: string) {
     .single()
 
   if (doc) {
-    await supabase.storage.from('documenten').remove([doc.storage_path])
+    const supabaseAdmin = createAdminClient()
+    const { error: storageError } = await supabaseAdmin.storage
+      .from('documenten')
+      .remove([doc.storage_path])
+    if (storageError) return { error: `Verwijderen uit opslag mislukt: ${storageError.message}` }
   }
 
   const { error } = await supabase.from('documenten').delete().eq('id', id)
@@ -10011,6 +10032,13 @@ export async function processLeverancierPdf(offerteId: string, formData: FormDat
 
   const file = formData.get('pdf') as File
   if (!file) return { error: 'Geen PDF bestand' }
+  if (file.size === 0) return { error: 'Het PDF-bestand is leeg.' }
+  // Expliciete groottecheck met duidelijke melding. Blijft bewust onder de
+  // serverActions bodySizeLimit van 20mb (next.config.ts): daarboven sneuvelt
+  // het request al op transportniveau met een vage fout.
+  if (file.size > 18 * 1024 * 1024) {
+    return { error: `PDF is te groot (${(file.size / (1024 * 1024)).toFixed(1)} MB, maximum 18 MB). Verklein de PDF of splits hem op.` }
+  }
 
   const buffer = Buffer.from(await file.arrayBuffer())
 
@@ -10155,6 +10183,11 @@ export async function processLeverancierPdf(offerteId: string, formData: FormDat
 }
 
 export async function uploadLeverancierTekening(offerteId: string, pageNum: number, formData: FormData) {
+  // Zelfde auth-check als de andere leverancier-acties: zonder ingelogde
+  // gebruiker geen uploads via de admin-client (die omzeilt RLS).
+  const adminId = await getAdministratieId()
+  if (!adminId) return { error: 'Niet ingelogd' }
+
   const supabaseAdmin = createAdminClient()
   const file = formData.get('image') as File
   if (!file) return { error: 'Geen afbeelding' }
