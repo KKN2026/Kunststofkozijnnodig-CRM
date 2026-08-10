@@ -12260,13 +12260,29 @@ export async function getOfferteDashboard(): Promise<OfferteDashboardData> {
 
   const { data: offertes } = await supabase
     .from('offertes')
-    .select('id, offertenummer, onderwerp, status, subtotaal, datum, updated_at, verkoper_id, relatie:relaties(id, bedrijfsnaam, herkomst), project:projecten(naam)')
+    .select('id, offertenummer, onderwerp, status, subtotaal, datum, updated_at, verkoper_id, versie_nummer, groep_id, relatie:relaties(id, bedrijfsnaam, herkomst), project:projecten(naam)')
     .eq('administratie_id', adminId)
     .in('status', ['verzonden', 'geaccepteerd', 'afgewezen'])
     .order('created_at', { ascending: false })
     .limit(1000)
 
-  const ids = (offertes || []).map(o => o.id)
+  // Eén rij per offertegroep: een offerte met meerdere verstuurde versies is
+  // één deal en mag niet dubbel meetellen in aantallen en conversie. De
+  // geaccepteerde versie wint; anders de hoogste versie (zelfde regel als de
+  // conversie-funnel in de rapportages).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const perGroep = new Map<string, any>()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  for (const o of (offertes || []) as any[]) {
+    const key = o.groep_id || o.id
+    const huidig = perGroep.get(key)
+    const wint = !huidig || (huidig.status !== 'geaccepteerd'
+      && (o.status === 'geaccepteerd' || (o.versie_nummer || 1) > (huidig.versie_nummer || 1)))
+    if (wint) perGroep.set(key, o)
+  }
+  const uniekeOffertes = [...perGroep.values()]
+
+  const ids = uniekeOffertes.map(o => o.id)
   const verzendingPerOfferte = new Map<string, { op: string; door: string | null }>()
   const verzenderIds = new Set<string>()
   const beslistPerOfferte = new Map<string, string>()
@@ -12310,7 +12326,7 @@ export async function getOfferteDashboard(): Promise<OfferteDashboardData> {
 
   const verkoperIds = new Set<string>()
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let rijen: OfferteDashboardRij[] = (offertes || []).map((o: any) => {
+  let rijen: OfferteDashboardRij[] = uniekeOffertes.map((o: any) => {
     const v = verzendingPerOfferte.get(o.id)
     const beslist = o.status === 'geaccepteerd' || o.status === 'afgewezen'
     // Handmatig toegewezen verkoper wint van het e-maillog: zo kan een offerte
