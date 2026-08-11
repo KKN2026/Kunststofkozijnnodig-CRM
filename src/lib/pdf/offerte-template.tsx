@@ -10,7 +10,10 @@ interface Regel {
   aantal: number | null
   prijs: number | null
   btw_percentage: number
+  // totaal is al verrekend met de korting (zie saveOfferte) — dus aantal × prijs
+  // mín korting_percentage%. Gebruik dit veld, niet aantal × prijs opnieuw.
   totaal: number
+  korting_percentage?: number | null
 }
 
 interface Relatie {
@@ -80,12 +83,17 @@ export function OfferteDocument({ offerte, hidePrices }: { offerte: OfferteData;
   const regels = offerte.regels || []
   const relatie = offerte.relatie
 
-  // Bereken BTW groepen
+  // Bereken BTW groepen — over het al-verrekende (na korting) regeltotaal.
   const btwGroepen: Record<number, number> = {}
   regels.forEach(r => {
-    const btwBedrag = ((r.aantal || 0) * (r.prijs || 0) * r.btw_percentage) / 100
+    const btwBedrag = ((r.totaal || 0) * r.btw_percentage) / 100
     btwGroepen[r.btw_percentage] = (btwGroepen[r.btw_percentage] || 0) + btwBedrag
   })
+
+  // Bruto subtotaal (vóór korting) + het totale kortingsbedrag — alleen tonen
+  // als er daadwerkelijk korting is toegepast, anders blijft de PDF zoals hij was.
+  const brutoSubtotaal = regels.reduce((sum, r) => sum + ((r.aantal || 0) * (r.prijs || 0)), 0)
+  const kortingBedrag = Math.round((brutoSubtotaal - (offerte.subtotaal || 0)) * 100) / 100
 
   // Bereken kozijn totalen
   const kozijnen = offerte.kozijnElementen || []
@@ -233,9 +241,14 @@ export function OfferteDocument({ offerte, hidePrices }: { offerte: OfferteData;
               <View key={i} style={s.tableRow}>
                 <View style={s.tableColAantal}><Text style={s.tableCellText}>{isTekst ? '' : regel.aantal}</Text></View>
                 <View style={s.tableColEenheid}><Text style={s.tableCellText}>{isTekst ? '' : 'Stuk'}</Text></View>
-                <View style={s.tableColDesc}><Text style={s.tableCellText}>{regel.omschrijving}</Text></View>
+                <View style={s.tableColDesc}>
+                  <Text style={s.tableCellText}>{regel.omschrijving}</Text>
+                  {!isTekst && (regel.korting_percentage || 0) > 0 && (
+                    <Text style={{ fontSize: 7, color: COLORS.textLight, marginTop: 1 }}>{regel.korting_percentage}% korting</Text>
+                  )}
+                </View>
                 {!hidePrices && <View style={s.tableColBedrag}><Text style={s.tableCellText}>{isTekst ? '' : formatCurrencyPdf(regel.prijs ?? 0)}</Text></View>}
-                {!hidePrices && <View style={s.tableColTotaal}><Text style={s.tableCellText}>{isTekst ? '' : formatCurrencyPdf((regel.aantal || 0) * (regel.prijs || 0))}</Text></View>}
+                {!hidePrices && <View style={s.tableColTotaal}><Text style={s.tableCellText}>{isTekst ? '' : formatCurrencyPdf(regel.totaal ?? 0)}</Text></View>}
               </View>
             )
           })}
@@ -244,12 +257,14 @@ export function OfferteDocument({ offerte, hidePrices }: { offerte: OfferteData;
         {!hidePrices && <View style={s.totalsSection}>
           <View style={s.totalsRow}>
             <Text style={s.totalsLabel}>Subtotaal</Text>
-            <Text style={s.totalsValue}>{formatCurrencyPdf(offerte.subtotaal)}</Text>
+            <Text style={s.totalsValue}>{formatCurrencyPdf(brutoSubtotaal)}</Text>
           </View>
-          <View style={s.totalsRow}>
-            <Text style={s.totalsLabel}></Text>
-            <Text style={s.totalsValue}>{formatCurrencyPdf(0)}</Text>
-          </View>
+          {kortingBedrag > 0.005 && (
+            <View style={s.totalsRow}>
+              <Text style={s.totalsLabel}>Korting</Text>
+              <Text style={s.totalsValue}>-{formatCurrencyPdf(kortingBedrag)}</Text>
+            </View>
+          )}
           <View style={s.totalsRow}>
             <Text style={s.totalsLabel}>Totaal excl. BTW</Text>
             <Text style={s.totalsValue}>{formatCurrencyPdf(offerte.subtotaal)}</Text>

@@ -8,7 +8,10 @@ interface Regel {
   aantal: number
   prijs: number
   btw_percentage: number
+  // totaal is al verrekend met een eventuele korting per regel (overgenomen
+  // vanuit de offerte) — gebruik dit veld, niet aantal × prijs opnieuw.
   totaal: number
+  korting_percentage?: number | null
 }
 
 interface Relatie {
@@ -42,12 +45,17 @@ export function FactuurDocument({ factuur }: { factuur: FactuurData }) {
   const relatie = factuur.relatie
   const isConcept = factuur.status === 'concept'
 
-  // Bereken BTW groepen
+  // Bereken BTW groepen — over het al-verrekende (na korting) regeltotaal.
   const btwGroepen: Record<number, number> = {}
   regels.forEach(r => {
-    const btwBedrag = (r.aantal * r.prijs * r.btw_percentage) / 100
+    const btwBedrag = (r.totaal * r.btw_percentage) / 100
     btwGroepen[r.btw_percentage] = (btwGroepen[r.btw_percentage] || 0) + btwBedrag
   })
+
+  // Bruto subtotaal (vóór korting) + het totale kortingsbedrag — alleen tonen
+  // als er daadwerkelijk korting is toegepast.
+  const brutoSubtotaal = regels.reduce((sum, r) => sum + (r.aantal * r.prijs), 0)
+  const kortingBedrag = Math.round((brutoSubtotaal - (factuur.subtotaal || 0)) * 100) / 100
 
   return (
     <Document>
@@ -166,9 +174,14 @@ export function FactuurDocument({ factuur }: { factuur: FactuurData }) {
             <View key={i} style={s.tableRow}>
               <View style={s.tableColAantal}><Text style={s.tableCellText}>{regel.aantal}</Text></View>
               <View style={s.tableColEenheid}><Text style={s.tableCellText}>Stuk</Text></View>
-              <View style={s.tableColDesc}><Text style={s.tableCellText}>{regel.omschrijving}</Text></View>
+              <View style={s.tableColDesc}>
+                <Text style={s.tableCellText}>{regel.omschrijving}</Text>
+                {(regel.korting_percentage || 0) > 0 && (
+                  <Text style={{ fontSize: 7, color: COLORS.textLight, marginTop: 1 }}>{regel.korting_percentage}% korting</Text>
+                )}
+              </View>
               <View style={s.tableColBedrag}><Text style={s.tableCellText}>{formatCurrencyPdf(regel.prijs)}</Text></View>
-              <View style={s.tableColTotaal}><Text style={s.tableCellText}>{formatCurrencyPdf(regel.aantal * regel.prijs)}</Text></View>
+              <View style={s.tableColTotaal}><Text style={s.tableCellText}>{formatCurrencyPdf(regel.totaal)}</Text></View>
             </View>
           ))}
         </View>
@@ -177,8 +190,14 @@ export function FactuurDocument({ factuur }: { factuur: FactuurData }) {
         <View style={s.totalsSection}>
           <View style={s.totalsRow}>
             <Text style={s.totalsLabel}>Subtotaal</Text>
-            <Text style={s.totalsValue}>{formatCurrencyPdf(factuur.subtotaal)}</Text>
+            <Text style={s.totalsValue}>{formatCurrencyPdf(brutoSubtotaal)}</Text>
           </View>
+          {kortingBedrag > 0.005 && (
+            <View style={s.totalsRow}>
+              <Text style={s.totalsLabel}>Korting</Text>
+              <Text style={s.totalsValue}>-{formatCurrencyPdf(kortingBedrag)}</Text>
+            </View>
+          )}
           <View style={s.totalsRow}>
             <Text style={s.totalsLabel}>Totaal excl. BTW</Text>
             <Text style={s.totalsValue}>{formatCurrencyPdf(factuur.subtotaal)}</Text>

@@ -1080,8 +1080,18 @@ export async function saveOfferte(formData: FormData) {
   const valdatumRaw = formData.get('verwachte_valdatum') as string | null
   let verwachteValdatum: string | null | undefined = valdatumRaw === null ? undefined : (valdatumRaw.trim() || null)
 
-  const subtotaal = regels.reduce((sum: number, r: { aantal: number; prijs: number }) => sum + r.aantal * r.prijs, 0)
-  const btwTotaal = regels.reduce((sum: number, r: { aantal: number; prijs: number; btw_percentage: number }) => sum + (r.aantal * r.prijs * r.btw_percentage) / 100, 0)
+  // Korting per regel: wordt hier voor het eerst verrekend. Tijdens het
+  // bewerken (stap-controleren) laten we de subtotalen bewust ongewijzigd —
+  // pas bij opslaan/klaarzetten trekken we de korting daadwerkelijk af van
+  // het eindbedrag, zodat je een korting kunt intypen zonder dat er meteen
+  // een ander bedrag op het scherm verschijnt.
+  const kortingFactor = (r: { korting_percentage?: number | string | null }) => {
+    const pct = typeof r.korting_percentage === 'number' ? r.korting_percentage : parseFloat(String(r.korting_percentage ?? 0)) || 0
+    return 1 - Math.min(100, Math.max(0, pct)) / 100
+  }
+  const regelNettoTotaal = (r: { aantal: number; prijs: number; korting_percentage?: number | string | null }) => r.aantal * r.prijs * kortingFactor(r)
+  const subtotaal = regels.reduce((sum: number, r: { aantal: number; prijs: number; korting_percentage?: number | string | null }) => sum + regelNettoTotaal(r), 0)
+  const btwTotaal = regels.reduce((sum: number, r: { aantal: number; prijs: number; btw_percentage: number; korting_percentage?: number | string | null }) => sum + (regelNettoTotaal(r) * r.btw_percentage) / 100, 0)
 
   // Auto-generate offertenummer for new offertes (hergebruik nummer bij zelfde project)
   const projectId = formData.get('project_id') as string || null
@@ -1268,7 +1278,7 @@ export async function saveOfferte(formData: FormData) {
     // Filter ongeldige regels (lege omschrijving = NOT NULL violation) en
     // normaliseer numerieke velden zodat we nooit op een type-fout knappen.
     const regelRecords = regels
-      .map((r: { omschrijving?: string; aantal?: number | string | null; prijs?: number | string | null; btw_percentage?: number | string; product_id?: string; isTekst?: boolean }, i: number) => {
+      .map((r: { omschrijving?: string; aantal?: number | string | null; prijs?: number | string | null; btw_percentage?: number | string; korting_percentage?: number | string | null; product_id?: string; isTekst?: boolean }, i: number) => {
         const omschrijving = (r.omschrijving || '').trim() || '(geen omschrijving)'
         // Vrije tekstregel: aantal/prijs = null zodat hij herkenbaar blijft en
         // niet meetelt in totalen. Herken via expliciete vlag of null-waarden.
@@ -1281,6 +1291,7 @@ export async function saveOfferte(formData: FormData) {
             aantal: null,
             prijs: null,
             btw_percentage: 0,
+            korting_percentage: 0,
             totaal: 0,
             volgorde: i,
           }
@@ -1288,6 +1299,7 @@ export async function saveOfferte(formData: FormData) {
         const aantal = typeof r.aantal === 'number' ? r.aantal : parseFloat(String(r.aantal ?? 0)) || 0
         const prijs = typeof r.prijs === 'number' ? r.prijs : parseFloat(String(r.prijs ?? 0)) || 0
         const btw = typeof r.btw_percentage === 'number' ? r.btw_percentage : parseFloat(String(r.btw_percentage ?? 21)) || 21
+        const kortingPct = Math.min(100, Math.max(0, typeof r.korting_percentage === 'number' ? r.korting_percentage : parseFloat(String(r.korting_percentage ?? 0)) || 0))
         return {
           offerte_id: offerteId,
           product_id: r.product_id || null,
@@ -1295,7 +1307,8 @@ export async function saveOfferte(formData: FormData) {
           aantal,
           prijs,
           btw_percentage: btw,
-          totaal: aantal * prijs,
+          korting_percentage: kortingPct,
+          totaal: aantal * prijs * (1 - kortingPct / 100),
           volgorde: i,
         }
       })
@@ -1421,7 +1434,11 @@ async function createOrderFromOfferte(offerteId: string, supabase: Awaited<Retur
         aantal: r.aantal,
         prijs: r.prijs,
         btw_percentage: r.btw_percentage,
-        totaal: r.aantal * r.prijs,
+        korting_percentage: r.korting_percentage || 0,
+        // Kopieer de al-verrekende totaal (incl. korting) i.p.v. opnieuw
+        // aantal × prijs te berekenen — anders verdwijnt de korting bij het
+        // aanmaken van de order.
+        totaal: r.totaal,
         volgorde: i,
       }))
     )
@@ -3267,8 +3284,11 @@ export async function crediteerFactuur(factuurId: string, reden?: string) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const regels = (original.regels as any[]) || []
 
-  const negSubtotaal = regels.reduce((s, r) => s + (-Number(r.aantal) * Number(r.prijs)), 0)
-  const negBtw = regels.reduce((s, r) => s + (-Number(r.aantal) * Number(r.prijs) * Number(r.btw_percentage) / 100), 0)
+  // Negeer de al-verrekende totaal (incl. eventuele korting per regel) i.p.v.
+  // opnieuw aantal × prijs te berekenen — anders wordt een gecrediteerde regel
+  // met korting te hoog gecrediteerd.
+  const negSubtotaal = regels.reduce((s, r) => s + (-Number(r.totaal)), 0)
+  const negBtw = regels.reduce((s, r) => s + (-Number(r.totaal) * Number(r.btw_percentage) / 100), 0)
   const negTotaal = negSubtotaal + negBtw
 
   const { data: creditnota, error: insertErr } = await supabaseAdmin
@@ -3301,7 +3321,8 @@ export async function crediteerFactuur(factuurId: string, reden?: string) {
     aantal: Number(r.aantal),
     prijs: -Number(r.prijs),
     btw_percentage: Number(r.btw_percentage),
-    totaal: -Number(r.aantal) * Number(r.prijs),
+    korting_percentage: Number(r.korting_percentage) || 0,
+    totaal: -Number(r.totaal),
     volgorde: r.volgorde || 0,
   }))
   if (creditRegels.length > 0) {
@@ -3886,7 +3907,7 @@ export async function getOfferteVersies(offerteId: string) {
   const groepId = huidige.groep_id || huidige.id
   const { data: versies } = await supabase
     .from('offertes')
-    .select('id, offertenummer, datum, versie_nummer, status, totaal, subtotaal, regels:offerte_regels(omschrijving, aantal, prijs, btw_percentage)')
+    .select('id, offertenummer, datum, versie_nummer, status, totaal, subtotaal, regels:offerte_regels(omschrijving, aantal, prijs, btw_percentage, korting_percentage, totaal)')
     .eq('groep_id', groepId)
     .order('versie_nummer', { ascending: true })
   return versies || []
@@ -7506,13 +7527,14 @@ export async function duplicateOfferte(id: string) {
   // Kopieer regels
   const regels = origineel.regels || []
   if (regels.length > 0) {
-    const regelRecords = regels.map((r: { omschrijving: string; aantal: number; prijs: number; btw_percentage: number; totaal: number; product_id?: string; volgorde: number }) => ({
+    const regelRecords = regels.map((r: { omschrijving: string; aantal: number; prijs: number; btw_percentage: number; korting_percentage?: number; totaal: number; product_id?: string; volgorde: number }) => ({
       offerte_id: nieuw!.id,
       product_id: r.product_id || null,
       omschrijving: r.omschrijving,
       aantal: r.aantal,
       prijs: r.prijs,
       btw_percentage: r.btw_percentage,
+      korting_percentage: r.korting_percentage || 0,
       totaal: r.totaal,
       volgorde: r.volgorde,
     }))
@@ -8518,7 +8540,8 @@ export async function acceptOffertePublic(token: string) {
           aantal: r.aantal,
           prijs: r.prijs,
           btw_percentage: r.btw_percentage,
-          totaal: r.aantal * r.prijs,
+          korting_percentage: r.korting_percentage || 0,
+          totaal: r.totaal,
           volgorde: i,
         }))
       )
@@ -9167,13 +9190,14 @@ export async function convertToFactuur(
     const regels = offerte.regels || []
     if (regels.length > 0) {
       await supabase.from('factuur_regels').insert(
-        regels.map((r: { product_id?: string; omschrijving: string; aantal: number; prijs: number; btw_percentage: number; totaal: number }, i: number) => ({
+        regels.map((r: { product_id?: string; omschrijving: string; aantal: number; prijs: number; btw_percentage: number; korting_percentage?: number; totaal: number }, i: number) => ({
           factuur_id: factuur.id,
           product_id: r.product_id || null,
           omschrijving: r.omschrijving,
           aantal: r.aantal,
           prijs: r.prijs,
           btw_percentage: r.btw_percentage,
+          korting_percentage: r.korting_percentage || 0,
           totaal: r.totaal,
           volgorde: i,
         }))

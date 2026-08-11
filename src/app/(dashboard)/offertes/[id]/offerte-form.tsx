@@ -33,6 +33,8 @@ interface Regel {
   aantal: number | string
   prijs: number | string
   btw_percentage: number
+  // Korting op deze regel (%) — pas verrekend bij opslaan, zie stap-controleren.
+  korting_percentage?: number | string
   product_id?: string
   // Vrije tekstregel (bv. "Zie bijlage PDF"): geen prijs, telt niet mee in totaal.
   isTekst?: boolean
@@ -883,7 +885,9 @@ function EditOfferteView({
             <div className="space-y-3">
               <button onClick={() => handleConvertToFactuur('volledig')} disabled={loading} className="w-full text-left p-4 rounded-lg border-2 border-gray-200 hover:border-primary hover:bg-blue-50/50 transition-all">
                 <p className="font-medium">100% factureren</p>
-                <p className="text-sm text-gray-500">1 factuur voor het volledige bedrag van {formatCurrency(totaal || (offerte.totaal as number) || 0)}</p>
+                {/* offerte.totaal (opgeslagen, incl. eventuele korting per regel) heeft voorrang
+                    boven de lokaal herberekende `totaal` hierboven, die korting nog niet meetelt. */}
+                <p className="text-sm text-gray-500">1 factuur voor het volledige bedrag van {formatCurrency((offerte.totaal as number) || totaal || 0)}</p>
               </button>
               <button onClick={() => handleConvertToFactuur('split', 70)} disabled={loading} className="w-full text-left p-4 rounded-lg border-2 border-gray-200 hover:border-primary hover:bg-blue-50/50 transition-all">
                 <p className="font-medium">70% / 30% splitsen</p>

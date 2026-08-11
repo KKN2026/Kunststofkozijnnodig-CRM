@@ -15,6 +15,10 @@ interface Regel {
   aantal: number | string
   prijs: number | string
   btw_percentage: number
+  // Korting op deze regel (%). Zichtbaar terwijl je de offerte samenstelt,
+  // maar telt hier bewust nog NIET mee in de getoonde subtotalen — pas bij
+  // opslaan wordt hij echt van het eindbedrag afgetrokken (zie saveOfferte).
+  korting_percentage?: number | string
   product_id?: string
   // Vrije tekstregel (bv. "Zie bijlage PDF"): alleen tekst, geen prijs, telt
   // niet mee in het totaal. Opgeslagen met aantal/prijs = null.
@@ -191,7 +195,7 @@ export function StapControleren({
   }, [productHash, offerteType, bezorgConfig.drempel, bezorgConfig.bedrag])
 
   function addRegel() {
-    onRegelsChange([...regels, { omschrijving: '', aantal: 1, prijs: 0, btw_percentage: 21 }])
+    onRegelsChange([...regels, { omschrijving: '', aantal: 1, prijs: 0, btw_percentage: 21, korting_percentage: 0 }])
   }
 
   // Vrije tekstregel zonder prijs (telt niet mee in het totaal).
@@ -686,7 +690,7 @@ export function StapControleren({
     formData.set('relatie_id', selectedRelatieId)
     formData.set('regels', JSON.stringify(regels.map(r => r.isTekst
       ? { ...r, aantal: null, prijs: null }
-      : { ...r, aantal: numVal(r.aantal), prijs: numVal(r.prijs) })))
+      : { ...r, aantal: numVal(r.aantal), prijs: numVal(r.prijs), korting_percentage: numVal(r.korting_percentage ?? 0) })))
     if (selectedProjectId) formData.set('project_id', selectedProjectId)
     formData.set('merk', merk)
     const result = await saveOfferte(formData)
@@ -848,10 +852,11 @@ export function StapControleren({
           <CardContent>
             <div className="grid grid-cols-12 gap-2 items-end mb-2 px-0 text-[10px] font-medium text-gray-400 uppercase tracking-wide">
               <div className="col-span-1">Product</div>
-              <div className="col-span-4">Omschrijving</div>
+              <div className="col-span-3">Omschrijving</div>
               <div className="col-span-2">Aantal</div>
               <div className="col-span-2">Prijs</div>
               <div className="col-span-1">BTW</div>
+              <div className="col-span-1">Korting</div>
               <div className="col-span-1 text-right">Totaal</div>
               <div className="col-span-1"></div>
             </div>
@@ -891,7 +896,7 @@ export function StapControleren({
                         {producten.map(p => (<option key={p.id} value={p.id}>{p.naam}</option>))}
                       </select>
                     </div>
-                    <div className="col-span-4">
+                    <div className="col-span-3">
                       <input placeholder="Omschrijving" className="w-full px-2 py-2 border border-gray-300 rounded-md text-sm" value={regel.omschrijving} onChange={(e) => updateRegel(i, 'omschrijving', e.target.value)} required readOnly={isBezorgkosten} />
                     </div>
                     <div className="col-span-2">
@@ -906,6 +911,20 @@ export function StapControleren({
                         <option value={9}>9%</option>
                         <option value={21}>21%</option>
                       </select>
+                    </div>
+                    <div className="col-span-1">
+                      <input
+                        type="number"
+                        placeholder="0"
+                        min={0}
+                        max={100}
+                        step="0.1"
+                        title="Korting op deze regel — wordt pas verrekend bij opslaan"
+                        className="w-full px-2 py-2 border border-gray-300 rounded-md text-sm"
+                        value={regel.korting_percentage ?? 0}
+                        onChange={(e) => updateRegel(i, 'korting_percentage', e.target.value)}
+                        disabled={isBezorgkosten}
+                      />
                     </div>
                     <div className="col-span-1 text-right text-sm font-medium">
                       {formatCurrency(numVal(regel.aantal) * numVal(regel.prijs))}
@@ -947,6 +966,11 @@ export function StapControleren({
                 <div className="flex justify-between"><span>Subtotaal:</span><span>{formatCurrency(subtotaal)}</span></div>
                 <div className="flex justify-between"><span>BTW:</span><span>{formatCurrency(btwTotaal)}</span></div>
                 <div className="flex justify-between font-bold text-base border-t pt-1"><span>Totaal:</span><span>{formatCurrency(totaal)}</span></div>
+                {regels.some(r => !r.isTekst && numVal(r.korting_percentage ?? 0) > 0) && (
+                  <p className="text-xs text-amber-600 pt-1">
+                    Bedragen hierboven zijn nog exclusief de ingevulde korting — die wordt pas verrekend zodra je opslaat.
+                  </p>
+                )}
               </div>
             </div>
           </CardContent>

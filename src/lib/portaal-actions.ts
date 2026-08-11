@@ -417,7 +417,9 @@ export async function acceptOffertePortaal(id: string) {
             aantal: r.aantal,
             prijs: r.prijs,
             btw_percentage: r.btw_percentage,
-            totaal: r.aantal * r.prijs,
+            korting_percentage: r.korting_percentage || 0,
+            // Kopieer de al-verrekende totaal (incl. korting) i.p.v. opnieuw te berekenen.
+            totaal: r.totaal,
             volgorde: i,
           }))
         )
@@ -519,13 +521,14 @@ async function autoFacturerenNaAcceptatie(
     // Factuur regels
     if (offerteRegels.length > 0) {
       await supabaseAdmin.from('factuur_regels').insert(
-        offerteRegels.map((r: { product_id?: string; omschrijving: string; aantal: number; prijs: number; btw_percentage: number; totaal: number }, i: number) => ({
+        offerteRegels.map((r: { product_id?: string; omschrijving: string; aantal: number; prijs: number; btw_percentage: number; korting_percentage?: number; totaal: number }, i: number) => ({
           factuur_id: factuur.id,
           product_id: r.product_id || null,
           omschrijving: r.omschrijving,
           aantal: r.aantal,
           prijs: r.prijs,
           btw_percentage: r.btw_percentage,
+          korting_percentage: r.korting_percentage || 0,
           totaal: r.totaal,
           volgorde: i,
         }))

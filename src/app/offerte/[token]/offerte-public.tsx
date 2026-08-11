@@ -10,7 +10,10 @@ interface Regel {
   aantal: number
   prijs: number
   btw_percentage: number
+  // Al verrekend met een eventuele korting per regel — gebruik dit veld,
+  // niet aantal × prijs opnieuw.
   totaal: number
+  korting_percentage?: number | null
 }
 
 interface Offerte {
@@ -137,11 +140,16 @@ export function OffertePublic({ offerte, token }: { offerte: Offerte; token: str
               <tbody>
                 {offerte.regels.map((r, i) => (
                   <tr key={i} className="border-b border-gray-100">
-                    <td className="px-6 py-3 text-sm">{r.omschrijving}</td>
+                    <td className="px-6 py-3 text-sm">
+                      {r.omschrijving}
+                      {(r.korting_percentage || 0) > 0 && (
+                        <span className="block text-xs text-gray-400 mt-0.5">{r.korting_percentage}% korting</span>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-sm text-right">{r.aantal}</td>
                     <td className="px-4 py-3 text-sm text-right">{formatCurrency(r.prijs)}</td>
                     <td className="px-4 py-3 text-sm text-right">{r.btw_percentage}%</td>
-                    <td className="px-6 py-3 text-sm text-right font-medium">{formatCurrency(r.aantal * r.prijs)}</td>
+                    <td className="px-6 py-3 text-sm text-right font-medium">{formatCurrency(r.totaal)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -152,7 +160,18 @@ export function OffertePublic({ offerte, token }: { offerte: Offerte; token: str
           <div className="p-6 bg-gray-50 border-t border-gray-200">
             <div className="flex justify-end">
               <div className="w-64 space-y-2 text-sm">
-                <div className="flex justify-between"><span className="text-gray-600">Subtotaal</span><span>{formatCurrency(offerte.subtotaal)}</span></div>
+                {(() => {
+                  const brutoSubtotaal = offerte.regels.reduce((sum, r) => sum + r.aantal * r.prijs, 0)
+                  const kortingBedrag = Math.round((brutoSubtotaal - offerte.subtotaal) * 100) / 100
+                  return (
+                    <>
+                      <div className="flex justify-between"><span className="text-gray-600">Subtotaal</span><span>{formatCurrency(brutoSubtotaal)}</span></div>
+                      {kortingBedrag > 0.005 && (
+                        <div className="flex justify-between"><span className="text-gray-600">Korting</span><span>-{formatCurrency(kortingBedrag)}</span></div>
+                      )}
+                    </>
+                  )
+                })()}
                 <div className="flex justify-between"><span className="text-gray-600">BTW</span><span>{formatCurrency(offerte.btw_totaal)}</span></div>
                 <div className="flex justify-between font-bold text-lg pt-2 mt-2" style={{ borderTop: '2px solid #00a66e' }}>
                   <span>Totaal</span>

@@ -155,8 +155,9 @@ export const sharedStyles = StyleSheet.create({
   tableColEenheid: { width: 50 },
   tableColDesc: { flex: 1 },
   tableColBedrag: { width: 80, textAlign: 'right' },
-  // Kortingskolom verwijderd: er bestaat geen kortingsveld, dus hij toonde
-  // altijd '0%'. De 60pt gaan naar de omschrijving.
+  // Losse kortingskolom bewust niet teruggezet (11-08-2026): korting per regel
+  // wordt nu getoond als subtekst onder de omschrijving en als losse "Korting"-
+  // regel in het totalenblok (offerte-template.tsx), niet als extra tabelkolom.
   tableColTotaal: { width: 80, textAlign: 'right' },
   tableHeaderText: {
     fontSize: 8,
