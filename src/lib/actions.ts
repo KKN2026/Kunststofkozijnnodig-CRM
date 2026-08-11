@@ -10842,6 +10842,30 @@ export async function deleteLead(id: string) {
   return { success: true }
 }
 
+export async function deleteLeads(ids: string[]) {
+  if (ids.length === 0) return { success: true, deleted: 0 }
+  const supabase = await createClient()
+  const adminId = await getAdministratieId()
+  if (!adminId) return { error: 'Niet ingelogd' }
+
+  let deleted = 0
+  const BATCH_SIZE = 100
+  for (let i = 0; i < ids.length; i += BATCH_SIZE) {
+    const batch = ids.slice(i, i + BATCH_SIZE)
+    const { data, error } = await supabase
+      .from('leads')
+      .delete()
+      .eq('administratie_id', adminId)
+      .in('id', batch)
+      .select('id')
+    if (error) return { error: error.message }
+    deleted += data?.length || 0
+  }
+
+  revalidatePath('/leads')
+  return { success: true, deleted }
+}
+
 export async function updateLeadStatus(id: string, status: string) {
   const supabase = await createClient()
   const { error } = await supabase
@@ -11334,14 +11358,14 @@ export async function toggleVasteKlant(relatieId: string, vast: boolean) {
   return { success: true }
 }
 
-// "Om referentie gevraagd (bekende)": onthoudt dat we deze aannemer al eens
+// "Om doorverwijzing gevraagd (bekende)": onthoudt dat we deze aannemer al eens
 // hebben gevraagd of er in de omgeving nog anderen met kozijnen werken — zodat
 // we die vraag niet blijven herhalen.
-export async function toggleReferentieGevraagd(relatieId: string, gevraagd: boolean) {
+export async function toggleDoorverwijzingGevraagd(relatieId: string, gevraagd: boolean) {
   const supabase = await createClient()
   const adminId = await getAdministratieId()
   if (!adminId) return { error: 'Niet ingelogd' }
-  const { error } = await supabase.from('relaties').update({ om_referentie_gevraagd: gevraagd }).eq('id', relatieId).eq('administratie_id', adminId)
+  const { error } = await supabase.from('relaties').update({ om_doorverwijzing_gevraagd: gevraagd }).eq('id', relatieId).eq('administratie_id', adminId)
   if (error) return { error: error.message }
   revalidatePath('/relatiebeheer')
   revalidatePath(`/relatiebeheer/${relatieId}`)
