@@ -754,7 +754,18 @@ export function StapControleren({
         </div>
       )}
 
-      <form action={handleSubmit} className="space-y-4">
+      <form
+        action={handleSubmit}
+        className="space-y-4"
+        onKeyDown={(e) => {
+          // Voorkom dat Enter in een veld (bv. omschrijving/aantal/prijs) de offerte
+          // al opslaat en verstuurt — daardoor kon je geen bijlage meer toevoegen en
+          // moest je een nieuwe versie maken. Alleen de Opslaan-knop mag nog submitten.
+          if (e.key === 'Enter' && !(e.target instanceof HTMLTextAreaElement) && !(e.target instanceof HTMLButtonElement)) {
+            e.preventDefault()
+          }
+        }}
+      >
         <Card>
           <CardContent className="space-y-4 pt-6">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
