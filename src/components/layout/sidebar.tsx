@@ -54,6 +54,14 @@ export function Sidebar({ rol, mobileOpen, onMobileClose }: { rol?: string; mobi
     ? order.map(href => baseItems.find(i => i.href === href)).filter(Boolean) as typeof baseItems
     : baseItems
 
+  // Bepaal welk item écht actief is: bij overlappende hrefs (bv. '/offertes' en
+  // '/offertes/concepten') mag alleen de langste (specifiekste) match groen worden.
+  const activeHref = baseItems
+    .filter(item =>
+      item.href === '/' ? pathname === '/' : pathname === item.href || pathname.startsWith(item.href + '/')
+    )
+    .sort((a, b) => b.href.length - a.href.length)[0]?.href
+
   function handleDragStart(e: React.DragEvent, href: string) {
     setDraggedItem(href)
     e.dataTransfer.effectAllowed = 'move'
@@ -128,10 +136,7 @@ export function Sidebar({ rol, mobileOpen, onMobileClose }: { rol?: string; mobi
 
       <nav className="flex-1 overflow-y-auto py-2">
         {orderedItems.map((item) => {
-          const isActive =
-            item.href === '/'
-              ? pathname === '/'
-              : pathname.startsWith(item.href)
+          const isActive = item.href === activeHref
 
           return (
             <div
