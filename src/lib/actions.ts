@@ -1080,11 +1080,9 @@ export async function saveOfferte(formData: FormData) {
   const valdatumRaw = formData.get('verwachte_valdatum') as string | null
   let verwachteValdatum: string | null | undefined = valdatumRaw === null ? undefined : (valdatumRaw.trim() || null)
 
-  // Korting per regel: wordt hier voor het eerst verrekend. Tijdens het
-  // bewerken (stap-controleren) laten we de subtotalen bewust ongewijzigd —
-  // pas bij opslaan/klaarzetten trekken we de korting daadwerkelijk af van
-  // het eindbedrag, zodat je een korting kunt intypen zonder dat er meteen
-  // een ander bedrag op het scherm verschijnt.
+  // Korting per regel: dit is de autoritatieve berekening die daadwerkelijk
+  // wordt opgeslagen. De client (stap-controleren) toont dezelfde optelsom al
+  // live tijdens het bewerken — hier wordt hij definitief in de database gezet.
   const kortingFactor = (r: { korting_percentage?: number | string | null }) => {
     const pct = typeof r.korting_percentage === 'number' ? r.korting_percentage : parseFloat(String(r.korting_percentage ?? 0)) || 0
     return 1 - Math.min(100, Math.max(0, pct)) / 100

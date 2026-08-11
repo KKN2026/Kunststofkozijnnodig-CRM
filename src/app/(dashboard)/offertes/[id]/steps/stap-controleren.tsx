@@ -15,9 +15,8 @@ interface Regel {
   aantal: number | string
   prijs: number | string
   btw_percentage: number
-  // Korting op deze regel (%). Zichtbaar terwijl je de offerte samenstelt,
-  // maar telt hier bewust nog NIET mee in de getoonde subtotalen — pas bij
-  // opslaan wordt hij echt van het eindbedrag afgetrokken (zie saveOfferte).
+  // Korting op deze regel (%) — direct verrekend in het getoonde regeltotaal
+  // en de subtotalen, zodat meteen zichtbaar is wat er per regel afgaat.
   korting_percentage?: number | string
   product_id?: string
   // Vrije tekstregel (bv. "Zie bijlage PDF"): alleen tekst, geen prijs, telt
@@ -214,23 +213,6 @@ export function StapControleren({
     onRegelsChange([{ omschrijving, aantal: 1, prijs: excl, btw_percentage: 21 }])
   }
 
-  // Bulk-edit: percentage over alle regels (bv. +5% marge correctie achteraf,
-  // of -10% bij actie-korting). Negeert vaste-bedrag regels zoals bezorgkosten.
-  function bulkAanpassenPrijzen() {
-    const input = prompt('Percentage aanpassing (bijv. 5 voor +5%, -10 voor -10%):')
-    if (input === null) return
-    const pct = parseFloat(input.replace(',', '.'))
-    if (!pct || isNaN(pct)) { alert('Ongeldig percentage'); return }
-    const factor = 1 + pct / 100
-    const updated = regels.map(r => {
-      const omschrijving = (r.omschrijving || '').toLowerCase()
-      // Skip vaste bedragen (bezorgkosten, eenmalige posten met fixed totaal)
-      if (omschrijving.includes('bezorg') || omschrijving.includes('korting')) return r
-      const huidigePrijs = parseFloat(String(r.prijs)) || 0
-      return { ...r, prijs: Math.round(huidigePrijs * factor * 100) / 100 }
-    })
-    onRegelsChange(updated)
-  }
 
   function removeRegel(index: number) {
     // Bezorgkosten handmatig verwijderd → onthouden, zodat de auto-logica ze
@@ -271,8 +253,13 @@ export function StapControleren({
   }
 
   const numVal = (v: number | string) => parseFloat(String(v)) || 0
-  const subtotaal = regels.reduce((sum, r) => sum + numVal(r.aantal) * numVal(r.prijs), 0)
-  const btwTotaal = regels.reduce((sum, r) => sum + (numVal(r.aantal) * numVal(r.prijs) * r.btw_percentage) / 100, 0)
+  // Korting per regel wordt direct verrekend, zodat je meteen ziet wat er per
+  // regel afgaat — niet pas na opslaan.
+  const kortingFactor = (r: Regel) => 1 - Math.min(100, Math.max(0, numVal(r.korting_percentage ?? 0))) / 100
+  const regelBruto = (r: Regel) => numVal(r.aantal) * numVal(r.prijs)
+  const regelNetto = (r: Regel) => regelBruto(r) * kortingFactor(r)
+  const subtotaal = regels.reduce((sum, r) => sum + regelNetto(r), 0)
+  const btwTotaal = regels.reduce((sum, r) => sum + (regelNetto(r) * r.btw_percentage) / 100, 0)
   const totaal = subtotaal + btwTotaal
 
   async function processAndUploadLeverancierPdf(file: File, offerteId: string) {
@@ -832,9 +819,6 @@ export function StapControleren({
                 <Button type="button" variant="ghost" size="sm" onClick={snelVulBedrag}>
                   Bedrag invullen
                 </Button>
-                <Button type="button" variant="ghost" size="sm" onClick={bulkAanpassenPrijzen} title="Pas alle prijzen aan met een percentage (+5%, -10% etc.)">
-                  ± %
-                </Button>
                 <Button type="button" variant="ghost" size="sm" onClick={() => addTekstRegel('Zie bijlage PDF')} title="Voeg een vrije tekstregel 'Zie bijlage PDF' toe (zonder prijs)">
                   Zie bijlage PDF
                 </Button>
@@ -919,7 +903,7 @@ export function StapControleren({
                         min={0}
                         max={100}
                         step="0.1"
-                        title="Korting op deze regel — wordt pas verrekend bij opslaan"
+                        title="Korting op deze regel"
                         className="w-full px-2 py-2 border border-gray-300 rounded-md text-sm"
                         value={regel.korting_percentage ?? 0}
                         onChange={(e) => updateRegel(i, 'korting_percentage', e.target.value)}
@@ -927,7 +911,10 @@ export function StapControleren({
                       />
                     </div>
                     <div className="col-span-1 text-right text-sm font-medium">
-                      {formatCurrency(numVal(regel.aantal) * numVal(regel.prijs))}
+                      {formatCurrency(regelNetto(regel))}
+                      {numVal(regel.korting_percentage ?? 0) > 0 && (
+                        <div className="text-[10px] text-red-500 font-normal">-{formatCurrency(regelBruto(regel) - regelNetto(regel))}</div>
+                      )}
                     </div>
                     <div className="col-span-1">
                       {!isBezorgkosten && (
@@ -963,14 +950,19 @@ export function StapControleren({
 
             <div className="mt-6 flex justify-end">
               <div className="w-64 space-y-1 text-sm">
+                {(() => {
+                  const brutoSubtotaal = regels.reduce((sum, r) => sum + regelBruto(r), 0)
+                  const kortingTotaal = brutoSubtotaal - subtotaal
+                  return kortingTotaal > 0.005 ? (
+                    <>
+                      <div className="flex justify-between text-gray-500"><span>Subtotaal (voor korting):</span><span>{formatCurrency(brutoSubtotaal)}</span></div>
+                      <div className="flex justify-between text-red-500"><span>Korting:</span><span>-{formatCurrency(kortingTotaal)}</span></div>
+                    </>
+                  ) : null
+                })()}
                 <div className="flex justify-between"><span>Subtotaal:</span><span>{formatCurrency(subtotaal)}</span></div>
                 <div className="flex justify-between"><span>BTW:</span><span>{formatCurrency(btwTotaal)}</span></div>
                 <div className="flex justify-between font-bold text-base border-t pt-1"><span>Totaal:</span><span>{formatCurrency(totaal)}</span></div>
-                {regels.some(r => !r.isTekst && numVal(r.korting_percentage ?? 0) > 0) && (
-                  <p className="text-xs text-amber-600 pt-1">
-                    Bedragen hierboven zijn nog exclusief de ingevulde korting — die wordt pas verrekend zodra je opslaat.
-                  </p>
-                )}
               </div>
             </div>
           </CardContent>
