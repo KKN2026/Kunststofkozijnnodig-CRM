@@ -243,11 +243,14 @@ function buildColumns(
 
 type TabType = 'alle' | 'openstaand' | 'aanbetaling' | 'restbetaling' | 'gecrediteerd' | 'per-klus'
 
-export function FactuurList({ facturen, ordersMetStatus, sleutelWaarschuwing }: {
+export function FactuurList({ facturen, ordersMetStatus, sleutelWaarschuwing, betalingSignaal }: {
   facturen: Factuur[]
   ordersMetStatus: OrderMetStatus[]
   // Aflopende/verlopen SnelStart-sleutel; null = niets aan de hand.
   sleutelWaarschuwing?: { bericht: string; verlopen: boolean } | null
+  // Facturen die telkens opnieuw afgeboekt moeten worden — iets draait de
+  // betaling terug. null = niets aan de hand.
+  betalingSignaal?: { bericht: string } | null
 }) {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -515,6 +518,12 @@ export function FactuurList({ facturen, ordersMetStatus, sleutelWaarschuwing }: 
         }`}>
           <AlertTriangle className="h-4 w-4 flex-shrink-0 mt-0.5" />
           <span>{sleutelWaarschuwing.bericht}</span>
+        </div>
+      )}
+      {betalingSignaal && (
+        <div className="mb-4 flex items-start gap-2 p-3 rounded-md border text-sm bg-amber-50 border-amber-200 text-amber-800">
+          <AlertTriangle className="h-4 w-4 flex-shrink-0 mt-0.5" />
+          <span>{betalingSignaal.bericht}</span>
         </div>
       )}
       <PageHeader

@@ -44,9 +44,35 @@ export async function syncFactuurFromMollie(molliePaymentId: string): Promise<Mo
   }
 
   const werdBetaald = factuur.status !== 'betaald' && nieuweStatus === 'betaald'
-  await sb.from('facturen')
+  // De update MOET op fouten gecontroleerd worden. Voorheen ging dit ongezien
+  // door: mislukte de update, dan meldde deze functie alsnog `updated: true` en
+  // rapporteerde de cron een geslaagde ronde, terwijl de factuur openstond.
+  const { error: updateFout } = await sb.from('facturen')
     .update({ betaald_bedrag: nieuwBetaaldBedrag, status: nieuweStatus })
     .eq('id', factuur.id)
+  if (updateFout) {
+    throw new Error(`afboeken van ${factuur.factuurnummer} mislukt: ${updateFout.message}`)
+  }
+
+  // Audit-spoor van elke Mollie-afboeking. De SnelStart-sync logt dit al; zonder
+  // een tegenhanger aan Mollie-kant is niet te zien dat een afboeking heeft
+  // plaatsgevonden — laat staan dat iets 'm later heeft teruggedraaid.
+  try {
+    const { logAudit } = await import('@/lib/audit')
+    await logAudit({
+      actie: 'factuur.mollie_sync',
+      entiteitType: 'factuur',
+      entiteitId: factuur.id,
+      details: {
+        factuurnummer: factuur.factuurnummer,
+        van_status: factuur.status,
+        naar_status: nieuweStatus,
+        mollie_payment_id: molliePaymentId,
+        mollie_betaald: mollieBetaald,
+        crm_totaal: totaal,
+      },
+    })
+  } catch { /* audit mag de afboeking niet blokkeren */ }
 
   if (werdBetaald) {
     // Bevestigingsmail alleen bij een RECENTE betaling. Zonder deze guard zou

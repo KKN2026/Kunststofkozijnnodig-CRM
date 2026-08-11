@@ -3363,10 +3363,11 @@ export async function syncSnelstartBetalingen(administratieIdOverride?: string) 
     id: string; factuurnummer: string; totaal: number; betaald_bedrag: number | null;
     status: string; vervaldatum: string | null; snelstart_boeking_id: string | null;
     snelstart_openstaand: number | null; order_id: string | null; factuur_type: string | null;
+    mollie_payment_id: string | null;
   }>((from, to) =>
     supabaseAdmin
       .from('facturen')
-      .select('id, factuurnummer, totaal, betaald_bedrag, status, vervaldatum, snelstart_boeking_id, snelstart_openstaand, order_id, factuur_type')
+      .select('id, factuurnummer, totaal, betaald_bedrag, status, vervaldatum, snelstart_boeking_id, snelstart_openstaand, order_id, factuur_type, mollie_payment_id')
       .eq('administratie_id', adminId)
       .not('factuurnummer', 'is', null)
       .range(from, to)
@@ -3434,15 +3435,46 @@ export async function syncSnelstartBetalingen(administratieIdOverride?: string) 
 
     const huidigBetaald = Number(f.betaald_bedrag || 0)
     const huidigOpen = f.snelstart_openstaand == null ? null : Number(f.snelstart_openstaand)
+
+    // SnelStart is NIET leidend voor een betaling die Mollie al bevestigd heeft.
+    // Een iDEAL-betaling wordt door Mollie pas dagen later uitbetaald, dus tot
+    // die tijd meldt SnelStart de factuur nog als volledig openstaand. Zonder
+    // deze guard draait deze sync elke Mollie-afboeking terug naar 'verzonden':
+    // de klant krijgt wél netjes een betalingsbevestiging, maar in het CRM blijft
+    // de factuur openstaan — inclusief aanmaningen en een verkeerd debiteuren-
+    // saldo. (Augustus 2026 in het Rebu-CRM: zo bleven 6 facturen à € 28.630,71
+    // onterecht open. Hier preventief toegepast, zelfde code.)
+    let mollieBeschermd = false
+    const zouDegraderen =
+      (f.status === 'betaald' || f.status === 'deels_betaald') &&
+      (nieuweStatus === 'verzonden' || nieuweStatus === 'vervallen')
+    if (zouDegraderen && f.mollie_payment_id) {
+      try {
+        const { getMolliePaymentStatus } = await import('@/lib/mollie')
+        const betaling = await getMolliePaymentStatus(f.mollie_payment_id)
+        mollieBeschermd = betaling.status === 'paid'
+      } catch (err) {
+        // Mollie even niet bereikbaar: dan liever de bestaande status laten
+        // staan. Een betaalde factuur onterecht heropenen is schadelijker dan
+        // een status die een sync-ronde later pas bijwerkt.
+        mollieBeschermd = true
+        console.warn('Mollie-check tijdens SnelStart-sync mislukt, status blijft staan:', f.factuurnummer, err)
+      }
+    }
+    // Bij bescherming: status én betaald_bedrag ongemoeid laten. Het openstaand-
+    // bedrag uit SnelStart schrijven we wel weg — dat blijft feitelijk correct.
+    if (mollieBeschermd) nieuweStatus = f.status
+    const doelBetaald = mollieBeschermd ? huidigBetaald : betaaldSS
+
     // SnelStart vervaldatum overnemen zodat 'achterstallig'-berekening matcht
     const ssVervaldatum = ss.vervaldatum ? ss.vervaldatum.slice(0, 10) : null
     const statusChanged = nieuweStatus !== f.status
-    const betaaldChanged = Math.abs(huidigBetaald - betaaldSS) > 0.01
+    const betaaldChanged = Math.abs(huidigBetaald - doelBetaald) > 0.01
     const openChanged = huidigOpen == null || Math.abs(huidigOpen - openstaandSS) > 0.01
     const vervaldatumChanged = ssVervaldatum && ssVervaldatum !== f.vervaldatum
     if (!statusChanged && !betaaldChanged && !openChanged && !vervaldatumChanged) continue
 
-    const upd: Record<string, unknown> = { betaald_bedrag: betaaldSS, status: nieuweStatus, snelstart_openstaand: openstaandSS }
+    const upd: Record<string, unknown> = { betaald_bedrag: doelBetaald, status: nieuweStatus, snelstart_openstaand: openstaandSS }
     if (vervaldatumChanged) upd.vervaldatum = ssVervaldatum
     const { error } = await supabaseAdmin
       .from('facturen')
