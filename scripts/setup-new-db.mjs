@@ -45,6 +45,10 @@ console.log('Verbonden met doel-database.')
 await client.query(`create table if not exists _setup_migraties (
   bestand text primary key, status text not null, gedraaid_op timestamptz default now()
 )`)
+// RLS aan zonder policies: anders is deze tabel via de Supabase-API benaderbaar
+// met de anon key (Security Advisor: "RLS Disabled in Public"). Dit script
+// verbindt rechtstreeks via Postgres en merkt er niets van.
+await client.query('alter table _setup_migraties enable row level security')
 const { rows: gedaan } = await client.query('select bestand from _setup_migraties')
 const alGedaan = new Set(gedaan.map(r => r.bestand))
 
