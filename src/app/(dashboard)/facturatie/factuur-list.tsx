@@ -294,7 +294,7 @@ export function FactuurList({ facturen, ordersMetStatus, sleutelWaarschuwing, be
         showToast(`Versturen mislukt: ${res.error}`, 'error')
       } else {
         setVersturenStatus(prev => ({ ...prev, [factuurId]: 'ok' }))
-        showToast('Factuur verzonden', 'success')
+        showToast('warning' in res && res.warning ? `Factuur verzonden — ${res.warning}` : 'Factuur verzonden', 'success')
         router.refresh()
       }
     } finally {

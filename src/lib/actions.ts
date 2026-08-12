@@ -2901,17 +2901,20 @@ export async function sendFactuurEmail(factuurId: string, options: {
   const mollieDoNothing = !betaallinkAan || openstaandBedrag <= 0
     || factuur.status === 'gecrediteerd' || factuur.status === 'betaald'
 
-  const molliePromise: Promise<string | null | { error: string }> = (async () => {
+  // Mollie mag versturen nooit blokkeren: als er geen link gemaakt kan worden
+  // (account/profiel-probleem bij Mollie, of geen API-key) gaat de factuur
+  // gewoon de deur uit zónder betaalknop, met een waarschuwing in de UI.
+  const molliePromise: Promise<string | null | { warning: string }> = (async () => {
     // Uitgezet in de instellingen → geen betaalknop, ook niet als er nog een
     // oude link op de factuur staat.
     if (!betaallinkAan) return null
     if (mollieDoNothing) return huidigeBetaalLink
     if (!process.env.MOLLIE_API_KEY) {
-      return { error: 'Mollie is niet geconfigureerd — kan factuur niet versturen zonder betaal-link.' }
+      return { warning: 'Mollie is niet geconfigureerd — factuur is verstuurd zonder betaallink.' }
     }
     const { ensureFactuurBetaalLink } = await import('@/lib/mollie')
     const r = await ensureFactuurBetaalLink(factuurId)
-    if (!r.link) return { error: 'Mollie payment-link kon niet worden aangemaakt — probeer over enkele minuten opnieuw.' }
+    if (!r.link) return { warning: 'Mollie payment-link kon niet worden aangemaakt — factuur is verstuurd zonder betaallink. Controleer de betaalmethodes in het Mollie-dashboard.' }
     return r.link
   })()
 
@@ -2929,10 +2932,10 @@ export async function sendFactuurEmail(factuurId: string, options: {
   })()
 
   const [mollieResult, pdfBase64] = await Promise.all([molliePromise, pdfPromise])
-  if (mollieResult && typeof mollieResult === 'object' && 'error' in mollieResult) {
-    return { error: mollieResult.error }
-  }
-  const betaalLink = (mollieResult as string | null) || null
+  const mollieWarning = (mollieResult && typeof mollieResult === 'object' && 'warning' in mollieResult)
+    ? mollieResult.warning
+    : null
+  const betaalLink = (typeof mollieResult === 'string' ? mollieResult : null)
 
   // CTA knop: permanente Kunststofkozijnnodig.nl-URL die bij klikken de actuele Mollie-link
   // ophaalt (of een verse genereert als de huidige verlopen is).
@@ -3101,7 +3104,7 @@ export async function sendFactuurEmail(factuurId: string, options: {
   revalidatePath('/facturatie')
   revalidatePath('/')
   revalidatePath('/rapportages')
-  return { success: true }
+  return { success: true, warning: mollieWarning || undefined }
 }
 
 export async function pushFactuurToSnelStart(factuurId: string) {

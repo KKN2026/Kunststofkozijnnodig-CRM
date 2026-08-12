@@ -188,7 +188,7 @@ export function FactuurForm({ factuur, relaties, producten, nummerPreview = '', 
     setSending(false)
     setShowEmailDialog(false)
     if (result.error) setShowEmailResult(result.error)
-    else setShowEmailResult('Factuur verstuurd!')
+    else setShowEmailResult(result.warning ? `Factuur verstuurd — ${result.warning}` : 'Factuur verstuurd!')
   }
 
   return (
