@@ -88,6 +88,9 @@ export function FactuurForm({ factuur, relaties, producten, nummerPreview = '', 
     formData.set('regels', JSON.stringify(regels))
     const result = await saveFactuur(formData)
     if (result.error) { setError(result.error); setLoading(false) }
+    // Nieuwe factuur: rechtstreeks naar de aangemaakte factuur zodat "Versturen"
+    // direct binnen handbereik is — geen concept die eerst weer opgezocht moet worden.
+    else if (isNew && result.id) router.push(`/facturatie/${result.id}`)
     else navigateBack('/facturatie')
   }
 
@@ -331,7 +334,7 @@ export function FactuurForm({ factuur, relaties, producten, nummerPreview = '', 
                   <p className="text-[11px] text-gray-400 mt-1">Automatisch volgend nummer — pas aan om handmatig te kiezen.</p>
                 )}
               </div>
-              <Input id="datum" name="datum" label={factuur?.datum ? 'Factuurdatum' : 'Factuurdatum (volgt bij verzending)'} type="date" defaultValue={(factuur?.datum as string) || ''} />
+              <Input id="datum" name="datum" label="Factuurdatum" type="date" defaultValue={(factuur?.datum as string) || (factuur ? '' : new Date().toISOString().slice(0, 10))} />
               <Input id="vervaldatum" name="vervaldatum" label="Vervaldatum" type="date" defaultValue={(factuur?.vervaldatum as string) || (factuur ? '' : new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10))} />
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -348,7 +351,11 @@ export function FactuurForm({ factuur, relaties, producten, nummerPreview = '', 
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <SearchSelect id="relatie_id" name="relatie_id" label="Relatie" value={relatieId} onChange={setRelatieId} placeholder="Zoek relatie..." options={relaties.map(r => ({ value: r.id, label: r.bedrijfsnaam }))} />
-              <Select id="status" name="status" label="Status" defaultValue={(factuur?.status as string) || 'concept'} options={[
+              {/* Een nieuwe factuur is meteen een normale definitieve factuur, geen
+                  concept — op verzoek van de klant (12-08-2026). Concept blijft
+                  wel kiesbaar voor wie dat bewust wil (bv. eerst nog laten
+                  nakijken vóór verzending). */}
+              <Select id="status" name="status" label="Status" defaultValue={(factuur?.status as string) || 'verzonden'} options={[
                 { value: 'concept', label: 'Concept' }, { value: 'verzonden', label: 'Verzonden' },
                 { value: 'betaald', label: 'Betaald' }, { value: 'deels_betaald', label: 'Deels betaald' },
                 { value: 'vervallen', label: 'Vervallen' }, { value: 'gecrediteerd', label: 'Gecrediteerd' },

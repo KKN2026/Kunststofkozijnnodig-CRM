@@ -2460,7 +2460,7 @@ export async function saveFactuur(formData: FormData) {
   revalidatePath('/facturatie')
   revalidatePath('/')
   revalidatePath('/rapportages')
-  return { success: true }
+  return { success: true, id: factuurId }
 }
 
 // Zet/wist de geplande verzenddatum van een (concept-)factuur. Voor inline
