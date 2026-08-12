@@ -10,7 +10,7 @@ export default async function VrijeDagenPage() {
       items={data.items as never[]}
       rol={data.rol}
       eigenMedewerkerId={data.eigenMedewerkerId}
-      medewerkers={medewerkers.map(m => ({ id: m.id as string, naam: (m.naam as string) || 'Onbekend' }))}
+      medewerkers={medewerkers.map(m => ({ id: m.id as string, naam: (m.naam as string) || 'Onbekend', kleur: (m.kleur as string) || undefined }))}
     />
   )
 }

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -10,8 +10,14 @@ import { Select } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import { showToast } from '@/components/ui/toast'
 import { saveVrijeDag, beoordeelVrijeDag, deleteVrijeDag, getVakantieVooraankondiging, stuurVakantieVooraankondiging } from '@/lib/actions'
-import { Plus, Palmtree, Check, X, Trash2, Clock, CheckCircle, XCircle, Mail, Loader2 } from 'lucide-react'
-import { format } from 'date-fns'
+import {
+  Plus, Palmtree, Check, X, Trash2, Clock, CheckCircle, XCircle, Mail, Loader2,
+  Hourglass, CalendarClock, CalendarDays, ChevronLeft, ChevronRight,
+} from 'lucide-react'
+import {
+  format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, addMonths, subMonths,
+  eachDayOfInterval, isSameMonth, isSameDay, isToday,
+} from 'date-fns'
 import { nl } from 'date-fns/locale'
 
 interface VrijeDag {
@@ -28,7 +34,7 @@ interface VrijeDag {
   vooraankondiging_verstuurd_op: string | null
 }
 
-interface Medewerker { id: string; naam: string }
+interface Medewerker { id: string; naam: string; kleur?: string }
 
 interface VooraankondigingPreview {
   id: string
@@ -39,10 +45,49 @@ interface VooraankondigingPreview {
 }
 
 const TYPE_LABEL: Record<string, string> = { vakantie: 'Vakantie', verlof: 'Verlof', ziek: 'Ziek', bijzonder: 'Bijzonder verlof' }
+const STANDAARD_KLEUR = '#2bbd8a'
+const UREN_PER_WERKDAG = 8
 
 function dagenTussen(start: string, eind: string): number {
   const a = new Date(start); const b = new Date(eind || start)
   return Math.max(1, Math.round((b.getTime() - a.getTime()) / 86400000) + 1)
+}
+
+// Telt alleen ma-vr — weekenden tellen standaard niet mee als verlofuren.
+function werkdagenTussen(start: string, eind: string): number {
+  if (!start) return 0
+  const a = new Date(start)
+  const b = new Date(eind || start)
+  if (Number.isNaN(a.getTime()) || Number.isNaN(b.getTime()) || b < a) return 0
+  let count = 0
+  const cur = new Date(a)
+  while (cur <= b) {
+    const dag = cur.getDay()
+    if (dag !== 0 && dag !== 6) count++
+    cur.setDate(cur.getDate() + 1)
+  }
+  return count || 1
+}
+
+function initialen(naam: string): string {
+  return naam.split(' ').filter(Boolean).map(w => w[0]).slice(0, 2).join('').toUpperCase() || '?'
+}
+
+function StatTile({ icon: Icon, label, value, sub, bg, fg }: { icon: typeof Clock; label: string; value: string; sub?: string; bg: string; fg: string }) {
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 p-5">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">{label}</p>
+          <p className="text-2xl font-bold text-gray-900 mt-2 tracking-tight">{value}</p>
+          {sub && <p className="text-xs text-gray-400 mt-1">{sub}</p>}
+        </div>
+        <div className={`h-11 w-11 rounded-full ${bg} flex items-center justify-center shrink-0`}>
+          <Icon className={`h-5 w-5 ${fg}`} />
+        </div>
+      </div>
+    </div>
+  )
 }
 
 export function VrijeDagenView({ items, rol, eigenMedewerkerId, medewerkers }: { items: VrijeDag[]; rol: string; eigenMedewerkerId?: string | null; medewerkers: Medewerker[] }) {
@@ -56,6 +101,37 @@ export function VrijeDagenView({ items, rol, eigenMedewerkerId, medewerkers }: {
   // Vakantie-vooraankondiging naar vaste klanten
   const [vooraankondiging, setVooraankondiging] = useState<VooraankondigingPreview | null>(null)
   const [vaSending, setVaSending] = useState(false)
+
+  // Formulierstate voor de "hoeveel uur"-live-berekening bij het aanvragen/toevoegen.
+  const [formStart, setFormStart] = useState('')
+  const [formEind, setFormEind] = useState('')
+  const [formUren, setFormUren] = useState('')
+  const [urenAangepast, setUrenAangepast] = useState(false)
+
+  // Kalender
+  const [kalenderMaand, setKalenderMaand] = useState(new Date())
+  const [gekozenDag, setGekozenDag] = useState<Date | null>(null)
+
+  const medewerkerKleur = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const m of medewerkers) map.set(m.id, m.kleur || STANDAARD_KLEUR)
+    return map
+  }, [medewerkers])
+
+  function openDialog() {
+    setFormStart(''); setFormEind(''); setFormUren(''); setUrenAangepast(false)
+    setDialogOpen(true)
+  }
+
+  function onDatumChange(veld: 'start' | 'eind', waarde: string) {
+    const nieuweStart = veld === 'start' ? waarde : formStart
+    const nieuweEind = veld === 'eind' ? waarde : formEind
+    if (veld === 'start') setFormStart(waarde); else setFormEind(waarde)
+    if (!urenAangepast && nieuweStart) {
+      const werkdagen = werkdagenTussen(nieuweStart, nieuweEind || nieuweStart)
+      setFormUren(String(werkdagen * UREN_PER_WERKDAG))
+    }
+  }
 
   async function openVooraankondiging(id: string) {
     setLoadingId(id)
@@ -79,6 +155,65 @@ export function VrijeDagenView({ items, rol, eigenMedewerkerId, medewerkers }: {
   const aangevraagd = items.filter(i => i.status === 'aangevraagd')
   const goedgekeurd = items.filter(i => i.status === 'goedgekeurd')
   const afgewezen = items.filter(i => i.status === 'afgewezen')
+
+  // --- Dashboard: uren-optelling dit jaar/deze maand + per medewerker ---
+  const dashboard = useMemo(() => {
+    const nu = new Date()
+    const jaar = nu.getFullYear()
+    const maand = nu.getMonth()
+    let urenJaar = 0, dagenJaar = 0, urenMaand = 0
+    const perMedewerker = new Map<string, { naam: string; kleur: string; uren: number }>()
+    for (const v of goedgekeurd) {
+      const start = new Date(v.start_datum)
+      if (start.getFullYear() !== jaar) continue
+      const dagen = dagenTussen(v.start_datum, v.eind_datum)
+      const uren = v.aantal_uren ?? dagen * UREN_PER_WERKDAG
+      urenJaar += uren
+      dagenJaar += dagen
+      if (start.getMonth() === maand) urenMaand += uren
+      const key = v.medewerker_id || v.medewerker_naam || 'onbekend'
+      const bestaand = perMedewerker.get(key) || { naam: v.medewerker_naam || 'Onbekend', kleur: (v.medewerker_id && medewerkerKleur.get(v.medewerker_id)) || STANDAARD_KLEUR, uren: 0 }
+      bestaand.uren += uren
+      perMedewerker.set(key, bestaand)
+    }
+    const perMedewerkerLijst = Array.from(perMedewerker.values()).sort((a, b) => b.uren - a.uren)
+    return { urenJaar, dagenJaar, urenMaand, perMedewerkerLijst }
+  }, [goedgekeurd, medewerkerKleur])
+
+  // --- Kalender: items per dag, uitgesplitst over de hele periode ---
+  const kalenderPerDag = useMemo(() => {
+    const map = new Map<string, Array<{ id: string; naam: string; kleur: string; uren: number | null; status: string; type: string }>>()
+    for (const v of items) {
+      if (v.status === 'afgewezen') continue
+      const start = new Date(v.start_datum)
+      const eind = new Date(v.eind_datum || v.start_datum)
+      if (Number.isNaN(start.getTime()) || Number.isNaN(eind.getTime()) || eind < start) continue
+      for (const dag of eachDayOfInterval({ start, end: eind })) {
+        const key = format(dag, 'yyyy-MM-dd')
+        if (!map.has(key)) map.set(key, [])
+        map.get(key)!.push({
+          id: v.id,
+          naam: v.medewerker_naam || 'Onbekend',
+          kleur: (v.medewerker_id && medewerkerKleur.get(v.medewerker_id)) || STANDAARD_KLEUR,
+          uren: v.aantal_uren,
+          status: v.status,
+          type: v.type,
+        })
+      }
+    }
+    return map
+  }, [items, medewerkerKleur])
+
+  const kalenderDagen = useMemo(() => {
+    const monthStart = startOfMonth(kalenderMaand)
+    const monthEnd = endOfMonth(kalenderMaand)
+    const calStart = startOfWeek(monthStart, { weekStartsOn: 1 })
+    const calEnd = endOfWeek(monthEnd, { weekStartsOn: 1 })
+    return eachDayOfInterval({ start: calStart, end: calEnd })
+  }, [kalenderMaand])
+
+  const gekozenDagStr = gekozenDag ? format(gekozenDag, 'yyyy-MM-dd') : null
+  const gekozenDagItems = gekozenDagStr ? (kalenderPerDag.get(gekozenDagStr) || []) : []
 
   async function handleSubmit(formData: FormData) {
     setBezig(true)
@@ -122,7 +257,8 @@ export function VrijeDagenView({ items, rol, eigenMedewerkerId, medewerkers }: {
             {format(new Date(v.start_datum), 'd MMM yyyy', { locale: nl })}
             {v.eind_datum && v.eind_datum !== v.start_datum ? ` – ${format(new Date(v.eind_datum), 'd MMM yyyy', { locale: nl })}` : ''}
             {' · '}{dagen} {dagen === 1 ? 'dag' : 'dagen'}
-            {v.aantal_uren ? ` · ${v.aantal_uren} uur` : ''}
+            {' · '}
+            <span className="font-medium text-gray-700">{v.aantal_uren ?? dagen * UREN_PER_WERKDAG} uur</span>
           </div>
           {v.reden && <div className="text-xs text-gray-400 mt-0.5 truncate">{v.reden}</div>}
         </div>
@@ -156,6 +292,8 @@ export function VrijeDagenView({ items, rol, eigenMedewerkerId, medewerkers }: {
     )
   }
 
+  const maxMedewerkerUren = Math.max(1, ...dashboard.perMedewerkerLijst.map(m => m.uren))
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -165,11 +303,141 @@ export function VrijeDagenView({ items, rol, eigenMedewerkerId, medewerkers }: {
             {isAdmin ? 'Beheer en keur vrije dagen goed — goedgekeurde dagen verschijnen in de agenda' : 'Vraag je vrije dagen aan — de beheerder keurt ze goed'}
           </p>
         </div>
-        <Button onClick={() => setDialogOpen(true)}>
+        <Button onClick={openDialog}>
           <Plus className="h-4 w-4" />
           {isAdmin ? 'Vrije dagen toevoegen' : 'Vrije dagen aanvragen'}
         </Button>
       </div>
+
+      {/* Dashboard: KPI-tegels */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatTile icon={Clock} label="Te beoordelen" value={String(aangevraagd.length)} sub={aangevraagd.length > 0 ? 'wacht op goedkeuring' : 'alles afgehandeld'} bg="bg-amber-50" fg="text-amber-600" />
+        <StatTile icon={Hourglass} label="Uren deze maand" value={`${dashboard.urenMaand}u`} sub={format(new Date(), 'MMMM yyyy', { locale: nl })} bg="bg-blue-50" fg="text-blue-600" />
+        <StatTile icon={CalendarClock} label="Uren dit jaar" value={`${dashboard.urenJaar}u`} sub="goedgekeurd verlof" bg="bg-emerald-50" fg="text-[#00a66e]" />
+        <StatTile icon={CalendarDays} label="Dagen dit jaar" value={String(dashboard.dagenJaar)} sub="goedgekeurd verlof" bg="bg-violet-50" fg="text-violet-600" />
+      </div>
+
+      {/* Uren per medewerker (alleen zinvol voor beheerder met meerdere collega's) */}
+      {isAdmin && dashboard.perMedewerkerLijst.length > 1 && (
+        <Card>
+          <CardContent className="p-5">
+            <h3 className="text-sm font-semibold text-gray-900 mb-4">Uren per medewerker (dit jaar)</h3>
+            <div className="space-y-3">
+              {dashboard.perMedewerkerLijst.map(m => (
+                <div key={m.naam} className="flex items-center gap-3">
+                  <span className="w-32 shrink-0 text-sm text-gray-700 truncate flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: m.kleur }} />
+                    {m.naam}
+                  </span>
+                  <span className="flex-1 h-4 rounded-full bg-gray-100 overflow-hidden">
+                    <span className="block h-full rounded-full transition-all" style={{ width: `${(m.uren / maxMedewerkerUren) * 100}%`, backgroundColor: m.kleur }} />
+                  </span>
+                  <span className="w-14 text-right text-sm font-semibold text-gray-900">{m.uren}u</span>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Kalender/agenda-weergave */}
+      <Card>
+        <CardContent className="p-5">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-base font-semibold text-gray-900 capitalize">{format(kalenderMaand, 'MMMM yyyy', { locale: nl })}</h2>
+            <div className="flex items-center gap-1">
+              <Button variant="ghost" size="sm" onClick={() => setKalenderMaand(m => subMonths(m, 1))}>
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => { setKalenderMaand(new Date()); setGekozenDag(new Date()) }}>
+                Vandaag
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => setKalenderMaand(m => addMonths(m, 1))}>
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-7 gap-px bg-gray-200 rounded-t-lg overflow-hidden">
+            {['Ma', 'Di', 'Wo', 'Do', 'Vr', 'Za', 'Zo'].map(dag => (
+              <div key={dag} className="bg-gray-50 py-2 text-center text-xs font-medium text-gray-500">{dag}</div>
+            ))}
+          </div>
+          <div className="grid grid-cols-7 gap-px bg-gray-200 rounded-b-lg overflow-hidden">
+            {kalenderDagen.map(dag => {
+              const dagStr = format(dag, 'yyyy-MM-dd')
+              const dagItems = kalenderPerDag.get(dagStr) || []
+              const isCurrentMonth = isSameMonth(dag, kalenderMaand)
+              const isSelected = gekozenDag && isSameDay(dag, gekozenDag)
+              const vandaag = isToday(dag)
+              return (
+                <div
+                  key={dagStr}
+                  onClick={() => setGekozenDag(dag)}
+                  className={`min-h-[76px] bg-white p-1.5 cursor-pointer transition-colors hover:bg-gray-50 ${!isCurrentMonth ? 'bg-gray-50' : ''} ${isSelected ? 'ring-2 ring-primary ring-inset' : ''}`}
+                >
+                  <div className={`text-xs font-medium mb-1 w-6 h-6 flex items-center justify-center rounded-full ${vandaag ? 'bg-primary text-white' : ''} ${!isCurrentMonth ? 'text-gray-300' : 'text-gray-700'}`}>
+                    {format(dag, 'd')}
+                  </div>
+                  {isCurrentMonth && dagItems.length > 0 && (
+                    <div className="space-y-0.5">
+                      {dagItems.slice(0, 3).map((it, i) => (
+                        <div
+                          key={`${it.id}-${i}`}
+                          className={`text-[10px] leading-tight px-1 py-0.5 rounded truncate text-white ${it.status === 'aangevraagd' ? 'opacity-50' : ''}`}
+                          style={{ backgroundColor: it.kleur }}
+                          title={`${it.naam} — ${TYPE_LABEL[it.type] || it.type}${it.uren ? ` (${it.uren}u)` : ''}`}
+                        >
+                          {initialen(it.naam)}{it.uren ? ` ${it.uren}u` : ''}
+                        </div>
+                      ))}
+                      {dagItems.length > 3 && <div className="text-[10px] text-gray-400 px-1">+{dagItems.length - 3} meer</div>}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+
+          {/* Legenda */}
+          {medewerkers.length > 0 && (
+            <div className="flex flex-wrap gap-x-4 gap-y-1 mt-3 pt-3 border-t border-gray-100">
+              {medewerkers.map(m => (
+                <span key={m.id} className="inline-flex items-center gap-1.5 text-xs text-gray-500">
+                  <span className="w-2 h-2 rounded-full" style={{ backgroundColor: m.kleur || STANDAARD_KLEUR }} />
+                  {m.naam}
+                </span>
+              ))}
+              <span className="inline-flex items-center gap-1.5 text-xs text-gray-400">
+                <span className="w-2 h-2 rounded-full bg-gray-400 opacity-50" />
+                = nog niet goedgekeurd
+              </span>
+            </div>
+          )}
+
+          {/* Detail geselecteerde dag */}
+          {gekozenDag && (
+            <div className="mt-4 pt-4 border-t border-gray-100">
+              <h3 className="text-sm font-semibold text-gray-900 capitalize mb-2">{format(gekozenDag, 'EEEE d MMMM yyyy', { locale: nl })}</h3>
+              {gekozenDagItems.length === 0 ? (
+                <p className="text-sm text-gray-400">Niemand vrij op deze dag.</p>
+              ) : (
+                <div className="space-y-1.5">
+                  {gekozenDagItems.map((it, i) => (
+                    <div key={`${it.id}-${i}`} className="flex items-center gap-3 p-2 rounded-md bg-gray-50">
+                      <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: it.kleur }} />
+                      <span className="text-sm text-gray-900 font-medium">{it.naam}</span>
+                      <Badge status={it.type}>{TYPE_LABEL[it.type] || it.type}</Badge>
+                      {it.status === 'aangevraagd' && <span className="text-xs text-amber-600">(aangevraagd)</span>}
+                      {it.uren != null && <span className="ml-auto text-sm font-semibold text-gray-700">{it.uren} uur</span>}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Te beoordelen (admin) */}
       {isAdmin && aangevraagd.length > 0 && (
@@ -229,8 +497,8 @@ export function VrijeDagenView({ items, rol, eigenMedewerkerId, medewerkers }: {
             <Select name="medewerker_id" label="Medewerker" required options={medewerkers.map(m => ({ value: m.id, label: m.naam }))} placeholder="Kies medewerker..." />
           )}
           <div className="grid grid-cols-2 gap-3">
-            <Input name="start_datum" label="Van" type="date" required />
-            <Input name="eind_datum" label="Tot en met" type="date" />
+            <Input name="start_datum" label="Van" type="date" required value={formStart} onChange={e => onDatumChange('start', e.target.value)} />
+            <Input name="eind_datum" label="Tot en met" type="date" value={formEind} onChange={e => onDatumChange('eind', e.target.value)} />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <Select name="type" label="Type" defaultValue="vakantie" options={[
@@ -239,8 +507,19 @@ export function VrijeDagenView({ items, rol, eigenMedewerkerId, medewerkers }: {
               { value: 'ziek', label: 'Ziek' },
               { value: 'bijzonder', label: 'Bijzonder verlof' },
             ]} />
-            <Input name="aantal_uren" label="Aantal uren (voor rapportage)" type="number" step="0.5" placeholder="bijv. 8" />
+            <Input
+              name="aantal_uren"
+              label="Aantal uren"
+              type="number"
+              step="0.5"
+              placeholder="bijv. 8"
+              value={formUren}
+              onChange={e => { setFormUren(e.target.value); setUrenAangepast(true) }}
+            />
           </div>
+          <p className="text-xs text-gray-400 -mt-2">
+            Automatisch berekend op basis van werkdagen × {UREN_PER_WERKDAG} uur — pas aan bij parttime of een halve dag.
+          </p>
           <Input name="reden" label="Toelichting (optioneel)" placeholder="bijv. zomervakantie" />
           {isAdmin && (
             <label className="flex items-center gap-2 text-sm text-gray-700">

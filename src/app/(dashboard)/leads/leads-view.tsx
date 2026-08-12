@@ -10,8 +10,8 @@ import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Input } from '@/components/ui/input'
 import { Dialog } from '@/components/ui/dialog'
-import { Plus, UserSearch, Loader2, Phone, Upload, Mail, Sparkles } from 'lucide-react'
-import { createLead } from '@/lib/actions'
+import { Plus, UserSearch, Loader2, Phone, Upload, Mail, Sparkles, Trash2 } from 'lucide-react'
+import { createLead, deleteLeads } from '@/lib/actions'
 import { ImportLeadsDialog } from './import-leads-dialog'
 import { ZoekKvkDialog } from './zoek-kvk-dialog'
 import { BulkMailDialog } from './bulk-mail-dialog'
@@ -127,6 +127,7 @@ export function LeadsView({ leads, aiScoutLeads = [] }: { leads: Lead[]; aiScout
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [deleting, setDeleting] = useState(false)
 
   const filtered = activeTab === 'alle'
     ? leads
@@ -145,6 +146,20 @@ export function LeadsView({ leads, aiScoutLeads = [] }: { leads: Lead[]; aiScout
   const mailLeads = selected.size > 0
     ? leads.filter(l => selected.has(l.id))
     : filtered
+
+  async function handleDeleteSelected() {
+    if (selected.size === 0) return
+    if (!confirm(`Weet u zeker dat u ${selected.size} lead${selected.size === 1 ? '' : 's'} wilt verwijderen?`)) return
+    setDeleting(true)
+    const result = await deleteLeads(Array.from(selected))
+    setDeleting(false)
+    if (result.error) {
+      setError(result.error)
+      return
+    }
+    setSelected(new Set())
+    router.refresh()
+  }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -168,6 +183,12 @@ export function LeadsView({ leads, aiScoutLeads = [] }: { leads: Lead[]; aiScout
         description="Beheer uw verkooppijplijn"
         actions={
           <div className="flex gap-2 flex-wrap">
+            {selected.size > 0 && (
+              <Button variant="secondary" onClick={handleDeleteSelected} disabled={deleting} className="text-red-600 hover:text-red-700">
+                {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                Verwijder {selected.size} geselecteerd{selected.size === 1 ? 'e' : 'e'}
+              </Button>
+            )}
             <Button variant="secondary" onClick={() => setBulkMailOpen(true)} disabled={mailLeads.length === 0}>
               <Mail className="h-4 w-4" />
               Mail naar {mailLeads.length}{selected.size > 0 ? ' (geselecteerd)' : ''}
