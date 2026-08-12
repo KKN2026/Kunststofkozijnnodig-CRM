@@ -4,7 +4,7 @@ import { resolve, dirname } from 'path'
 import { fileURLToPath } from 'url'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
-const sqlPath = resolve(__dirname, '..', 'supabase', 'migrations', '074_regel_korting_percentage.sql')
+const sqlPath = resolve(__dirname, '..', 'supabase', 'migrations', '075_regel_korting_percentage.sql')
 const sql = readFileSync(sqlPath, 'utf-8')
 
 const db = await createDbClient()
@@ -12,7 +12,7 @@ await db.query('BEGIN')
 try {
   await db.query(sql)
   await db.query('COMMIT')
-  console.log('Migratie 074 toegepast.')
+  console.log('Migratie 075 toegepast.')
 } catch (e) {
   await db.query('ROLLBACK')
   console.error('ROLLBACK:', e.message)
