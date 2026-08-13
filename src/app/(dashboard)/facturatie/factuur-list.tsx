@@ -12,6 +12,7 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { formatCurrency, formatDateShort } from '@/lib/utils'
 import { FileText, Plus, Receipt, AlertTriangle, CheckCircle, Clock, ExternalLink, FolderKanban, RefreshCw, Download, Send, Loader2 } from 'lucide-react'
 import { syncSnelstartBetalingen, verstuurFactuurSnel, setFactuurGeplandeDatum } from '@/lib/actions'
+import { FACTUUR_VERVAL_GRACE_DAGEN } from '@/lib/constants'
 import Link from 'next/link'
 import { showToast } from '@/components/ui/toast'
 
@@ -324,6 +325,10 @@ export function FactuurList({ facturen, ordersMetStatus, sleutelWaarschuwing, be
     return (b.factuurnummer || '').localeCompare(a.factuurnummer || '')
   })
   const vandaagStr = new Date().toISOString().slice(0, 10)
+  // Zelfde respijtperiode als de automatische vervallen-statuswissel
+  // (syncSnelstartBetalingen) — pas na FACTUUR_VERVAL_GRACE_DAGEN geldt een
+  // factuur ook hier visueel als vervallen.
+  const vervalGrensStr = new Date(Date.now() - FACTUUR_VERVAL_GRACE_DAGEN * 86400000).toISOString().slice(0, 10)
   // Beschikbare jaren (uit factuurdatums) voor het jaar-filter.
   const beschikbareJaren = Array.from(new Set(facturen.map(f => (f.datum || '').slice(0, 4)).filter(Boolean))).sort((a, b) => b.localeCompare(a))
   // 'Alle facturen'-tab filtert op het gekozen jaar; concepten (nog geen datum)
@@ -346,7 +351,7 @@ export function FactuurList({ facturen, ordersMetStatus, sleutelWaarschuwing, be
   // Bij ?vervallen=1 (vanuit dashboard 'Achterstallig'-KPI) tonen we alleen
   // facturen waarvan de vervaldatum is gepasseerd.
   const openstaandFacturen = sorteerOudNaarNieuw(vervallenOnly
-    ? openstaandFacturenAll.filter(f => f.vervaldatum && f.vervaldatum < vandaagStr)
+    ? openstaandFacturenAll.filter(f => f.vervaldatum && f.vervaldatum < vervalGrensStr)
     : openstaandFacturenAll)
   // Split het openstaand-tabblad in twee secties: concepten (nog te versturen)
   // en verstuurde facturen die nog op betaling wachten.
@@ -388,7 +393,7 @@ export function FactuurList({ facturen, ordersMetStatus, sleutelWaarschuwing, be
       const restOpen = (f.totaal || 0) - (f.betaald_bedrag || 0)
       if (restOpen > 0.01 && f.status !== 'betaald' && f.status !== 'geannuleerd') {
         open += restOpen
-        if (f.vervaldatum && f.vervaldatum < vandaagStr) vervallen += restOpen
+        if (f.vervaldatum && f.vervaldatum < vervalGrensStr) vervallen += restOpen
       }
     }
     return { aantal, totaal, open, vervallen }
@@ -1044,7 +1049,8 @@ function KlusFactuurCard({ order, router }: { order: OrderMetStatus; router: Ret
           <div className="space-y-1">
             {order.facturen.map(factuur => {
               const open = Math.max(0, factuur.totaal - (factuur.betaald_bedrag || 0))
-              const vervallen = factuur.vervaldatum && factuur.vervaldatum < new Date().toISOString().slice(0, 10) && open > 0 && factuur.status !== 'betaald'
+              const vervalGrensStr = new Date(Date.now() - FACTUUR_VERVAL_GRACE_DAGEN * 86400000).toISOString().slice(0, 10)
+              const vervallen = factuur.vervaldatum && factuur.vervaldatum < vervalGrensStr && open > 0 && factuur.status !== 'betaald'
               return (
                 <button
                   key={factuur.id}

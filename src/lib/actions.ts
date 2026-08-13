@@ -23,6 +23,7 @@ import { cookies, headers } from 'next/headers'
 import { sendEmail, normaliseerOntvangers } from '@/lib/email'
 import { buildRebuEmailHtml, buildFactuurEmailHtml } from '@/lib/email-template'
 import { NAAM_WIJZIGING_MELDING } from '@/lib/rebrand-melding'
+import { FACTUUR_VERVAL_GRACE_DAGEN } from '@/lib/constants'
 import { getAppUrl } from '@/lib/utils'
 import { FACTUUR_OVERRIDE_EMBED, pasFactuurAdresToe } from '@/lib/factuur-adres'
 
@@ -219,13 +220,16 @@ export async function getRelaties() {
 
   // Openstaande facturen per relatie
   const facturenMap = new Map<string, { openstaand: number; heeft_vervallen: boolean }>()
-  const today = new Date().toISOString().split('T')[0]
+  // Zelfde respijtperiode als de automatische vervallen-statuswissel (zie
+  // syncSnelstartBetalingen) — pas na FACTUUR_VERVAL_GRACE_DAGEN geldt een
+  // factuur ook hier echt als vervallen.
+  const vervalGrens = new Date(Date.now() - FACTUUR_VERVAL_GRACE_DAGEN * 86400000).toISOString().split('T')[0]
   for (const f of facturen) {
     if (!f.relatie_id) continue
     if (!facturenMap.has(f.relatie_id)) facturenMap.set(f.relatie_id, { openstaand: 0, heeft_vervallen: false })
     const entry = facturenMap.get(f.relatie_id)!
     entry.openstaand += (f.totaal || 0) - (f.betaald_bedrag || 0)
-    if (f.status === 'vervallen' || (f.vervaldatum && f.vervaldatum < today)) entry.heeft_vervallen = true
+    if (f.status === 'vervallen' || (f.vervaldatum && f.vervaldatum < vervalGrens)) entry.heeft_vervallen = true
   }
 
   // Laatste email per relatie (emails al gesorteerd op datum desc)
@@ -3418,6 +3422,9 @@ export async function syncSnelstartBetalingen(administratieIdOverride?: string) 
   const ssMap = new Map(ssFacturen.map(f => [f.factuurnummer, f]))
 
   const vandaag = new Date().toISOString().slice(0, 10)
+  // Pas na een paar dagen respijt echt "vervallen" — voorkomt dat een factuur
+  // al de dag na de vervaldatum als vervallen wordt gemarkeerd.
+  const vervalGrens = new Date(Date.now() - FACTUUR_VERVAL_GRACE_DAGEN * 86400000).toISOString().slice(0, 10)
   let updated = 0
   let betaaldNieuw = 0
   let deelsBetaaldNieuw = 0
@@ -3460,7 +3467,7 @@ export async function syncSnelstartBetalingen(administratieIdOverride?: string) 
       nieuweStatus = 'betaald'
     } else if (betaaldSS > 0.01) {
       nieuweStatus = 'deels_betaald'
-    } else if (f.vervaldatum && f.vervaldatum < vandaag) {
+    } else if (f.vervaldatum && f.vervaldatum < vervalGrens) {
       nieuweStatus = 'vervallen'
     } else if (f.status === 'vervallen' || f.status === 'deels_betaald' || f.status === 'betaald') {
       // Status resetten naar verzonden als betaald_bedrag op 0 is maar eerder anders was

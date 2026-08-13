@@ -62,6 +62,12 @@ export type OrderStatus = (typeof orderStatussen)[number]
 export const factuurStatussen = ['concept', 'verzonden', 'betaald', 'deels_betaald', 'vervallen', 'gecrediteerd'] as const
 export type FactuurStatus = (typeof factuurStatussen)[number]
 
+// Aantal dagen ná de vervaldatum dat een factuur pas echt als "vervallen"
+// geldt — zowel de automatische statuswissel (SnelStart-sync) als alle
+// visuele vervallen-badges/filters gebruiken dezelfde grens, zodat een
+// factuur niet al de dag na de vervaldatum als vervallen wordt gemarkeerd.
+export const FACTUUR_VERVAL_GRACE_DAGEN = 7
+
 export const btwPercentages = [0, 9, 21] as const
 
 export const taakPrioriteiten = ['laag', 'normaal', 'hoog', 'urgent'] as const
