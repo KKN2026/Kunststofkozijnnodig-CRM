@@ -64,6 +64,22 @@ export function normaliseerOntvangers(to: string | string[]): string[] {
   return result
 }
 
+// Ontleedt een from-adres in weergavenaam + e-mailadres, of het nu los
+// ("info@x.nl") of al geformatteerd ("Naam <info@x.nl>") is aangeleverd. Zonder
+// dit brak SMTP_FROM (dat als "Kunststofkozijnnodig.nl <info@...>" in de env
+// staat) de domeincheck hieronder en werd de From-header dubbel genest —
+// "Naam" <Kunststofkozijnnodig.nl <info@...>> — een ongeldige header die door
+// strengere mailservers geweigerd of stilzwijgend gecorrumpeerd kan worden,
+// wat klanten hinderde bij het reageren op offerte/factuur-mail (12-08-2026).
+function ontleedAdres(waarde: string): { naam?: string; adres: string } {
+  const match = waarde.match(/^"?([^"<]*)"?\s*<([^>]+)>\s*$/)
+  if (match) {
+    const naam = match[1].trim()
+    return { naam: naam || undefined, adres: match[2].trim() }
+  }
+  return { adres: waarde.trim() }
+}
+
 export async function sendEmail(options: {
   to: string | string[]
   subject: string
@@ -86,13 +102,15 @@ export async function sendEmail(options: {
   // van het hele domein af — dus ook gewone offerte- en factuurmail.
   headers?: Record<string, string>
 }) {
-  const defaultFrom = process.env.RESEND_FROM || process.env.SMTP_FROM || process.env.SMTP_USER || 'info@kunststofkozijnnodig.nl'
+  const defaultFromRaw = process.env.RESEND_FROM || process.env.SMTP_FROM || process.env.SMTP_USER || 'info@kunststofkozijnnodig.nl'
+  const { naam: defaultFromNaam, adres: defaultFromAdres } = ontleedAdres(defaultFromRaw)
   // Alleen overschrijven binnen eigen domein, anders DMARC fail.
-  const eigenDomain = defaultFrom.split('@')[1]
-  const useFrom = options.fromEmail && options.fromEmail.endsWith('@' + eigenDomain)
+  const eigenDomain = defaultFromAdres.split('@')[1]
+  const useFromAdres = options.fromEmail && options.fromEmail.endsWith('@' + eigenDomain)
     ? options.fromEmail
-    : defaultFrom
-  const from = options.fromName ? `"${options.fromName}" <${useFrom}>` : useFrom
+    : defaultFromAdres
+  const fromNaam = options.fromName || defaultFromNaam
+  const from = fromNaam ? `"${fromNaam}" <${useFromAdres}>` : useFromAdres
   const text = options.text || htmlNaarTekst(options.html)
   // Default replyTo = de afzender (zodat reactie bij medewerker terechtkomt)
   const replyTo = options.replyTo || options.fromEmail || undefined
