@@ -5706,14 +5706,16 @@ export async function getDashboardData() {
     }
     return sum
   }, 0)
-  // Vervallen-logica identiek aan SnelStart: alle openstaand (incl negatieve credit)
-  // waar vervaldatum <= vandaag (inclusief vandaag zelf).
+  // Vervallen-logica identiek aan de rest van het CRM (facturatie-lijst,
+  // dashboard, syncSnelstartBetalingen/updateVervallenFacturen): pas na
+  // FACTUUR_VERVAL_GRACE_DAGEN respijt telt een factuur als achterstallig.
+  const vervalGrensStr = new Date(Date.now() - FACTUUR_VERVAL_GRACE_DAGEN * 86400000).toISOString().slice(0, 10)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const achterstallig = facturenData.reduce((sum, f: any) => {
     const o = f.snelstart_openstaand
     const bedrag = o != null ? Number(o) : (f.factuur_type === 'credit' && f.status !== 'gecrediteerd' ? Number(f.totaal || 0) : null)
     if (bedrag == null) return sum
-    if (!f.vervaldatum || f.vervaldatum > vandaagStr) return sum
+    if (!f.vervaldatum || f.vervaldatum >= vervalGrensStr) return sum
     return sum + bedrag
   }, 0)
   // Open offertes = verzonden + recent (laatste 90 dagen). Oudere imports

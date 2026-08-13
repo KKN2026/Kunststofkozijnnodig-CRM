@@ -11,6 +11,7 @@ import { format, getISOWeek } from 'date-fns'
 import { nl } from 'date-fns/locale'
 import { useRouter } from 'next/navigation'
 import { convertToFactuur, saveOmzetdoelen, markOrderBesteld, completeTaak, deleteTaak, saveNotitie, deleteNotitie, verstuurFactuurSnel, archiveerOfferte } from '@/lib/actions'
+import { FACTUUR_VERVAL_GRACE_DAGEN } from '@/lib/constants'
 import { DeliveryPlanningDialog, type PlanOrder } from './delivery-planning-dialog'
 import { type FunnelData } from '@/components/dashboard/conversie-funnel-dashboard'
 import { ConversiePerMaandDialog } from '@/components/dashboard/conversie-per-maand-dialog'
@@ -226,6 +227,14 @@ function dagenVerschil(d: string) {
   const now = new Date()
   const target = new Date(d)
   return Math.ceil((target.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+}
+
+// Zelfde respijtperiode als elders (facturatie-lijst, syncSnelstartBetalingen):
+// pas na FACTUUR_VERVAL_GRACE_DAGEN geldt een factuur als écht vervallen.
+function isFactuurVervallen(vervaldatum: string | null | undefined): boolean {
+  if (!vervaldatum) return false
+  const grens = new Date(Date.now() - FACTUUR_VERVAL_GRACE_DAGEN * 86400000)
+  return new Date(vervaldatum) < grens
 }
 
 // Indicatieve leverweek (maandag-datum) → "Week 12".
@@ -501,7 +510,7 @@ export function DashboardView({ data }: { data: DashboardData | null }) {
   if (data.openAanvragen && data.openAanvragen.length > 0) {
     notifications.push({ label: `aanvra${data.openAanvragen.length !== 1 ? 'gen' : 'ag'}`, href: '/aanvragen', count: data.openAanvragen.length })
   }
-  const achterstalligeFacturen = data.openstaandeFacturen.filter(f => f.vervaldatum && new Date(f.vervaldatum) < new Date())
+  const achterstalligeFacturen = data.openstaandeFacturen.filter(f => isFactuurVervallen(f.vervaldatum))
   if (achterstalligeFacturen.length > 0) {
     notifications.push({ label: 'vervallen', href: '#facturen', count: achterstalligeFacturen.length })
   }
@@ -968,7 +977,7 @@ export function DashboardView({ data }: { data: DashboardData | null }) {
                 </thead>
                 <tbody>
                   {data.openstaandeFacturen.map(f => {
-                    const isVervallen = f.vervaldatum && new Date(f.vervaldatum) < new Date()
+                    const isVervallen = isFactuurVervallen(f.vervaldatum)
                     const dagen = f.vervaldatum ? Math.abs(dagenVerschil(f.vervaldatum)) : null
                     const typeLabel = f.factuur_type === 'aanbetaling' ? 'Aanbetaling' : f.factuur_type === 'termijn' ? 'Termijn' : f.factuur_type === 'restbetaling' ? 'Restbetaling' : f.factuur_type === 'volledig' ? 'Volledig' : null
                     const typeColor = f.factuur_type === 'aanbetaling' ? 'text-blue-600 bg-blue-50' : f.factuur_type === 'termijn' ? 'text-purple-600 bg-purple-50' : f.factuur_type === 'restbetaling' ? 'text-orange-600 bg-orange-50' : 'text-gray-600 bg-gray-50'
@@ -1030,7 +1039,7 @@ export function DashboardView({ data }: { data: DashboardData | null }) {
               </table>
               <div className="md:hidden divide-y divide-gray-50">
                 {data.openstaandeFacturen.map(f => {
-                  const isVervallen = f.vervaldatum && new Date(f.vervaldatum) < new Date()
+                  const isVervallen = isFactuurVervallen(f.vervaldatum)
                   const dagen = f.vervaldatum ? Math.abs(dagenVerschil(f.vervaldatum)) : null
                   const typeLabel = f.factuur_type === 'aanbetaling' ? 'Aanbetaling' : f.factuur_type === 'termijn' ? 'Termijn' : f.factuur_type === 'restbetaling' ? 'Restbetaling' : f.factuur_type === 'volledig' ? 'Volledig' : ''
                   const typeColor = f.factuur_type === 'aanbetaling' ? 'text-blue-600 bg-blue-50' : f.factuur_type === 'termijn' ? 'text-purple-600 bg-purple-50' : f.factuur_type === 'restbetaling' ? 'text-orange-600 bg-orange-50' : 'text-gray-600 bg-gray-50'
