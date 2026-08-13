@@ -1,16 +1,7 @@
-import { getVrijeDagen, getMedewerkers } from '@/lib/actions'
-import { VrijeDagenView } from './vrije-dagen-view'
+import { redirect } from 'next/navigation'
 
-export const revalidate = 20
-
-export default async function VrijeDagenPage() {
-  const [data, medewerkers] = await Promise.all([getVrijeDagen(), getMedewerkers()])
-  return (
-    <VrijeDagenView
-      items={data.items as never[]}
-      rol={data.rol}
-      eigenMedewerkerId={data.eigenMedewerkerId}
-      medewerkers={medewerkers.map(m => ({ id: m.id as string, naam: (m.naam as string) || 'Onbekend', kleur: (m.kleur as string) || undefined }))}
-    />
-  )
+// Vrije dagen is samengevoegd met Agenda (12-08-2026) — deze route blijft
+// bestaan als redirect zodat bestaande bladwijzers/links blijven werken.
+export default function VrijeDagenPage() {
+  redirect('/agenda?tab=vrije-dagen')
 }

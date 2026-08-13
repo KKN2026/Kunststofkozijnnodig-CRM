@@ -11287,19 +11287,23 @@ export async function getMedewerkers() {
 // medewerker alleen eigen vrije dagen ziet/aanvraagt en de admin alles ziet.
 async function getRolEnEigenMedewerker(supabase: Awaited<ReturnType<typeof createClient>>, adminId: string) {
   const { data: { user } } = await supabase.auth.getUser()
-  const { data: profiel } = await supabase.from('profielen').select('rol').eq('id', user?.id || '').maybeSingle()
+  const { data: profiel } = await supabase.from('profielen').select('rol, mag_vrije_dagen_goedkeuren').eq('id', user?.id || '').maybeSingle()
   const rol = (profiel?.rol as string) || 'medewerker'
+  // Losstaand van de rol: alleen Nick Burgers mag vrije dagen goedkeuren (zie
+  // migratie 078) — andere admins (Jordy, Jimmy, etc.) kunnen wel aanvragen
+  // aanmaken/beheren, maar niet zelf goedkeuren.
+  const magGoedkeuren = profiel?.mag_vrije_dagen_goedkeuren === true
   const { data: eigenMw } = await supabase
     .from('medewerkers').select('id')
     .eq('administratie_id', adminId).eq('profiel_id', user?.id || '').maybeSingle()
-  return { userId: user?.id || null, rol, eigenMedewerkerId: (eigenMw?.id as string) || null }
+  return { userId: user?.id || null, rol, magGoedkeuren, eigenMedewerkerId: (eigenMw?.id as string) || null }
 }
 
 export async function getVrijeDagen() {
   const supabase = await createClient()
   const adminId = await getAdministratieId()
-  if (!adminId) return { items: [], rol: 'medewerker', eigenMedewerkerId: null }
-  const { rol, eigenMedewerkerId } = await getRolEnEigenMedewerker(supabase, adminId)
+  if (!adminId) return { items: [], rol: 'medewerker', magGoedkeuren: false, eigenMedewerkerId: null }
+  const { rol, magGoedkeuren, eigenMedewerkerId } = await getRolEnEigenMedewerker(supabase, adminId)
 
   let query = supabase
     .from('vrije_dagen')
@@ -11307,7 +11311,7 @@ export async function getVrijeDagen() {
     .eq('administratie_id', adminId)
     .order('start_datum', { ascending: false })
   if (rol === 'medewerker') {
-    if (!eigenMedewerkerId) return { items: [], rol, eigenMedewerkerId }
+    if (!eigenMedewerkerId) return { items: [], rol, magGoedkeuren, eigenMedewerkerId }
     query = query.eq('medewerker_id', eigenMedewerkerId)
   }
   const { data } = await query
@@ -11315,14 +11319,14 @@ export async function getVrijeDagen() {
     ...v,
     medewerker_naam: (Array.isArray(v.medewerker) ? v.medewerker[0] : v.medewerker)?.naam || null,
   }))
-  return { items, rol, eigenMedewerkerId }
+  return { items, rol, magGoedkeuren, eigenMedewerkerId }
 }
 
 export async function saveVrijeDag(formData: FormData) {
   const supabase = await createClient()
   const adminId = await getAdministratieId()
   if (!adminId) return { error: 'Niet ingelogd' }
-  const { rol, eigenMedewerkerId } = await getRolEnEigenMedewerker(supabase, adminId)
+  const { rol, magGoedkeuren, eigenMedewerkerId } = await getRolEnEigenMedewerker(supabase, adminId)
 
   const id = formData.get('id') as string
   // Alleen rol 'admin' beheert vrije dagen; 'gebruiker' en 'medewerker' mogen
@@ -11339,8 +11343,10 @@ export async function saveVrijeDag(formData: FormData) {
   if (!start) return { error: 'Startdatum is verplicht' }
   const eind = (formData.get('eind_datum') as string) || start
   const urenRaw = formData.get('aantal_uren') as string
-  // Alleen de beheerder mag direct goedkeuren; anders start op 'aangevraagd'.
-  const directGoedkeuren = isBeheerder && formData.get('direct_goedkeuren') === 'true'
+  // Alleen wie mag goedkeuren (Nick Burgers) kan een aanvraag direct als
+  // goedgekeurd wegzetten; andere beheerders (Jordy, Jimmy, etc.) belanden
+  // altijd op 'aangevraagd', ook als zij deze aanmaken.
+  const directGoedkeuren = magGoedkeuren && formData.get('direct_goedkeuren') === 'true'
   const record = {
     administratie_id: adminId,
     medewerker_id: medewerkerId,
@@ -11371,8 +11377,8 @@ export async function beoordeelVrijeDag(id: string, status: 'goedgekeurd' | 'afg
   const supabase = await createClient()
   const adminId = await getAdministratieId()
   if (!adminId) return { error: 'Niet ingelogd' }
-  const { userId, rol } = await getRolEnEigenMedewerker(supabase, adminId)
-  if (rol !== 'admin') return { error: 'Alleen een beheerder kan goedkeuren' }
+  const { userId, magGoedkeuren } = await getRolEnEigenMedewerker(supabase, adminId)
+  if (!magGoedkeuren) return { error: 'Alleen Nick Burgers kan vrije dagen goedkeuren' }
   const { error } = await supabase
     .from('vrije_dagen')
     .update({ status, beoordeeld_op: new Date().toISOString(), beoordeeld_door: userId })

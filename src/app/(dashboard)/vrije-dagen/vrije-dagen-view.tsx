@@ -90,11 +90,14 @@ function StatTile({ icon: Icon, label, value, sub, bg, fg }: { icon: typeof Cloc
   )
 }
 
-export function VrijeDagenView({ items, rol, eigenMedewerkerId, medewerkers }: { items: VrijeDag[]; rol: string; eigenMedewerkerId?: string | null; medewerkers: Medewerker[] }) {
+export function VrijeDagenView({ items, rol, magGoedkeuren, eigenMedewerkerId, medewerkers }: { items: VrijeDag[]; rol: string; magGoedkeuren: boolean; eigenMedewerkerId?: string | null; medewerkers: Medewerker[] }) {
   const router = useRouter()
   // Strikt rol 'admin': collega's met rol 'gebruiker' zijn GEEN beheerder en
   // kunnen alleen aanvragen — de server actions handhaven dit ook.
   const isAdmin = rol === 'admin'
+  // Goedkeuren is losstaand van de rol 'admin' — dat mag alleen Nick Burgers
+  // (zie migratie 078). Andere admins (Jordy, Jimmy, etc.) zien wel het
+  // beheeroverzicht, maar geen goedkeuren/afwijzen-knoppen.
   const [dialogOpen, setDialogOpen] = useState(false)
   const [bezig, setBezig] = useState(false)
   const [loadingId, setLoadingId] = useState<string | null>(null)
@@ -263,7 +266,7 @@ export function VrijeDagenView({ items, rol, eigenMedewerkerId, medewerkers }: {
           {v.reden && <div className="text-xs text-gray-400 mt-0.5 truncate">{v.reden}</div>}
         </div>
         <div className="flex items-center gap-1 flex-shrink-0">
-          {isAdmin && v.status === 'aangevraagd' && (
+          {magGoedkeuren && v.status === 'aangevraagd' && (
             <>
               <Button size="sm" variant="ghost" disabled={loadingId === v.id} onClick={() => handleBeoordeel(v.id, 'goedgekeurd')} className="text-green-600 hover:bg-green-50">
                 <Check className="h-4 w-4" /> Goedkeuren
@@ -300,7 +303,11 @@ export function VrijeDagenView({ items, rol, eigenMedewerkerId, medewerkers }: {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Vrije dagen</h1>
           <p className="text-sm text-gray-500 mt-1">
-            {isAdmin ? 'Beheer en keur vrije dagen goed — goedgekeurde dagen verschijnen in de agenda' : 'Vraag je vrije dagen aan — de beheerder keurt ze goed'}
+            {magGoedkeuren
+              ? 'Beheer en keur vrije dagen goed — goedgekeurde dagen verschijnen in de agenda'
+              : isAdmin
+                ? 'Beheer vrije dagen — Nick Burgers keurt ze goed, goedgekeurde dagen verschijnen in de agenda'
+                : 'Vraag je vrije dagen aan — Nick Burgers keurt ze goed'}
           </p>
         </div>
         <Button onClick={openDialog}>
@@ -521,7 +528,7 @@ export function VrijeDagenView({ items, rol, eigenMedewerkerId, medewerkers }: {
             Automatisch berekend op basis van werkdagen × {UREN_PER_WERKDAG} uur — pas aan bij parttime of een halve dag.
           </p>
           <Input name="reden" label="Toelichting (optioneel)" placeholder="bijv. zomervakantie" />
-          {isAdmin && (
+          {magGoedkeuren && (
             <label className="flex items-center gap-2 text-sm text-gray-700">
               <input type="checkbox" name="direct_goedkeuren" value="true" defaultChecked className="rounded border-gray-300 text-primary" />
               Direct goedkeuren
