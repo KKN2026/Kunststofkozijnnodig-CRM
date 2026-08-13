@@ -15,6 +15,7 @@ import { Dialog } from '@/components/ui/dialog'
 import { formatCurrency, handleNumberPaste } from '@/lib/utils'
 import { Save, Trash2, ArrowLeft, Plus, X, Download, Send, Paperclip, Loader2, Link2, Copy } from 'lucide-react'
 import { EmailOntvangers, combineerOntvangers, type EmailContactOptie } from '@/components/ui/email-ontvangers'
+import { showToast } from '@/components/ui/toast'
 import { AuditLogTab } from '@/components/audit-log/audit-log-tab'
 
 interface Regel {
@@ -187,8 +188,14 @@ export function FactuurForm({ factuur, relaties, producten, nummerPreview = '', 
     })
     setSending(false)
     setShowEmailDialog(false)
-    if (result.error) setShowEmailResult(result.error)
-    else setShowEmailResult(result.warning ? `Factuur verstuurd — ${result.warning}` : 'Factuur verstuurd!')
+    if (result.error) {
+      setShowEmailResult(result.error)
+    } else {
+      // Bij succes hoeft de gebruiker niet handmatig te sluiten en terug te
+      // navigeren — de bevestiging gaat als toast mee terug naar het overzicht.
+      showToast(result.warning ? `Factuur verstuurd — ${result.warning}` : 'Factuur verstuurd!', 'success')
+      navigateBack('/facturatie')
+    }
   }
 
   return (
@@ -230,10 +237,11 @@ export function FactuurForm({ factuur, relaties, producten, nummerPreview = '', 
 
       {error && <div className="bg-red-50 text-red-600 text-sm p-3 rounded-md mb-4">{error}</div>}
 
-      {/* Email resultaat */}
+      {/* Resultaat van versturen (alleen fouten — succes gaat als toast terug naar
+          het overzicht) of van betaallink genereren */}
       {showEmailResult && (
-        <div className={`${showEmailResult === 'Factuur verstuurd!' ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'} border p-4 rounded-lg mb-4`}>
-          <p className={`text-sm font-medium ${showEmailResult === 'Factuur verstuurd!' ? 'text-green-800' : 'text-red-800'}`}>{showEmailResult}</p>
+        <div className={`${showEmailResult === 'Betaallink aangemaakt!' ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'} border p-4 rounded-lg mb-4`}>
+          <p className={`text-sm font-medium ${showEmailResult === 'Betaallink aangemaakt!' ? 'text-green-800' : 'text-red-800'}`}>{showEmailResult}</p>
           <button onClick={() => setShowEmailResult(null)} className="text-xs underline mt-1 text-gray-500">Sluiten</button>
         </div>
       )}
