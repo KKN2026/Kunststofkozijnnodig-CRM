@@ -155,7 +155,7 @@ export async function sendEmail(options: {
   }
 
   // SMTP-fallback (zolang RESEND_API_KEY niet gezet is)
-  await transporter.sendMail({
+  const info = await transporter.sendMail({
     from,
     to,
     subject: options.subject,
@@ -166,4 +166,12 @@ export async function sendEmail(options: {
     headers: options.headers,
     attachments: options.attachments,
   })
+  // sendMail() gooit alleen als ALLE ontvangers geweigerd worden. Met een
+  // universele BCC staat er altijd minstens één extra ontvanger bij, waardoor
+  // een geweigerd klantadres (bv. dichtgetimmerde mailbox, typo, greylisting)
+  // stilzwijgend als succes doorkomt terwijl de klant niets ontvangt. Expliciet
+  // op info.rejected checken zodat dit alsnog als fout naar boven komt.
+  if (info.rejected && info.rejected.length > 0) {
+    throw new Error(`SMTP heeft ${info.rejected.length} ontvanger(s) geweigerd: ${info.rejected.join(', ')}`)
+  }
 }
