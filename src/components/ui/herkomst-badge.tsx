@@ -8,6 +8,9 @@ export const herkomstLabels: Record<string, { tekst: string; klasse: string; sti
   eigen_klant: { tekst: 'Eigen klant', klasse: 'bg-emerald-100 text-emerald-700 border-emerald-200', stip: 'bg-emerald-500' },
   linkedin: { tekst: 'LinkedIn', klasse: 'bg-sky-100 text-sky-700 border-sky-200', stip: 'bg-sky-500' },
   psa: { tekst: 'PSA', klasse: 'bg-violet-100 text-violet-700 border-violet-200', stip: 'bg-violet-500' },
+  website: { tekst: 'Website', klasse: 'bg-amber-100 text-amber-700 border-amber-200', stip: 'bg-amber-500' },
+  instagram: { tekst: 'Instagram', klasse: 'bg-pink-100 text-pink-700 border-pink-200', stip: 'bg-pink-500' },
+  facebook: { tekst: 'Facebook', klasse: 'bg-indigo-100 text-indigo-700 border-indigo-200', stip: 'bg-indigo-500' },
 }
 
 export function HerkomstBadge({

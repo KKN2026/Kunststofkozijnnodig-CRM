@@ -388,6 +388,9 @@ export function RelatieForm({ relatie }: { relatie: RelatieData | null }) {
                   { value: 'eigen_klant', label: 'Eigen klant' },
                   { value: 'linkedin', label: 'Via LinkedIn' },
                   { value: 'psa', label: 'Via PSA' },
+                  { value: 'website', label: 'Via website' },
+                  { value: 'instagram', label: 'Via Instagram' },
+                  { value: 'facebook', label: 'Via Facebook' },
                 ]}
               />
               <Input id="contactpersoon" name="contactpersoon" label="Contactpersoon" defaultValue={relatie?.contactpersoon || ''} />

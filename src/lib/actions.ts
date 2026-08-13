@@ -2285,7 +2285,7 @@ export async function getFacturen() {
   const supabase = await createClient()
   const { data } = await supabase
     .from('facturen')
-    .select('*, relatie:relaties(id, bedrijfsnaam), order:orders(id, ordernummer, status, onderwerp, totaal, subtotaal, offerte:offertes(id, totaal, subtotaal, project:projecten(id, naam))), offerte:offertes(id, totaal, subtotaal, project:projecten(id, naam))')
+    .select('*, relatie:relaties(id, bedrijfsnaam, herkomst, vaste_klant), order:orders(id, ordernummer, status, onderwerp, totaal, subtotaal, offerte:offertes(id, totaal, subtotaal, verkoper_id, project:projecten(id, naam))), offerte:offertes(id, totaal, subtotaal, verkoper_id, project:projecten(id, naam))')
     .order('datum', { ascending: false })
   return data || []
 }

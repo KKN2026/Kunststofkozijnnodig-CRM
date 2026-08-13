@@ -1846,6 +1846,9 @@ export function RelatieDetail({ detail, notities: initialNotities, klantAccounts
                     { value: 'eigen_klant', label: 'Eigen klant' },
                     { value: 'linkedin', label: 'Via LinkedIn' },
                     { value: 'psa', label: 'Via PSA' },
+                    { value: 'website', label: 'Via website' },
+                    { value: 'instagram', label: 'Via Instagram' },
+                    { value: 'facebook', label: 'Via Facebook' },
                   ]}
                 />
                 <Select

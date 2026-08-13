@@ -47,7 +47,9 @@ interface Factuur {
   factuur_type: string | null
   onderwerp: string | null
   relatie_id: string | null
-  relatie: { bedrijfsnaam: string } | null
+  relatie: { bedrijfsnaam: string; herkomst?: string | null; vaste_klant?: boolean | null } | null
+  offerte?: { verkoper_id?: string | null } | null
+  order?: { offerte?: { verkoper_id?: string | null } | null } | null
 }
 
 interface InkoopFactuur {
@@ -69,13 +71,15 @@ interface Uur {
 const MAAND_NAMEN = ['Jan', 'Feb', 'Mrt', 'Apr', 'Mei', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dec']
 const KWARTAAL_NAMEN = ['Q1', 'Q2', 'Q3', 'Q4']
 
-export function RapportagesView({ facturen, inkoopfacturen, uren, funnel }: {
+export function RapportagesView({ facturen, inkoopfacturen, uren, funnel, medewerkers = [] }: {
   facturen: Factuur[]
   inkoopfacturen: InkoopFactuur[]
   uren: Uur[]
   funnel: FunnelData | null
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  medewerkers?: any[]
 }) {
-  const [tab, setTab] = useState<'omzet' | 'prognose' | 'conversie' | 'klanten' | 'btw' | 'uren'>('omzet')
+  const [tab, setTab] = useState<'omzet' | 'prognose' | 'conversie' | 'klanten' | 'herkomst' | 'btw' | 'uren'>('omzet')
 
   // Prognose wordt server-side per jaar berekend; client-side ophalen zodra de
   // tab actief is of het jaar wijzigt, zodat 'ie de jaar-selector volgt.
@@ -229,6 +233,38 @@ export function RapportagesView({ facturen, inkoopfacturen, uren, funnel }: {
     return [...map.values()].sort((a, b) => b.omzet - a.omzet)
   }, [jaarFacturen])
 
+  // Omzet per herkomst-groep: vaste klant / LinkedIn / website+social / via Jordy.
+  // Dit zijn onafhankelijke, elkaar niet-uitsluitende dimensies (een factuur kan
+  // bv. zowel bij een vaste klant horen als via LinkedIn binnengekomen zijn) —
+  // daarom is dit een los overzicht naast elkaar, geen sluitende verdeling van
+  // de totale omzet. 'Via Jordy' kijkt naar de verkoper op de gekoppelde
+  // offerte (rechtstreeks, of via de order).
+  const jordyProfielId = useMemo(
+    () => medewerkers.find(m => (m.naam || '').toLowerCase().startsWith('jordy'))?.profiel_id || null,
+    [medewerkers]
+  )
+  const verkoperVanFactuur = (f: Factuur): string | null =>
+    f.offerte?.verkoper_id || f.order?.offerte?.verkoper_id || null
+
+  const herkomstGroepData = useMemo(() => {
+    const groepen: { key: string; label: string; match: (f: Factuur) => boolean }[] = [
+      { key: 'vaste_klant', label: 'Vaste klant', match: (f) => f.relatie?.vaste_klant === true },
+      { key: 'linkedin', label: 'Via LinkedIn', match: (f) => f.relatie?.herkomst === 'linkedin' },
+      { key: 'social', label: 'Via website / Instagram / Facebook', match: (f) => ['website', 'instagram', 'facebook'].includes(f.relatie?.herkomst || '') },
+      { key: 'jordy', label: 'Via Jordy', match: (f) => !!jordyProfielId && verkoperVanFactuur(f) === jordyProfielId },
+    ]
+    return groepen.map(g => {
+      const matches = jaarFacturen.filter(g.match)
+      const omzet = matches.reduce((sum, f) => sum + (f.subtotaal || 0), 0)
+      const inclBtw = matches.reduce((sum, f) => sum + (f.totaal || 0), 0)
+      const betaald = matches.reduce((sum, f) => sum + betaaldPerFactuur(f), 0)
+      const openstaand = matches
+        .filter(f => ['verzonden', 'deels_betaald', 'vervallen'].includes(f.status))
+        .reduce((sum, f) => sum + openstaandPerFactuur(f), 0)
+      return { key: g.key, label: g.label, aantal: matches.length, omzet, inclBtw, betaald, openstaand }
+    })
+  }, [jaarFacturen, jordyProfielId])
+
   // Facturen per status
   const statusData = useMemo(() => {
     const statussen = ['betaald', 'verzonden', 'deels_betaald', 'vervallen', 'concept']
@@ -303,13 +339,13 @@ export function RapportagesView({ facturen, inkoopfacturen, uren, funnel }: {
       {/* Jaar selector + tabs */}
       <div className="flex flex-wrap items-center gap-3 mb-6">
         <div className="flex gap-2">
-          {(['omzet', 'prognose', 'conversie', 'klanten', 'btw', 'uren'] as const).map((t) => (
+          {(['omzet', 'prognose', 'conversie', 'klanten', 'herkomst', 'btw', 'uren'] as const).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
               className={`px-4 py-2 text-sm rounded-md transition-colors ${tab === t ? 'bg-primary text-white' : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'}`}
             >
-              {t === 'omzet' ? 'Omzet' : t === 'prognose' ? 'Prognose' : t === 'conversie' ? 'Conversie' : t === 'klanten' ? 'Top klanten' : t === 'btw' ? 'BTW' : 'Uren'}
+              {t === 'omzet' ? 'Omzet' : t === 'prognose' ? 'Prognose' : t === 'conversie' ? 'Conversie' : t === 'klanten' ? 'Top klanten' : t === 'herkomst' ? 'Herkomst' : t === 'btw' ? 'BTW' : 'Uren'}
             </button>
           ))}
         </div>
@@ -771,6 +807,59 @@ export function RapportagesView({ facturen, inkoopfacturen, uren, funnel }: {
                     <><ChevronDown className="h-4 w-4" /> Toon alle {klantData.length} klanten</>
                   )}
                 </button>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {tab === 'herkomst' && (
+        <div className="space-y-6">
+          <Card>
+            <CardContent>
+              <h3 className="font-semibold text-gray-900 mb-1">Omzet per herkomst-groep — {jaar}</h3>
+              <p className="text-xs text-gray-500 mb-3">
+                Onafhankelijke groepen, geen sluitende verdeling — een factuur kan in meerdere rijen tellen
+                (bv. een vaste klant die ook via LinkedIn is binnengekomen).
+              </p>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b text-left text-gray-500">
+                      <th className="pb-2 font-medium">Groep</th>
+                      <th className="pb-2 font-medium text-right">Facturen</th>
+                      <th className="pb-2 font-medium text-right">Omzet (excl.)</th>
+                      <th className="pb-2 font-medium text-right">Incl. BTW</th>
+                      <th className="pb-2 font-medium text-right">Betaald</th>
+                      <th className="pb-2 font-medium text-right">Openstaand</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {herkomstGroepData.map((g) => (
+                      <tr key={g.key} className="border-b border-gray-100 hover:bg-gray-50">
+                        <td className="py-2 font-medium">{g.label}</td>
+                        <td className="py-2 text-right">{g.aantal}</td>
+                        <td className="py-2 text-right">{formatCurrency(g.omzet)}</td>
+                        <td className="py-2 text-right text-gray-500">{formatCurrency(g.inclBtw)}</td>
+                        <td className="py-2 text-right text-green-600">{formatCurrency(g.betaald)}</td>
+                        <td className="py-2 text-right text-blue-600">{g.openstaand > 0 ? formatCurrency(g.openstaand) : '-'}</td>
+                      </tr>
+                    ))}
+                    <tr className="border-t-2 border-gray-300 font-semibold">
+                      <td className="py-2">Totaal alle facturen ({jaar})</td>
+                      <td className="py-2 text-right">{jaarFacturen.length}</td>
+                      <td className="py-2 text-right">{formatCurrency(totaalOmzet)}</td>
+                      <td className="py-2 text-right text-gray-500">{formatCurrency(totaalInclBtw)}</td>
+                      <td className="py-2 text-right text-green-600">{formatCurrency(betaaldOmzet)}</td>
+                      <td className="py-2 text-right text-blue-600">{openstaandOmzet > 0 ? formatCurrency(openstaandOmzet) : '-'}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              {!jordyProfielId && (
+                <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2 mt-3">
+                  Geen medewerker gevonden met naam "Jordy" — de rij "Via Jordy" blijft op 0 totdat die medewerker bestaat.
+                </p>
               )}
             </CardContent>
           </Card>
