@@ -27,7 +27,7 @@ interface Taak {
   categorie: string | null
   toegewezen_aan: string | null
   medewerker_id: string | null
-  project: { naam: string } | null
+  project: { naam: string; laatste_offerte_bedrag?: number | null } | null
   toegewezen: { naam: string } | null
   medewerker: { naam: string } | null
   offerte: { id?: string; offertenummer?: string | null; status?: string; totaal: number; subtotaal: number | null } | null
@@ -104,7 +104,19 @@ function getColumns(
     { id: 'relatie', header: 'Relatie', accessorFn: (row) => row.relatie?.bedrijfsnaam || '-' },
     { accessorKey: 'status', header: 'Status', cell: ({ getValue }) => <Badge status={getValue() as string} /> },
     { accessorKey: 'prioriteit', header: 'Prioriteit', cell: ({ getValue }) => <Badge status={getValue() as string} /> },
-    { id: 'project', header: 'Verkoopkans', accessorFn: (row) => row.project?.naam || '-' },
+    { id: 'project', header: 'Verkoopkans', accessorFn: (row) => row.project?.naam || '-', cell: ({ row }) => {
+      const project = row.original.project
+      if (!project) return '-'
+      const bedrag = project.laatste_offerte_bedrag
+      return (
+        <div className="flex items-center gap-2">
+          <span>{project.naam}</span>
+          {bedrag != null && bedrag > 0 && (
+            <span className="text-sm text-gray-500">{formatCurrency(bedrag)}</span>
+          )}
+        </div>
+      )
+    } },
     { id: 'bedrag', header: 'Bedrag excl.', cell: ({ row }) => {
       const off = row.original.offerte
       if (!off) return '-'

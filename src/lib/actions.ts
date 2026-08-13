@@ -4904,7 +4904,7 @@ export async function getTaken() {
   const taken = await fetchAllRows<any>((from, to) => {
     let query = supabase
       .from('taken')
-      .select('*, categorie, project:projecten(naam), toegewezen:profielen(naam), medewerker:medewerkers(naam), offerte:offertes(id, offertenummer, status, totaal, subtotaal), relatie:relaties(bedrijfsnaam)')
+      .select('*, categorie, project:projecten(naam, offertes:offertes(subtotaal, totaal, datum, versie_nummer, created_at)), toegewezen:profielen(naam), medewerker:medewerkers(naam), offerte:offertes(id, offertenummer, status, totaal, subtotaal), relatie:relaties(bedrijfsnaam)')
       .order('created_at', { ascending: true })
       .range(from, to)
     if (rol === 'medewerker') {
@@ -4918,6 +4918,26 @@ export async function getTaken() {
   // plakten zijn verwijderd: dat koppelde offertes aan taken die er niets mee te
   // maken hebben. De afvink-popup verschijnt dus alleen bij een taak die echt aan
   // een verzonden offerte hangt (bv. de automatische opvolgtaak met offerte_id).
+
+  // Bedrag van de verkoopkans (= het project) tonen in de 'Verkoopkans'-kolom:
+  // het bedrag van de laatst aangemaakte offerte binnen dat project. Dit is
+  // puur weergave op project-niveau — anders dan de afvink-popup hierboven raakt
+  // dit de taak zelf niet en koppelt er dus geen offerte-status aan vast.
+  for (const t of taken) {
+    const offertes = (t.project?.offertes || []) as { subtotaal: number; totaal: number; datum: string | null; versie_nummer: number; created_at?: string | null }[]
+    if (!t.project || offertes.length === 0) continue
+    const laatsteOfferte = [...offertes].sort((a, b) => {
+      const ca = a.created_at ? new Date(a.created_at).getTime() : 0
+      const cb = b.created_at ? new Date(b.created_at).getTime() : 0
+      if (cb !== ca) return cb - ca
+      const da = a.datum ? new Date(a.datum).getTime() : 0
+      const db = b.datum ? new Date(b.datum).getTime() : 0
+      if (db !== da) return db - da
+      return (b.versie_nummer || 0) - (a.versie_nummer || 0)
+    })[0]
+    t.project.laatste_offerte_bedrag = laatsteOfferte?.subtotaal || null
+    delete t.project.offertes
+  }
 
   // Weergavenaam van de toegewezen persoon: laat de gekoppelde medewerkernaam
   // winnen van de profielnaam, zodat taken op het gedeelde login-account als

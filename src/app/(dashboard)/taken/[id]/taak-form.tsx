@@ -28,7 +28,7 @@ type Notitie = {
 
 export function TaakForm({ taak, projecten, medewerkers, relaties, offertes, notities: initialNotities = [], defaultRelatieId, defaultProjectId, currentMedewerkerId, offerteStatus, offerteEmails = [] }: {
   taak: Record<string, unknown> | null
-  projecten: { id: string; naam: string; relatie_id?: string }[]
+  projecten: { id: string; naam: string; relatie_id?: string; laatste_offerte_bedrag?: number | null }[]
   medewerkers: { id: string; naam: string; type: string; actief: boolean }[]
   relaties: { id: string; bedrijfsnaam: string; email?: string | null; telefoon?: string | null; contactpersoon?: string | null }[]
   offertes: { id: string; offertenummer: string; relatie_id: string }[]
@@ -321,6 +321,17 @@ export function TaakForm({ taak, projecten, medewerkers, relaties, offertes, not
                   : 'Een nieuwe taak hangt aan een verkoopkans. Nieuwe klant zonder verkoopkans? Kies type "Bellen (nabellen)" — dan volstaat een klant.'}
               </p>
             )}
+            {/* Bedrag van de gekozen verkoopkans (laatst aangemaakte offerte van dat
+                project) — alleen als losse hint, niet als deze taak al zijn eigen
+                offerte-koppeling heeft (die staat hieronder in "Gekoppelde offerte"). */}
+            {!taak?.offerte_id && selectedProjectId && (() => {
+              const bedrag = projecten.find(p => p.id === selectedProjectId)?.laatste_offerte_bedrag
+              return bedrag != null && bedrag > 0 ? (
+                <p className="text-xs text-gray-500 -mt-2">
+                  Bedrag verkoopkans: <span className="font-medium text-gray-700">{formatCurrency(bedrag)}</span>
+                </p>
+              ) : null
+            })()}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <SearchSelect
                 id="medewerker_id"
