@@ -31,6 +31,7 @@ interface Lead {
   postcode: string | null
   plaats: string | null
   status: string
+  geschatte_waarde: number | null
   notities: string | null
   terugbel_datum: string | null
   terugbel_notitie: string | null
@@ -238,6 +239,10 @@ export function LeadDetail({ lead, taken: initialTaken }: { lead: Lead; taken: T
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Telefoon</label>
                     <Input name="telefoon" defaultValue={lead.telefoon || ''} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Geschatte waarde</label>
+                    <Input name="geschatte_waarde" type="number" step="1" min="0" placeholder="bijv. 1000" defaultValue={lead.geschatte_waarde ?? ''} />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Adres (straat + huisnummer)</label>

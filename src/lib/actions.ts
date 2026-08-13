@@ -1329,6 +1329,13 @@ export async function saveOfferte(formData: FormData) {
     await syncOfferteValdatum(offerteId, verwachteValdatum)
   }
 
+  // Productiviteit: elke offerte die wordt aangemaakt of bewerkt telt (max 1x
+  // per dag per offerte) mee als activiteit voor de ingelogde medewerker.
+  if (offerteId) {
+    const { eigenMedewerkerId } = await getRolEnEigenMedewerker(supabase, adminId)
+    await logMedewerkerActiviteit(supabase, adminId, eigenMedewerkerId, 'offerte', offerteId, 'offerte')
+  }
+
   revalidatePath('/offertes')
   revalidatePath('/')
   return { success: true, id: offerteId }
@@ -4795,10 +4802,16 @@ export async function saveUur(formData: FormData) {
   if (!adminId || !user) return { error: 'Niet ingelogd' }
 
   const id = formData.get('id') as string
+  // Productiviteit/ROI-dashboard rekent kosten uit via medewerker_id × uurtarief
+  // — die kolom bestond al op de tabel maar werd hier nog niet gevuld.
+  const { data: eigenMw } = await supabase
+    .from('medewerkers').select('id')
+    .eq('administratie_id', adminId).eq('profiel_id', user.id).maybeSingle()
   const record = {
     administratie_id: adminId,
     project_id: formData.get('project_id') as string || null,
     gebruiker_id: user.id,
+    medewerker_id: eigenMw?.id || null,
     datum: formData.get('datum') as string,
     uren: parseFloat(formData.get('uren') as string),
     omschrijving: formData.get('omschrijving') as string || null,
@@ -10803,6 +10816,7 @@ export async function createLead(formData: FormData) {
     plaats: formData.get('plaats') as string || null,
     bron: 'handmatig',
     notities: formData.get('notities') as string || null,
+    geschatte_waarde: formData.get('geschatte_waarde') ? parseFloat(formData.get('geschatte_waarde') as string) || null : null,
   }
 
   const { data, error } = await supabase
@@ -10827,6 +10841,7 @@ export async function updateLead(id: string, formData: FormData) {
     postcode: formData.get('postcode') as string || null,
     plaats: formData.get('plaats') as string || null,
     notities: formData.get('notities') as string || null,
+    geschatte_waarde: formData.get('geschatte_waarde') ? parseFloat(formData.get('geschatte_waarde') as string) || null : null,
     updated_at: new Date().toISOString(),
   }
 
@@ -10871,11 +10886,23 @@ export async function deleteLeads(ids: string[]) {
 
 export async function updateLeadStatus(id: string, status: string) {
   const supabase = await createClient()
+  // Productiviteit: een statusstap vooruit is het bewijs dat de medewerker deze
+  // klant heeft gesproken — vandaar de oude status vooraf ophalen (geen extra
+  // klik voor de medewerker, puur bijproduct van dit bestaande gedrag).
+  const { data: vorige } = await supabase.from('leads').select('status').eq('id', id).maybeSingle()
   const { error } = await supabase
     .from('leads')
     .update({ status, updated_at: new Date().toISOString() })
     .eq('id', id)
   if (error) return { error: error.message }
+  const adminId = await getAdministratieId()
+  if (adminId && status !== 'nieuw') {
+    const { eigenMedewerkerId } = await getRolEnEigenMedewerker(supabase, adminId)
+    await logMedewerkerActiviteit(supabase, adminId, eigenMedewerkerId, 'klant_gesproken', id, 'lead')
+    if (vorige?.status === 'nieuw') {
+      await logMedewerkerActiviteit(supabase, adminId, eigenMedewerkerId, 'nieuwe_klant_benaderd', id, 'lead')
+    }
+  }
   revalidatePath('/leads')
   revalidatePath(`/leads/${id}`)
   return { success: true }
@@ -10883,6 +10910,7 @@ export async function updateLeadStatus(id: string, status: string) {
 
 export async function setTerugbelMoment(id: string, datum: string, notitie: string) {
   const supabase = await createClient()
+  const { data: vorige } = await supabase.from('leads').select('status').eq('id', id).maybeSingle()
   const { error } = await supabase
     .from('leads')
     .update({
@@ -10892,6 +10920,18 @@ export async function setTerugbelMoment(id: string, datum: string, notitie: stri
     })
     .eq('id', id)
   if (error) return { error: error.message }
+  // Productiviteit: een klant "vooruit plannen" (terugbelmoment zetten)
+  // betekent dat de klant is gesproken — telt automatisch mee, geen aparte knop.
+  if (datum) {
+    const adminId = await getAdministratieId()
+    if (adminId) {
+      const { eigenMedewerkerId } = await getRolEnEigenMedewerker(supabase, adminId)
+      await logMedewerkerActiviteit(supabase, adminId, eigenMedewerkerId, 'klant_gesproken', id, 'lead')
+      if (vorige?.status === 'nieuw') {
+        await logMedewerkerActiviteit(supabase, adminId, eigenMedewerkerId, 'nieuwe_klant_benaderd', id, 'lead')
+      }
+    }
+  }
   revalidatePath('/leads')
   revalidatePath(`/leads/${id}`)
   return { success: true }
@@ -11704,6 +11744,170 @@ export async function getMedewerkersMetBezetting() {
   return {
     medewerkers: medewerkers.data || [],
     bezetting: bezetting.data || [],
+  }
+}
+
+// === PRODUCTIVITEIT ===
+// Doelen + automatisch gelogde activiteiten per medewerker. Geen handmatige
+// invoer: loggen gebeurt als bijproduct van bestaand werk (terugbelmoment
+// zetten/leadstatus wijzigen in updateLeadStatus/setTerugbelMoment, offerte
+// opslaan in saveOfferte). activiteit_type is vrije tekst (geen CHECK) zodat
+// er later makkelijk nieuwe doeltypes bij kunnen zonder migratie.
+
+const PRODUCTIVITEIT_LABELS: Record<string, string> = {
+  klant_gesproken: 'Klant gesproken',
+  nieuwe_klant_benaderd: 'Nieuwe klant benaderd',
+  offerte: 'Offerte gemaakt/aangepast',
+}
+
+// Best-effort logging — mag de aanroepende actie nooit laten falen. Telt max
+// 1x per medewerker/type/referentie per kalenderdag (voorkomt dat 5x dezelfde
+// offerte bewerken op 1 dag ook 5 keer meetelt).
+async function logMedewerkerActiviteit(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  adminId: string,
+  medewerkerId: string | null,
+  activiteitType: string,
+  referentieId?: string | null,
+  referentieType?: string | null,
+) {
+  if (!medewerkerId) return
+  try {
+    if (referentieId) {
+      const vandaagStart = new Date()
+      vandaagStart.setHours(0, 0, 0, 0)
+      const { data: bestaat } = await supabase
+        .from('medewerker_activiteiten')
+        .select('id')
+        .eq('medewerker_id', medewerkerId)
+        .eq('activiteit_type', activiteitType)
+        .eq('referentie_id', referentieId)
+        .gte('created_at', vandaagStart.toISOString())
+        .limit(1)
+        .maybeSingle()
+      if (bestaat) return
+    }
+    await supabase.from('medewerker_activiteiten').insert({
+      administratie_id: adminId,
+      medewerker_id: medewerkerId,
+      activiteit_type: activiteitType,
+      referentie_type: referentieType || null,
+      referentie_id: referentieId || null,
+    })
+  } catch (e) {
+    console.error('logMedewerkerActiviteit (niet-blokkerend):', e instanceof Error ? e.message : e)
+  }
+}
+
+function werkdagenInMaand(jaar: number, maand0: number): number {
+  const laatsteDag = new Date(jaar, maand0 + 1, 0).getDate()
+  let n = 0
+  for (let d = 1; d <= laatsteDag; d++) {
+    const dag = new Date(jaar, maand0, d).getDay()
+    if (dag !== 0 && dag !== 6) n++
+  }
+  return n
+}
+
+export async function getMedewerkerDoelen() {
+  const supabase = await createClient()
+  const adminId = await getAdministratieId()
+  if (!adminId) return []
+  const { data } = await supabase.from('medewerker_doelen').select('*').eq('administratie_id', adminId)
+  return data || []
+}
+
+export async function saveMedewerkerDoel(medewerkerId: string, activiteitType: string, dagDoel: number) {
+  const supabase = await createClient()
+  const adminId = await getAdministratieId()
+  if (!adminId) return { error: 'Niet ingelogd' }
+  const { rol } = await getRolEnEigenMedewerker(supabase, adminId)
+  if (rol !== 'admin') return { error: 'Alleen de beheerder kan doelen instellen' }
+  const { error } = await supabase.from('medewerker_doelen').upsert({
+    administratie_id: adminId,
+    medewerker_id: medewerkerId,
+    activiteit_type: activiteitType,
+    dag_doel: dagDoel,
+    updated_at: new Date().toISOString(),
+  }, { onConflict: 'administratie_id,medewerker_id,activiteit_type' })
+  if (error) return { error: error.message }
+  revalidatePath('/productiviteit')
+  return { success: true }
+}
+
+export async function deleteMedewerkerDoel(id: string) {
+  const supabase = await createClient()
+  const adminId = await getAdministratieId()
+  if (!adminId) return { error: 'Niet ingelogd' }
+  const { rol } = await getRolEnEigenMedewerker(supabase, adminId)
+  if (rol !== 'admin') return { error: 'Alleen de beheerder kan doelen verwijderen' }
+  const { error } = await supabase.from('medewerker_doelen').delete().eq('id', id).eq('administratie_id', adminId)
+  if (error) return { error: error.message }
+  revalidatePath('/productiviteit')
+  return { success: true }
+}
+
+export async function getProductiviteitData() {
+  const supabase = await createClient()
+  const adminId = await getAdministratieId()
+  const nu = new Date()
+  const werkdagenDezeMaand = werkdagenInMaand(nu.getFullYear(), nu.getMonth())
+  const leeg = { medewerkers: [], doelen: [], activiteiten: [], uren: [], rol: 'medewerker', eigenMedewerkerId: null, werkdagenDezeMaand, labels: PRODUCTIVITEIT_LABELS }
+  if (!adminId) return leeg
+
+  const { rol, eigenMedewerkerId } = await getRolEnEigenMedewerker(supabase, adminId)
+  const isAdmin = rol === 'admin'
+  if (!isAdmin && !eigenMedewerkerId) return { ...leeg, rol }
+
+  const maandStart = new Date(nu.getFullYear(), nu.getMonth(), 1)
+  const maandStartIso = maandStart.toISOString()
+  const maandStartDatum = maandStart.toISOString().split('T')[0]
+
+  let medewerkersQuery = supabase.from('medewerkers').select('id, naam, kleur, uurtarief').eq('administratie_id', adminId).eq('actief', true)
+  let doelenQuery = supabase.from('medewerker_doelen').select('*').eq('administratie_id', adminId)
+  let activiteitenQuery = supabase.from('medewerker_activiteiten').select('*').eq('administratie_id', adminId).gte('created_at', maandStartIso)
+  let urenQuery = supabase.from('uren').select('medewerker_id, uren, datum').eq('administratie_id', adminId).gte('datum', maandStartDatum).not('medewerker_id', 'is', null)
+
+  if (!isAdmin && eigenMedewerkerId) {
+    medewerkersQuery = medewerkersQuery.eq('id', eigenMedewerkerId)
+    doelenQuery = doelenQuery.eq('medewerker_id', eigenMedewerkerId)
+    activiteitenQuery = activiteitenQuery.eq('medewerker_id', eigenMedewerkerId)
+    urenQuery = urenQuery.eq('medewerker_id', eigenMedewerkerId)
+  }
+
+  const [medewerkersRes, doelenRes, activiteitenRes, urenRes] = await Promise.all([
+    medewerkersQuery.order('naam'), doelenQuery, activiteitenQuery, urenQuery,
+  ])
+
+  // Potentiële omzet: koppel elke activiteit aan een bedrag waar mogelijk —
+  // een lead heeft (optioneel) een geschatte_waarde, een offerte heeft een
+  // echt totaalbedrag. referentie_id heeft geen FK, dus losse lookups i.p.v.
+  // een PostgREST-embed.
+  const activiteiten = activiteitenRes.data || []
+  const leadIds = [...new Set(activiteiten.filter(a => a.referentie_type === 'lead' && a.referentie_id).map(a => a.referentie_id as string))]
+  const offerteIds = [...new Set(activiteiten.filter(a => a.referentie_type === 'offerte' && a.referentie_id).map(a => a.referentie_id as string))]
+  const [leadsRes, offertesRes] = await Promise.all([
+    leadIds.length > 0 ? supabase.from('leads').select('id, geschatte_waarde').in('id', leadIds) : Promise.resolve({ data: [] }),
+    offerteIds.length > 0 ? supabase.from('offertes').select('id, totaal').in('id', offerteIds) : Promise.resolve({ data: [] }),
+  ])
+  const bedragPerLead = new Map((leadsRes.data || []).map(l => [l.id as string, l.geschatte_waarde as number | null]))
+  const bedragPerOfferte = new Map((offertesRes.data || []).map(o => [o.id as string, o.totaal as number | null]))
+  const activiteitenMetBedrag = activiteiten.map(a => ({
+    ...a,
+    bedrag: a.referentie_type === 'lead' ? (bedragPerLead.get(a.referentie_id as string) ?? null)
+      : a.referentie_type === 'offerte' ? (bedragPerOfferte.get(a.referentie_id as string) ?? null)
+      : null,
+  }))
+
+  return {
+    medewerkers: medewerkersRes.data || [],
+    doelen: doelenRes.data || [],
+    activiteiten: activiteitenMetBedrag,
+    uren: urenRes.data || [],
+    rol,
+    eigenMedewerkerId,
+    werkdagenDezeMaand,
+    labels: PRODUCTIVITEIT_LABELS,
   }
 }
 

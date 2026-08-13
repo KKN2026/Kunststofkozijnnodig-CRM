@@ -117,7 +117,7 @@ export function LeadsView({ leads, aiScoutLeads = [] }: { leads: Lead[]; aiScout
   const router = useRouter()
   const [activeTab, setActiveTab] = useState('alle')
   const [dialogOpen, setDialogOpen] = useState(false)
-  const [leadForm, setLeadForm] = useState({ bedrijfsnaam: '', contactpersoon: '', telefoon: '', email: '', plaats: '', adres: '', postcode: '', kvk_nummer: '', notities: '' })
+  const [leadForm, setLeadForm] = useState({ bedrijfsnaam: '', contactpersoon: '', telefoon: '', email: '', plaats: '', adres: '', postcode: '', kvk_nummer: '', notities: '', geschatte_waarde: '' })
   const [importOpen, setImportOpen] = useState(false)
   const [kvkOpen, setKvkOpen] = useState(false)
   const [kvkImportResult, setKvkImportResult] = useState<string | null>(null)
@@ -306,6 +306,19 @@ export function LeadsView({ leads, aiScoutLeads = [] }: { leads: Lead[]; aiScout
               <label className="block text-sm font-medium text-gray-700 mb-1">Postcode</label>
               <Input name="postcode" value={leadForm.postcode} onChange={e => setLeadForm(f => ({ ...f, postcode: e.target.value }))} />
             </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Geschatte waarde (optioneel)</label>
+            <Input
+              name="geschatte_waarde"
+              type="number"
+              step="1"
+              min="0"
+              placeholder="bijv. 1000"
+              value={leadForm.geschatte_waarde}
+              onChange={e => setLeadForm(f => ({ ...f, geschatte_waarde: e.target.value }))}
+            />
+            <p className="text-xs text-gray-400 mt-1">Telt mee als potentiële omzet zodra deze klant gebeld/gesproken wordt (zie Productiviteit).</p>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Notities</label>
