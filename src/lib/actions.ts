@@ -5223,7 +5223,7 @@ export async function saveAdministratie(formData: FormData) {
 
   const { error } = await supabase.from('administraties').update(record).eq('id', adminId)
   if (error) return { error: error.message }
-  revalidatePath('/beheer')
+  revalidatePath('/instellingen')
   return { success: true }
 }
 
@@ -7273,7 +7273,7 @@ export async function saveNummering(formData: FormData) {
     .eq('id', id)
 
   if (error) return { error: error.message }
-  revalidatePath('/beheer')
+  revalidatePath('/instellingen')
   return { success: true }
 }
 
@@ -7353,7 +7353,7 @@ Wij raden u aan uw wachtwoord na de eerste login te wijzigen.`
     }
   }
 
-  revalidatePath('/beheer')
+  revalidatePath('/instellingen')
   return { success: true }
 }
 
@@ -7382,7 +7382,7 @@ export async function deleteGebruiker(id: string) {
   const { error } = await supabaseAdmin.auth.admin.deleteUser(id)
   if (error) return { error: error.message }
 
-  revalidatePath('/beheer')
+  revalidatePath('/instellingen')
   return { success: true }
 }
 
@@ -7464,7 +7464,7 @@ export async function updateGebruiker(id: string, data: {
     if (profielError) return { error: profielError.message }
   }
 
-  revalidatePath('/beheer')
+  revalidatePath('/instellingen')
   return { success: true }
 }
 

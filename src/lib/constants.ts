@@ -13,7 +13,6 @@ import {
   BarChart3,
   Gauge,
   ScrollText,
-  Settings,
   SlidersHorizontal,
   Mail,
   UserSearch,
@@ -50,7 +49,6 @@ export const navigationItems: NavItem[] = [
   { label: 'Offerte-dashboard', href: '/offerte-dashboard', icon: Gauge },
   { label: 'Logboek', href: '/logboek', icon: ScrollText },
   { label: 'Archief', href: '/archief', icon: Archive },
-  { label: 'Beheer', href: '/beheer', icon: Settings },
   { label: 'Instellingen', href: '/instellingen', icon: SlidersHorizontal },
 ]
 

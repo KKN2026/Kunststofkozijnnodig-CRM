@@ -1,11 +1,7 @@
-import { getAdministratie, getNummering, getGebruikers } from '@/lib/actions'
-import { BeheerView } from './beheer-view'
+import { redirect } from 'next/navigation'
 
-export default async function BeheerPage() {
-  const [administratie, nummering, gebruikers] = await Promise.all([
-    getAdministratie(),
-    getNummering(),
-    getGebruikers(),
-  ])
-  return <BeheerView administratie={administratie} nummering={nummering} gebruikers={gebruikers} />
+// Beheer is samengevoegd met Instellingen (12-08-2026) — deze route blijft
+// bestaan als redirect zodat bestaande bladwijzers/links blijven werken.
+export default function BeheerPage() {
+  redirect('/instellingen')
 }
