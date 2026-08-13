@@ -1223,6 +1223,11 @@ export async function saveOfferte(formData: FormData) {
     merk: (formData.get('merk') as string) || null,
   }
 
+  // Wie de offerte aanmaakt wordt automatisch de verkoper — alleen bij het
+  // aanmaken, niet bij latere bewerkingen (anders overschrijft elke tussentijdse
+  // opslag de eventuele handmatige hertoewijzing via setOfferteVerkoper).
+  const insertRecord = id ? record : { ...record, verkoper_id: (await supabase.auth.getUser()).data.user?.id || null }
+
   let offerteId = id
   try {
     if (id) {
@@ -1245,13 +1250,13 @@ export async function saveOfferte(formData: FormData) {
       }
       await supabase.from('offerte_regels').delete().eq('offerte_id', id)
     } else {
-      const { data, error } = await supabase.from('offertes').insert(record).select('id').single()
+      const { data, error } = await supabase.from('offertes').insert(insertRecord).select('id').single()
       if (error) {
-        console.error('saveOfferte insert error:', error.message, record)
+        console.error('saveOfferte insert error:', error.message, insertRecord)
         if (error.message.includes('null value')) {
           // NOT NULL fout — vul ALLE NOT NULL kolommen met defaults en retry
           const fixedRecord = {
-            ...record,
+            ...insertRecord,
             offertenummer: record.offertenummer || `OFF-${Date.now()}`,
             datum: record.datum || new Date().toISOString().split('T')[0],
           }
@@ -4708,6 +4713,13 @@ export async function saveProject(formData: FormData) {
     if (oudeRelatieId) revalidatePath(`/relatiebeheer/${oudeRelatieId}`)
     if (record.relatie_id) revalidatePath(`/relatiebeheer/${record.relatie_id}`)
   } else {
+    // Wie de verkoopkans aanmaakt wordt automatisch de toegewezen medewerker —
+    // er is (nog) geen "Toegewezen aan"-veld in het aanmaakformulier, dus
+    // record.medewerker_id is hier altijd leeg tenzij dit ooit alsnog wordt
+    // toegevoegd. Alleen bij het aanmaken; latere opslagen laten dit ongemoeid.
+    if (!record.medewerker_id) {
+      record.medewerker_id = await getCurrentMedewerkerId()
+    }
     const { data: nieuwProject, error } = await supabase.from('projecten').insert(record).select('id').single()
     if (error) return { error: error.message }
 
@@ -9747,6 +9759,7 @@ export async function createProjectInline(data: {
 
   // Markeer als wizard-draft. Als binnen 24u geen offerte aan dit project
   // hangt, ruimt /api/cron/cleanup-concept-state hem op (zie cron-route).
+  // Wie de verkoopkans aanmaakt wordt automatisch de toegewezen medewerker.
   const { data: project, error } = await supabase
     .from('projecten')
     .insert({
@@ -9756,6 +9769,7 @@ export async function createProjectInline(data: {
       omschrijving: data.omschrijving || null,
       status: 'actief',
       bron: 'wizard-draft',
+      medewerker_id: await getCurrentMedewerkerId(),
     })
     .select('id, naam')
     .single()
