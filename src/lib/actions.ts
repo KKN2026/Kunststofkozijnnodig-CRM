@@ -3383,6 +3383,47 @@ export async function crediteerFactuur(factuurId: string, reden?: string) {
   return { success: true, creditnotaId: creditnota.id, factuurnummer: creditnota.factuurnummer }
 }
 
+// Zet facturen op 'vervallen' zodra de vervaldatum + respijtperiode
+// (FACTUUR_VERVAL_GRACE_DAGEN) verstreken is — en zet ze terug naar
+// 'verzonden' als de vervaldatum weer binnen die grens valt (bv. na een
+// verlengde betaaltermijn). Bewust LOSGEKOPPELD van SnelStart: dit is puur
+// een datumcheck binnen het CRM, dus blijft werken ook als de SnelStart-
+// koppeling stuk is (de vervallen-wissel in syncSnelstartBetalingen hangt
+// wél af van een geslaagde SnelStart-call en faalt dus stil mee als die
+// koppeling eruit ligt — vandaar deze aparte, betrouwbare route).
+export async function updateVervallenFacturen(administratieIdOverride?: string) {
+  const adminId = administratieIdOverride || await getAdministratieId()
+  if (!adminId) return { error: 'Niet ingelogd' }
+
+  const supabaseAdmin = createAdminClient()
+  const vervalGrens = new Date(Date.now() - FACTUUR_VERVAL_GRACE_DAGEN * 86400000).toISOString().slice(0, 10)
+
+  const { data: teVervallen, error: err1 } = await supabaseAdmin
+    .from('facturen')
+    .update({ status: 'vervallen' })
+    .eq('administratie_id', adminId)
+    .in('status', ['verzonden', 'deels_betaald'])
+    .lt('vervaldatum', vervalGrens)
+    .select('id')
+  if (err1) return { error: err1.message }
+
+  const { data: teHerstellen, error: err2 } = await supabaseAdmin
+    .from('facturen')
+    .update({ status: 'verzonden' })
+    .eq('administratie_id', adminId)
+    .eq('status', 'vervallen')
+    .gte('vervaldatum', vervalGrens)
+    .select('id')
+  if (err2) return { error: err2.message }
+
+  if ((teVervallen?.length || 0) + (teHerstellen?.length || 0) > 0) {
+    revalidatePath('/facturatie')
+    revalidatePath('/')
+    revalidatePath('/rapportages')
+  }
+  return { success: true, vervallen: teVervallen?.length || 0, hersteld: teHerstellen?.length || 0 }
+}
+
 // Haalt uit SnelStart de openstaande bedragen op en update betaald_bedrag + status
 // in CRM. Facturen die in SnelStart op 0 openstaan worden hier als 'betaald' gemarkeerd,
 // gedeeltelijk betaalde facturen als 'deels_betaald', overige behouden status tenzij
@@ -3421,7 +3462,6 @@ export async function syncSnelstartBetalingen(administratieIdOverride?: string) 
 
   const ssMap = new Map(ssFacturen.map(f => [f.factuurnummer, f]))
 
-  const vandaag = new Date().toISOString().slice(0, 10)
   // Pas na een paar dagen respijt echt "vervallen" — voorkomt dat een factuur
   // al de dag na de vervaldatum als vervallen wordt gemarkeerd.
   const vervalGrens = new Date(Date.now() - FACTUUR_VERVAL_GRACE_DAGEN * 86400000).toISOString().slice(0, 10)
