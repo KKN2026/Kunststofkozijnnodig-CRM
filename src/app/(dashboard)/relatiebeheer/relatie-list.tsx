@@ -14,7 +14,7 @@ import { exportRelaties, sendBroadcastEmail, deleteRelaties } from '@/lib/action
 import { formatCurrency } from '@/lib/utils'
 import { HerkomstBadge } from '@/components/ui/herkomst-badge'
 import { Dialog } from '@/components/ui/dialog'
-import { Mail, Send, Trash2, AlertTriangle } from 'lucide-react'
+import { Mail, Send, Trash2, AlertTriangle, FileText, Paperclip, X } from 'lucide-react'
 
 interface Relatie {
   id: string
@@ -184,6 +184,34 @@ export function RelatieList({ relaties }: { relaties: Relatie[] }) {
   const [bulkOnderwerp, setBulkOnderwerp] = useState('')
   const [bulkBericht, setBulkBericht] = useState('')
   const [bulkSending, setBulkSending] = useState(false)
+  const [bulkBijlagen, setBulkBijlagen] = useState<{ filename: string; content: string }[]>([])
+
+  // Leest gekozen PDF's in als base64, zodat ze via de server action mee kunnen.
+  // Max 15MB totaal — zelfde grens als de server, maar hier al tegenhouden
+  // scheelt een vergeefse upload.
+  async function addBulkBijlagen(files: FileList | null) {
+    if (!files) return
+    const nieuwe: { filename: string; content: string }[] = []
+    for (const file of Array.from(files)) {
+      if (!file.name.toLowerCase().endsWith('.pdf')) {
+        alert(`${file.name}: alleen PDF-bestanden zijn toegestaan`)
+        continue
+      }
+      const bytes = new Uint8Array(await file.arrayBuffer())
+      let binary = ''
+      for (let i = 0; i < bytes.length; i += 8192) binary += String.fromCharCode(...bytes.subarray(i, i + 8192))
+      nieuwe.push({ filename: file.name, content: btoa(binary) })
+    }
+    setBulkBijlagen(prev => {
+      const next = [...prev, ...nieuwe.filter(n => !prev.some(p => p.filename === n.filename))]
+      const totaal = next.reduce((s, b) => s + b.content.length * 3 / 4, 0)
+      if (totaal > 15 * 1024 * 1024) {
+        alert('Bijlagen mogen samen maximaal 15MB zijn')
+        return prev
+      }
+      return next
+    })
+  }
   // Verwijderen vanuit de selectie: clearSelection komt uit de DataTable mee zodat
   // de balk na een geslaagde verwijdering meteen leeg is.
   const [verwijderDialog, setVerwijderDialog] = useState<{ ids: string[]; clear: () => void } | null>(null)
@@ -438,6 +466,38 @@ export function RelatieList({ relaties }: { relaties: Relatie[] }) {
               placeholder="Typ uw bericht..."
             />
           </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">Bijlagen (PDF)</label>
+            {bulkBijlagen.length > 0 && (
+              <div className="space-y-1 mb-2">
+                {bulkBijlagen.map(b => (
+                  <div key={b.filename} className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 border border-gray-200 rounded text-sm">
+                    <FileText className="h-4 w-4 text-red-500 flex-shrink-0" />
+                    <span className="truncate text-gray-700">{b.filename}</span>
+                    <span className="text-xs text-gray-400 ml-auto flex-shrink-0">{Math.round(b.content.length * 3 / 4 / 1024)} kB</span>
+                    <button
+                      type="button"
+                      onClick={() => setBulkBijlagen(prev => prev.filter(p => p.filename !== b.filename))}
+                      className="text-gray-400 hover:text-red-600 flex-shrink-0"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <label className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs bg-gray-100 text-gray-600 hover:bg-gray-200 rounded cursor-pointer font-medium">
+              <Paperclip className="h-3.5 w-3.5" />
+              PDF toevoegen
+              <input
+                type="file"
+                accept="application/pdf,.pdf"
+                multiple
+                className="hidden"
+                onChange={e => { addBulkBijlagen(e.target.files); e.target.value = '' }}
+              />
+            </label>
+          </div>
           <div className="flex items-center justify-end gap-2 pt-2 border-t">
             <Button variant="ghost" onClick={() => setBulkMailDialog(null)} disabled={bulkSending}>Annuleren</Button>
             <Button
@@ -445,14 +505,15 @@ export function RelatieList({ relaties }: { relaties: Relatie[] }) {
                 if (!bulkMailDialog || !bulkOnderwerp.trim() || !bulkBericht.trim()) return
                 setBulkSending(true)
                 // Positionele argumenten — de action verwacht (onderwerp, bericht,
-                // type, selectedIds); met ids gaat de mail alleen naar de selectie.
-                const result = await sendBroadcastEmail(bulkOnderwerp, bulkBericht, 'alle', bulkMailDialog.ids)
+                // type, selectedIds, bijlagen); met ids gaat de mail alleen naar de selectie.
+                const result = await sendBroadcastEmail(bulkOnderwerp, bulkBericht, 'alle', bulkMailDialog.ids, bulkBijlagen.length ? bulkBijlagen : undefined)
                 setBulkSending(false)
                 if ('error' in result && result.error) {
                   alert(result.error)
                 } else {
                   alert(`E-mail verstuurd naar ${'aantalOntvangers' in result ? result.aantalOntvangers : 0} relaties`)
                   setBulkMailDialog(null)
+                  setBulkBijlagen([])
                 }
               }}
               disabled={bulkSending || !bulkOnderwerp.trim() || !bulkBericht.trim()}

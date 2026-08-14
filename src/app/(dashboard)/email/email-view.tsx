@@ -6,7 +6,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ToastContainer, showToast } from '@/components/ui/toast'
-import { Mail, MailOpen, ArrowDownLeft, ArrowUpRight, Search, RefreshCw, ChevronDown, ChevronUp, ExternalLink, Clock, EyeOff, Eye, UserPlus, FolderKanban, Megaphone, Send, X, Loader2, Check, Sparkles, FileText, Plus } from 'lucide-react'
+import { Mail, MailOpen, ArrowDownLeft, ArrowUpRight, Search, RefreshCw, ChevronDown, ChevronUp, ExternalLink, Clock, EyeOff, Eye, UserPlus, FolderKanban, Megaphone, Send, X, Loader2, Check, Sparkles, FileText, Plus, Paperclip } from 'lucide-react'
 import { format } from 'date-fns'
 import { nl } from 'date-fns/locale'
 import { getEmails, markEmailGelezen, getEmailBody, reclassifyExistingEmails, assignEmailToMedewerker, linkEmailToProject, getActiveProjectsForEmail, getBroadcastRelatieCount, sendBroadcastEmail, getBroadcastRelaties, maakOfferteVanuitEmail, approveTriageEmail } from '@/lib/actions'
@@ -170,6 +170,7 @@ export function EmailView({
   const [broadcastLoading, setBroadcastLoading] = useState(false)
   const [broadcastCountLoading, setBroadcastCountLoading] = useState(false)
   const [broadcastRelaties, setBroadcastRelaties] = useState<{ id: string; bedrijfsnaam: string; email: string; type: string }[]>([])
+  const [broadcastBijlagen, setBroadcastBijlagen] = useState<{ filename: string; content: string }[]>([])
   const [broadcastSelectedIds, setBroadcastSelectedIds] = useState<Set<string>>(new Set())
   const [broadcastRelatieZoek, setBroadcastRelatieZoek] = useState('')
   const [broadcastRelatiesLoaded, setBroadcastRelatiesLoaded] = useState(false)
@@ -361,17 +362,45 @@ export function EmailView({
     })
   }
 
+  // Leest gekozen PDF's in als base64, zodat ze via de server action mee kunnen.
+  // Max 15MB totaal — zelfde grens als de server, maar hier al tegenhouden
+  // scheelt een vergeefse upload.
+  async function addBroadcastBijlagen(files: FileList | null) {
+    if (!files) return
+    const nieuwe: { filename: string; content: string }[] = []
+    for (const file of Array.from(files)) {
+      if (!file.name.toLowerCase().endsWith('.pdf')) {
+        showToast(`${file.name}: alleen PDF-bestanden zijn toegestaan`)
+        continue
+      }
+      const bytes = new Uint8Array(await file.arrayBuffer())
+      let binary = ''
+      for (let i = 0; i < bytes.length; i += 8192) binary += String.fromCharCode(...bytes.subarray(i, i + 8192))
+      nieuwe.push({ filename: file.name, content: btoa(binary) })
+    }
+    setBroadcastBijlagen(prev => {
+      const next = [...prev, ...nieuwe.filter(n => !prev.some(p => p.filename === n.filename))]
+      const totaal = next.reduce((s, b) => s + b.content.length * 3 / 4, 0)
+      if (totaal > 15 * 1024 * 1024) {
+        showToast('Bijlagen mogen samen maximaal 15MB zijn')
+        return prev
+      }
+      return next
+    })
+  }
+
   async function handleSendBroadcast() {
     if (!broadcastOnderwerp.trim() || !broadcastBericht.trim()) return
     const effectiveAantal = broadcastType === 'selectie' ? broadcastSelectedIds.size : broadcastAantal
     if (!effectiveAantal || effectiveAantal === 0) return
     setBroadcastLoading(true)
     const selectedArr = broadcastType === 'selectie' ? [...broadcastSelectedIds] : undefined
-    const result = await sendBroadcastEmail(broadcastOnderwerp, broadcastBericht, broadcastType === 'selectie' ? 'alle' : broadcastType, selectedArr)
+    const result = await sendBroadcastEmail(broadcastOnderwerp, broadcastBericht, broadcastType === 'selectie' ? 'alle' : broadcastType, selectedArr, broadcastBijlagen.length ? broadcastBijlagen : undefined)
     setBroadcastLoading(false)
     if (result.success) {
       showToast(`Broadcast verzonden naar ${result.aantalOntvangers} ontvanger(s)`)
       setBroadcastOpen(false)
+      setBroadcastBijlagen([])
     } else {
       showToast(result.error || 'Verzenden mislukt')
     }
@@ -935,6 +964,39 @@ export function EmailView({
                   className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary resize-y"
                 />
                 <p className="text-xs text-gray-400 mt-1">Wordt opgemaakt in de Kunststofkozijnnodig.nl e-mail template</p>
+              </div>
+
+              {/* Bijlagen */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Bijlagen (PDF)</label>
+                {broadcastBijlagen.length > 0 && (
+                  <div className="space-y-1 mb-2">
+                    {broadcastBijlagen.map(b => (
+                      <div key={b.filename} className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-md text-sm">
+                        <FileText className="h-4 w-4 text-red-500 flex-shrink-0" />
+                        <span className="truncate text-gray-700">{b.filename}</span>
+                        <span className="text-xs text-gray-400 ml-auto flex-shrink-0">{Math.round(b.content.length * 3 / 4 / 1024)} kB</span>
+                        <button
+                          onClick={() => setBroadcastBijlagen(prev => prev.filter(p => p.filename !== b.filename))}
+                          className="text-gray-400 hover:text-red-600 flex-shrink-0"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <label className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm bg-gray-100 text-gray-600 hover:bg-gray-200 rounded-md cursor-pointer font-medium">
+                  <Paperclip className="h-4 w-4" />
+                  PDF toevoegen
+                  <input
+                    type="file"
+                    accept="application/pdf,.pdf"
+                    multiple
+                    className="hidden"
+                    onChange={e => { addBroadcastBijlagen(e.target.files); e.target.value = '' }}
+                  />
+                </label>
               </div>
             </div>
             <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-200 bg-gray-50 rounded-b-xl">

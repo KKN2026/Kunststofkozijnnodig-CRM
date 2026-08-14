@@ -12141,9 +12141,21 @@ export async function getBroadcastRelaties(): Promise<{ id: string; bedrijfsnaam
   return data
 }
 
-export async function sendBroadcastEmail(onderwerp: string, bericht: string, type: BroadcastType, selectedIds?: string[]): Promise<{ success?: boolean; aantalOntvangers?: number; error?: string }> {
+export async function sendBroadcastEmail(onderwerp: string, bericht: string, type: BroadcastType, selectedIds?: string[], bijlagen?: { filename: string; content: string }[]): Promise<{ success?: boolean; aantalOntvangers?: number; error?: string }> {
   const adminId = await getAdministratieId()
   if (!adminId) return { error: 'Niet ingelogd' }
+
+  // Bijlagen komen als base64 uit de browser; alleen PDF en max 15MB totaal,
+  // anders weigeren mailservers de batch en faalt de hele broadcast.
+  if (bijlagen?.length) {
+    if (bijlagen.some(b => !b.filename.toLowerCase().endsWith('.pdf'))) {
+      return { error: 'Alleen PDF-bijlagen zijn toegestaan' }
+    }
+    const totaalBytes = bijlagen.reduce((sum, b) => sum + Math.floor(b.content.length * 3 / 4), 0)
+    if (totaalBytes > 15 * 1024 * 1024) {
+      return { error: 'Bijlagen zijn samen groter dan 15MB' }
+    }
+  }
 
   const supabaseAdmin = createAdminClient()
   const supabase = await createClient()
@@ -12210,6 +12222,7 @@ export async function sendBroadcastEmail(onderwerp: string, bericht: string, typ
         subject: onderwerp,
         html: emailHtml,
         bcc: batch,
+        attachments: bijlagen?.map(b => ({ filename: b.filename, content: b.content, encoding: 'base64' })),
         // Massamail zonder afmeldmogelijkheid wordt door Gmail en Yahoo als
         // spam aangemerkt, en dat beschadigt de reputatie van het hele domein
         // — waardoor ook gewone offerte- en factuurmail in de spammap belandt.
@@ -12227,7 +12240,7 @@ export async function sendBroadcastEmail(onderwerp: string, bericht: string, typ
   const label = selectedIds?.length ? 'Selectie' : type === 'top_klanten' ? 'Top klanten' : type.charAt(0).toUpperCase() + type.slice(1)
   await supabaseAdmin.from('email_log').insert({
     administratie_id: adminId,
-    aan: `Broadcast ${label} (${emailAdressen.length} ontvangers)`,
+    aan: `Broadcast ${label} (${emailAdressen.length} ontvangers${bijlagen?.length ? `, ${bijlagen.length} bijlage(n)` : ''})`,
     onderwerp,
     body_html: emailHtml,
     verstuurd_door: user?.id || null,
