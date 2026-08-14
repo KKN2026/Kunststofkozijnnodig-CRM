@@ -385,6 +385,91 @@ export async function listAllVerkoopfacturen(): Promise<SnelStartFactuurStatus[]
   return all
 }
 
+// ---------- Betalingen afletteren (Mollie → SnelStart) ----------
+
+// Nummer van het dagboek waarin iDEAL-betalingen via Mollie thuishoren.
+//
+// BELANGRIJK: dit is bewust NIET het gewone bankdagboek. Mollie betaalt
+// in batches uit aan de bank, dagen na de betaling van de klant. Zou je de
+// betaling meteen op de bankrekening boeken, dan sluit het bankafschrift niet
+// meer aan en mag de boekhouder het rechtzetten. Daarom een eigen Mollie-
+// dagboek: de klantbetaling komt daarin binnen, en de latere uitbetaling van
+// Mollie naar de bank loopt via de kruisposten tegen elkaar weg.
+const MOLLIE_DAGBOEK_NUMMER = 1104
+
+interface SnelStartDagboek {
+  id: string
+  nummer: number
+  omschrijving: string
+  soort: string
+}
+
+let cachedDagboeken: SnelStartDagboek[] | null = null
+
+export async function findDagboekByNummer(nummer: number): Promise<SnelStartDagboek | null> {
+  if (!cachedDagboeken) {
+    cachedDagboeken = await snelstartFetch<SnelStartDagboek[]>('/dagboeken?$top=200')
+  }
+  return cachedDagboeken.find(d => Number(d.nummer) === nummer) || null
+}
+
+export interface BetalingBoekenInput {
+  /** Id van de verkoopboeking in SnelStart (facturen.snelstart_boeking_id) */
+  verkoopboekingId: string
+  /** Ontvangen bedrag incl. BTW — het volledige bedrag dat de klant betaalde */
+  bedrag: number
+  /** Datum waarop de klant betaalde (Mollie paidAt), YYYY-MM-DD */
+  datum: string
+  omschrijving: string
+}
+
+/**
+ * Boekt een ontvangen Mollie-betaling in SnelStart en lettert die af tegen de
+ * openstaande verkoopboeking.
+ *
+ * Het brutobedrag gaat het Mollie-dagboek in, zodat de factuur volledig is
+ * afgeletterd. De transactiekosten van Mollie worden hier NIET afgetrokken —
+ * die komen pas in beeld bij de uitbetaling naar de bank en horen daar thuis,
+ * niet bij de individuele factuur.
+ *
+ * De regels moeten samen precies gelijk zijn aan het ontvangen bedrag; anders
+ * weigert SnelStart de boeking.
+ */
+export async function boekMollieBetaling(input: BetalingBoekenInput): Promise<{ id: string }> {
+  const dagboek = await findDagboekByNummer(MOLLIE_DAGBOEK_NUMMER)
+  if (!dagboek) {
+    throw new Error(
+      `SnelStart-dagboek ${MOLLIE_DAGBOEK_NUMMER} (Mollie) niet gevonden. ` +
+      `Zonder dat dagboek zou de betaling op de verkeerde rekening belanden.`
+    )
+  }
+
+  const bedrag = Number(input.bedrag.toFixed(2))
+  const omschrijving = input.omschrijving.slice(0, 200)
+
+  const body = {
+    datum: input.datum,
+    dagboek: { id: dagboek.id },
+    omschrijving,
+    bedragOntvangen: bedrag,
+    bedragUitgegeven: 0,
+    // credit op de verkoopboeking = de openstaande post van de klant verlagen
+    verkoopboekingBoekingsRegels: [
+      {
+        boekingId: { id: input.verkoopboekingId },
+        omschrijving,
+        debet: 0,
+        credit: bedrag,
+      },
+    ],
+  }
+
+  return snelstartFetch<{ id: string }>('/bankboekingen', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  })
+}
+
 // ---------- High-level: sync relatie + post factuur ----------
 
 export function isSnelStartEnabled(): boolean {

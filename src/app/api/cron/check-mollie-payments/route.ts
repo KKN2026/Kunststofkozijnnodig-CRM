@@ -41,9 +41,26 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // Betalingen die het CRM kent, ook in SnelStart afletteren. Zonder deze stap
+  // blijft een iDEAL-betaling daar wekenlang openstaan, omdat Mollie pas dagen
+  // later uitbetaalt aan de bank. Boekt in het Mollie-dagboek (1104), niet op de
+  // bankrekening, en slaat facturen over die in SnelStart al betaald zijn.
+  let afgeletterd = 0
+  const afletterFouten: string[] = []
+  try {
+    const { letterMollieBetalingenAf } = await import('@/lib/snelstart-betalingen')
+    const res = await letterMollieBetalingenAf()
+    afgeletterd = res.geboekt
+    afletterFouten.push(...res.fouten)
+  } catch (e) {
+    afletterFouten.push(e instanceof Error ? e.message : 'afletteren mislukt')
+  }
+
   return NextResponse.json({
     checked: facturen.length,
     updated,
+    snelstart_afgeletterd: afgeletterd,
     errors: errors.length ? errors : undefined,
+    snelstart_errors: afletterFouten.length ? afletterFouten : undefined,
   })
 }
