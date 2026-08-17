@@ -5749,7 +5749,15 @@ export async function getDashboardData() {
     fetchAllRows((from, to) => supabase.from('taken').select('id, titel, status, prioriteit, deadline, categorie, toegewezen_aan, medewerker_id, offerte_id, relatie_id, offerte:offertes(totaal), relatie:relaties(bedrijfsnaam)').eq('administratie_id', adminId).or(`status.neq.afgerond,deadline.gte.${grensStr}`).range(from, to)),
   ])
 
-  const [relatiesRes, profielenRes, openOffertesRes, tePlannenRes, geplandeLeveringenRes, ongelezenBerichtenRes, geaccepteerdRes, openstaandeFacturenRes, omzetdoelenRes, recenteOffertesRes, moetBesteldRes] = await Promise.all([
+  // Onafhankelijk van de rest van deze functie (alleen adminId nodig) —
+  // vast starten zodat ze meelopen met de overige queries hieronder i.p.v.
+  // los na elkaar te wachten.
+  const conversiePromise = Promise.all([
+    getOfferteConversieDitJaar(),
+    getGemiddeldeVerkoopkanswaardeDitJaar(),
+  ])
+
+  const [relatiesRes, profielenRes, openOffertesRes, tePlannenRes, geplandeLeveringenRes, ongelezenBerichtenRes, geaccepteerdRes, openstaandeFacturenRes, omzetdoelenRes, recenteOffertesRes, moetBesteldRes, actieveMwsRes, relatieNaamData, triageEmailsRes, aanvragenTakenRes, aanvraagEmailsRes, openVerkoopkansenRes, recenteNotitiesRes, voormaligeRelatiesRes] = await Promise.all([
     supabase.from('relaties').select('type', { count: 'exact' }).eq('administratie_id', adminId),
     supabase.from('profielen').select('id, naam').eq('administratie_id', adminId),
     // Open offertes-lijst: zelfde 90-dagen-filter als de KPI-count (data.openOffertes)
@@ -5764,6 +5772,14 @@ export async function getDashboardData() {
     supabase.from('omzetdoelen').select('*').eq('administratie_id', adminId).eq('jaar', new Date().getFullYear()).maybeSingle(),
     supabase.from('offertes').select('id, offertenummer, datum, totaal, status, project_id, relatie:relaties(id, bedrijfsnaam), project:projecten(naam)').eq('administratie_id', adminId).neq('status', 'concept').order('datum', { ascending: false }).limit(100),
     supabase.from('orders').select('id, ordernummer, datum, totaal, onderwerp, relatie:relaties(id, bedrijfsnaam), offerte:offertes(offertenummer)').eq('administratie_id', adminId).eq('status', 'moet_besteld').order('datum', { ascending: true }),
+    supabase.from('medewerkers').select('id, profiel_id, actief').eq('administratie_id', adminId).eq('actief', true),
+    fetchAllRows((from, to) => supabase.from('relaties').select('id, bedrijfsnaam').eq('administratie_id', adminId).range(from, to)),
+    supabaseAdmin.from('emails').select('id, van_email, van_naam, onderwerp, datum, labels').eq('administratie_id', adminId).eq('verwerkt', false).eq('richting', 'inkomend').order('datum', { ascending: false }).limit(20),
+    supabaseAdmin.from('taken').select('id, omschrijving, status, created_at').eq('administratie_id', adminId).eq('titel', 'Nieuwe aanvraag - offerte nog te maken').neq('status', 'afgerond').order('created_at', { ascending: false }).limit(5),
+    supabaseAdmin.from('emails').select('onderwerp, relatie_id').eq('administratie_id', adminId).contains('labels', ['offerte_aanvraag']).not('relatie_id', 'is', null),
+    supabase.from('projecten').select('id, naam, status, created_at, bron, relatie:relaties(id, bedrijfsnaam), offertes:offertes(id)').eq('administratie_id', adminId).in('status', ['actief', 'on_hold']).order('created_at', { ascending: false }),
+    supabaseAdmin.from('notities').select('id, tekst, created_at, relatie:relaties(id, bedrijfsnaam), gebruiker:profielen(naam)').eq('administratie_id', adminId).order('created_at', { ascending: false }).limit(10),
+    supabaseAdmin.from('relaties').select('id').eq('administratie_id', adminId).eq('actief', false),
   ])
 
   const relatiesData = relatiesRes.data || []
@@ -5831,7 +5847,7 @@ export async function getDashboardData() {
   // (anders tellen we 570 oude wees-taken zonder medewerker mee).
   const actieveMedewerkerIds = new Set<string>()
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: actieveMws } = await supabase.from('medewerkers').select('id, profiel_id, actief').eq('administratie_id', adminId).eq('actief', true)
+  const actieveMws = actieveMwsRes.data
   for (const mw of (actieveMws || [])) {
     actieveMedewerkerIds.add(mw.id)
     if (mw.profiel_id) actieveMedewerkerIds.add(mw.profiel_id)
@@ -6159,7 +6175,6 @@ export async function getDashboardData() {
   const relatieMap = new Map<string, { relatie_id: string; bedrijfsnaam: string; betaald: number; offerte_waarde: number }>()
   // Build name lookup from relatiesData (we need full relaties for names)
   const relatieNamen = new Map<string, string>()
-  const relatieNaamData = await fetchAllRows((from, to) => supabase.from('relaties').select('id, bedrijfsnaam').eq('administratie_id', adminId).range(from, to))
   for (const r of relatieNaamData) {
     relatieNamen.set(r.id, r.bedrijfsnaam || 'Onbekend')
   }
@@ -6216,14 +6231,7 @@ export async function getDashboardData() {
   }
 
   // E-mail triage: onverwerkte mails met classificatie offerte_aanvraag of onzeker
-  const { data: triageEmailsData } = await supabaseAdmin
-    .from('emails')
-    .select('id, van_email, van_naam, onderwerp, datum, labels')
-    .eq('administratie_id', adminId)
-    .eq('verwerkt', false)
-    .eq('richting', 'inkomend')
-    .order('datum', { ascending: false })
-    .limit(20)
+  const triageEmailsData = triageEmailsRes.data
 
   const triageEmails = (triageEmailsData || []).filter(e => {
     const labels: string[] = e.labels || []
@@ -6231,21 +6239,8 @@ export async function getDashboardData() {
   })
 
   // Open aanvragen (taken die nog verwerkt moeten worden)
-  const { data: aanvragenTaken } = await supabaseAdmin
-    .from('taken')
-    .select('id, omschrijving, status, created_at')
-    .eq('administratie_id', adminId)
-    .eq('titel', 'Nieuwe aanvraag - offerte nog te maken')
-    .neq('status', 'afgerond')
-    .order('created_at', { ascending: false })
-    .limit(5)
-
-  const { data: aanvraagEmails } = await supabaseAdmin
-    .from('emails')
-    .select('onderwerp, relatie_id')
-    .eq('administratie_id', adminId)
-    .contains('labels', ['offerte_aanvraag'])
-    .not('relatie_id', 'is', null)
+  const aanvragenTaken = aanvragenTakenRes.data
+  const aanvraagEmails = aanvraagEmailsRes.data
 
   const aanvraagOnderwerpMap = new Map<string, string>()
   const aanvraagRelatieIds = new Set<string>()
@@ -6285,12 +6280,7 @@ export async function getDashboardData() {
   })
 
   // Openstaande verkoopkansen
-  const { data: openVerkoopkansenData } = await supabase
-    .from('projecten')
-    .select('id, naam, status, created_at, bron, relatie:relaties(id, bedrijfsnaam), offertes:offertes(id)')
-    .eq('administratie_id', adminId)
-    .in('status', ['actief', 'on_hold'])
-    .order('created_at', { ascending: false })
+  const openVerkoopkansenData = openVerkoopkansenRes.data
 
   // Tel emails per project
   const projectIds = (openVerkoopkansenData || []).map(p => p.id)
@@ -6337,12 +6327,7 @@ export async function getDashboardData() {
   })
 
   // Recente notities (laatste 10 over alle klanten/taken) voor dashboard
-  const { data: recenteNotitiesData } = await supabaseAdmin
-    .from('notities')
-    .select('id, tekst, created_at, relatie:relaties(id, bedrijfsnaam), gebruiker:profielen(naam)')
-    .eq('administratie_id', adminId)
-    .order('created_at', { ascending: false })
-    .limit(10)
+  const recenteNotitiesData = recenteNotitiesRes.data
 
   const recenteNotities = (recenteNotitiesData || []).map(n => ({
     id: n.id as string,
@@ -6442,18 +6427,12 @@ export async function getDashboardData() {
 
   // Conversie-kop + gem. factuurwaarde: huidig jaar, per losse verkoopkans —
   // zelfde bron/won-detectie zodat kop, pop-up en gem. factuurwaarde gelijk zijn.
-  const [conversieDitJaar, gemVerkoopkanswaardeDitJaar] = await Promise.all([
-    getOfferteConversieDitJaar(),
-    getGemiddeldeVerkoopkanswaardeDitJaar(),
-  ])
+  // (Al vroeg gestart, zie conversiePromise bovenaan — hier pas opgehaald.)
+  const [conversieDitJaar, gemVerkoopkanswaardeDitJaar] = await conversiePromise
 
   // Voormalige (inactieve) relaties — id's zodat het dashboard klantnamen
   // direct als "voormalig" kan markeren in alle lijsten (via KlantNaam).
-  const { data: voormaligeRelaties } = await supabaseAdmin
-    .from('relaties')
-    .select('id')
-    .eq('administratie_id', adminId)
-    .eq('actief', false)
+  const voormaligeRelaties = voormaligeRelatiesRes.data
   const voormaligeRelatieIds = (voormaligeRelaties || []).map(r => r.id)
 
   return {
