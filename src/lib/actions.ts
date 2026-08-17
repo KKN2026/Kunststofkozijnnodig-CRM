@@ -3920,7 +3920,7 @@ export async function getProjecten() {
     // met meerdere losse offertes: een offerte die uit een e-mail ontstond kreeg
     // de datum van die mail en verdrong daarmee een nieuwere, hogere offerte —
     // waardoor de lijst een oud en te laag bedrag toonde.
-    const laatsteOfferte = [...offertes].sort((a, b) => {
+    const sorteerNieuwsteEerst = (lijst: typeof offertes) => [...lijst].sort((a, b) => {
       const ca = a.created_at ? new Date(a.created_at).getTime() : 0
       const cb = b.created_at ? new Date(b.created_at).getTime() : 0
       if (cb !== ca) return cb - ca
@@ -3928,7 +3928,14 @@ export async function getProjecten() {
       const db = b.datum ? new Date(b.datum).getTime() : 0
       if (db !== da) return db - da
       return (b.versie_nummer || 0) - (a.versie_nummer || 0)
-    })[0]
+    })
+    // 'Nieuwe versie' maakt meteen een concept-rij aan, ook als de gebruiker de
+    // wizard afbreekt zonder op te slaan — zonder deze filter zakt een al
+    // verstuurde/geaccepteerde verkoopkans terug naar 'concept' zolang die
+    // weesconcept blijft bestaan. Pak de nieuwste NIET-concept versie; alleen
+    // als er nooit iets anders dan concept is geweest valt dit terug op de nieuwste.
+    const nietConceptOffertes = offertes.filter(o => o.status !== 'concept')
+    const laatsteOfferte = sorteerNieuwsteEerst(nietConceptOffertes.length > 0 ? nietConceptOffertes : offertes)[0]
     // Betaal-status afleiden uit alle facturen onder dit project.
     // Concept-facturen en credit-facturen tellen niet mee.
     const facturen = offertes.flatMap(o => o.facturen || [])
@@ -4266,7 +4273,7 @@ export async function getVerkoopkansenPipeline() {
     // Zelfde regel als getProjecten: eerst wanneer de offerte in het systeem is
     // gezet, dan pas offertedatum — anders wint een oude offerte met een
     // mail-datum en klopt bedrag/status van de verkoopkans niet.
-    const laatste = [...offertes].sort((a, b) => {
+    const sorteerNieuwsteEerst = (lijst: typeof offertes) => [...lijst].sort((a, b) => {
       const ca = (a as { created_at?: string | null }).created_at ? new Date((a as { created_at?: string | null }).created_at!).getTime() : 0
       const cb = (b as { created_at?: string | null }).created_at ? new Date((b as { created_at?: string | null }).created_at!).getTime() : 0
       if (cb !== ca) return cb - ca
@@ -4274,7 +4281,15 @@ export async function getVerkoopkansenPipeline() {
       const db = b.datum ? new Date(b.datum).getTime() : 0
       if (db !== da) return db - da
       return (b.versie_nummer || 0) - (a.versie_nummer || 0)
-    })[0]
+    })
+    // 'Nieuwe versie' maakt meteen een concept-rij aan (kopie van de vorige),
+    // ook als de gebruiker de wizard daarna afbreekt zonder op te slaan. Zonder
+    // deze filter zakt een al verstuurde/geaccepteerde verkoopkans dan terug
+    // naar 'concept' zolang die weesconcept blijft bestaan. Pak dus de nieuwste
+    // NIET-concept versie; alleen als er nooit iets anders dan concept is
+    // geweest (verkoopkans nog nooit verstuurd) valt dit terug op de nieuwste.
+    const nietConcept = offertes.filter(o => o.status !== 'concept')
+    const laatste = sorteerNieuwsteEerst(nietConcept.length > 0 ? nietConcept : offertes)[0]
     // De verkoopkans schuift automatisch mee met wat er feitelijk gebeurd is:
     // een verstuurde factuur → 'factuur', volledig betaald → 'afgerond'. Zo is
     // de conversie/voortgang in één oogopslag duidelijk zonder handmatig schuiven.
@@ -5696,7 +5711,6 @@ export async function getDashboardData() {
   // gesynchroniseerd). Uitzondering: credit-nota's zonder sync worden met hun
   // totaal als NEGATIEF openstaand meegerekend, zodat ze direct het openstaand-
   // saldo verlagen en niet de omzet.
-  const vandaagStr = new Date().toISOString().slice(0, 10)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const openstaand = facturenData.reduce((sum, f: any) => {
     const o = f.snelstart_openstaand

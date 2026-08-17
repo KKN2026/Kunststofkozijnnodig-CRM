@@ -453,7 +453,6 @@ function EditOfferteView({
   openTaken?: OpenTaak[]
 }) {
   const router = useRouter()
-  const { navigateBack } = useBackNav('offerte-edit')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [selectedRelatieIdState, setSelectedRelatieIdState] = useState(initRelatieId)
@@ -691,7 +690,13 @@ function EditOfferteView({
         title={`Offerte ${offerte.offertenummer} v${versieNummer}`}
         actions={
           <div className="flex gap-2 flex-wrap">
-            <Button variant="ghost" onClick={() => navigateBack('/offertes')}>
+            {/* Bewust géén navigateBack() hier: die pakt de laatst bezochte
+                niet-offerte/factuur-pagina uit een GLOBALE sessie-stack, die
+                geen enkele relatie heeft met DEZE offerte — bij meerdere
+                offertes achter elkaar bewerken (zonder tussendoor een andere
+                pagina te bezoeken) bleef dat altijd naar dezelfde, oude
+                pagina wijzen. Gewoon terug naar het offerte-overzicht. */}
+            <Button variant="ghost" onClick={() => router.push('/offertes')}>
               <ArrowLeft className="h-4 w-4" />
               Terug
             </Button>
