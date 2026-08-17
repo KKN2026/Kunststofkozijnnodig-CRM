@@ -122,7 +122,7 @@ betalingen kwamen dagenlang niet meer binnen.
 Daarom telt het CRM nu zelf af. Vanaf 21 dagen voor de vervaldatum staat er
 een oranje melding op de facturatiepagina, daarna een rode.
 
-**Huidige vervaldatum: 29 oktober 2026.**
+**Huidige vervaldatum: 16 november 2026.**
 
 ### Vernieuwen (gratis, twee minuten)
 
@@ -147,8 +147,12 @@ of dat ook voor een maatwerkkoppeling geldt.
 ### Als de sync een foutmelding geeft
 
 - *"weigert de subscription key"* → sleutel verlopen, zie hierboven
-- *"auth mislukt (400)"* → de **client key** is ongeldig. Die haal je uit
-  SnelStart zelf (maatwerkkoppeling bij je administratie), niet uit het portaal
+- *"auth mislukt (400)"* (o.a. `"unsupported_grant_type"`) → de **client key**
+  is ongeldig/verlopen. Die haal je uit SnelStart zelf (maatwerkkoppeling bij
+  je administratie), niet uit het portaal. Let op: de foutmelding
+  `unsupported_grant_type` klinkt alsof het over het type koppeling gaat, maar
+  betekent in de praktijk gewoon "client key niet herkend" — niet zoeken naar
+  een instelling om het grant-type te wijzigen.
 
 ---
 
