@@ -3,6 +3,11 @@ import { createClient } from '@/lib/supabase/server'
 import { DashboardView } from './dashboard-view'
 import { MedewerkerDashboard } from './medewerker-dashboard'
 
+// Meest bezochte pagina van het CRM — korte cache voorkomt dat elke
+// paginaload alle dashboardquery's opnieuw uitvoert (zelfde patroon als
+// andere lijstpagina's).
+export const revalidate = 15
+
 export default async function DashboardPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
