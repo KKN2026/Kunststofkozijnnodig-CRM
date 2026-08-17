@@ -35,6 +35,10 @@
     {
       "path": "/api/cron/factuur-vervallen-check",
       "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/cron/offerte-verlopen-check",
+      "schedule": "0 6 * * *"
     }
   ]
 }

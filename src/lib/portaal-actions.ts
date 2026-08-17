@@ -8,6 +8,7 @@ import { buildRebuEmailHtml } from '@/lib/email-template'
 import { sendEmail } from '@/lib/email'
 import { createMolliePayment } from '@/lib/mollie'
 import { FACTUUR_OVERRIDE_EMBED, pasFactuurAdresToe } from '@/lib/factuur-adres'
+import { stuurPrijsWaarschuwingBijVerlopenAcceptatie } from '@/lib/actions'
 
 // === HELPER: genereer Mollie betaallink voor een factuur als die nog niet bestaat ===
 // Delegeert naar ensureFactuurBetaalLink, die óók verifieert dat een bestaande
@@ -352,7 +353,7 @@ export async function acceptOffertePortaal(id: string) {
 
   const { data: offerte, error: fetchError } = await supabaseAdmin
     .from('offertes')
-    .select('id, status, administratie_id, relatie_id, onderwerp, subtotaal, btw_totaal, totaal')
+    .select('id, status, administratie_id, relatie_id, offertenummer, onderwerp, subtotaal, btw_totaal, totaal, geldig_tot, relatie:relaties(email, contactpersoon, bedrijfsnaam)')
     .eq('id', id)
     .single()
 
@@ -366,6 +367,14 @@ export async function acceptOffertePortaal(id: string) {
     .eq('id', offerte.id)
 
   if (error) return { error: error.message }
+
+  const relatieInfo = offerte.relatie as { email?: string; contactpersoon?: string; bedrijfsnaam?: string } | null
+  await stuurPrijsWaarschuwingBijVerlopenAcceptatie(
+    offerte,
+    relatieInfo?.email,
+    relatieInfo?.contactpersoon || relatieInfo?.bedrijfsnaam || '',
+    offerte.administratie_id,
+  )
 
   // Auto-create order
   const { data: existingOrder } = await supabaseAdmin

@@ -1144,20 +1144,27 @@ export async function saveOfferte(formData: FormData) {
   // Datum is NOT NULL in DB — als client hem niet meegeeft, fallback naar vandaag
   const datumRaw = formData.get('datum') as string | null
   const datum = datumRaw && datumRaw.trim() ? datumRaw : new Date().toISOString().split('T')[0]
+
+  // Status mag alleen één van de toegestane CHECK-waarden zijn
+  const allowedStatus = new Set(['concept', 'verzonden', 'geaccepteerd', 'afgewezen', 'verlopen'])
+  const statusRaw = formData.get('status') as string | null
+  let status = statusRaw && allowedStatus.has(statusRaw) ? statusRaw : 'concept'
+
   const geldigTotRaw = formData.get('geldig_tot') as string | null
   let geldigTot = geldigTotRaw && geldigTotRaw.trim() ? geldigTotRaw : ''
-  if (!geldigTot) {
-    // Geen datum meegegeven → standaard geldigheidsduur uit de instellingen.
+  // Elke bewerking van een bestaande, nog niet afgeronde offerte geeft 'm weer
+  // een volle geldigheidsperiode en haalt 'm uit 'verlopen' — op verzoek:
+  // "als een verkoopkans wordt gewijzigd weer 30 dagen".
+  const hernieuwtGeldigheid = !!id && status !== 'geaccepteerd' && status !== 'afgewezen'
+  if (!geldigTot || hernieuwtGeldigheid) {
+    // Geen datum meegegeven, of een bewerking die de geldigheid vernieuwt →
+    // standaard geldigheidsduur uit de instellingen, vanaf nu.
     const { getInstellingen: leesIns, num: insN } = await import('@/lib/instellingen')
     const ins = await leesIns(supabase, adminId)
     geldigTot = new Date(Date.now() + insN(ins, 'offerte_geldigheid_dagen') * 24 * 60 * 60 * 1000)
       .toISOString().split('T')[0]
   }
-
-  // Status mag alleen één van de toegestane CHECK-waarden zijn
-  const allowedStatus = new Set(['concept', 'verzonden', 'geaccepteerd', 'afgewezen', 'verlopen'])
-  const statusRaw = formData.get('status') as string | null
-  const status = statusRaw && allowedStatus.has(statusRaw) ? statusRaw : 'concept'
+  if (hernieuwtGeldigheid && status === 'verlopen') status = 'verzonden'
 
   // Onderwerp: als FormData leeg is, val terug op verkoopkans-naam
   let onderwerp = formData.get('onderwerp') as string || null
@@ -1515,6 +1522,40 @@ async function controleerEnVervangBijAcceptatie(sb: any, offerte: { id: string; 
   return {}
 }
 
+// Stuurt een aanvullende mail naar de klant wanneer een VERLOPEN offerte
+// (geldig_tot verstreken) alsnog geaccepteerd wordt — op verzoek: geen
+// verrassingen als prijzen inmiddels gewijzigd zijn. Er wordt niets
+// automatisch herberekend, puur een waarschuwing/mededeling vooraf.
+export async function stuurPrijsWaarschuwingBijVerlopenAcceptatie(
+  offerte: { offertenummer: string; geldig_tot?: string | null; status?: string | null },
+  relatieEmail: string | null | undefined,
+  klantNaam: string,
+  administratieId?: string,
+) {
+  if (!relatieEmail) return
+  const vandaag = new Date().toISOString().slice(0, 10)
+  const isVerlopen = offerte.status === 'verlopen' || (!!offerte.geldig_tot && offerte.geldig_tot < vandaag)
+  if (!isVerlopen) return
+  try {
+    const body = `Beste ${klantNaam || 'klant'},
+
+U heeft offerte ${offerte.offertenummer} geaccepteerd — bedankt daarvoor!
+
+Deze offerte is inmiddels ouder dan de geldigheidstermijn. Voordat we definitief verdergaan, controleren wij daarom nog even of de prijzen nog kloppen. Mocht er in de tussentijd iets gewijzigd zijn, nemen wij eerst contact met u op — u wordt dus niet voor verrassingen gesteld.
+
+Met vriendelijke groet,
+Kunststofkozijnnodig.nl`
+    await sendEmail({
+      to: relatieEmail,
+      subject: `Offerte ${offerte.offertenummer} — prijzen worden nagekeken`,
+      html: buildRebuEmailHtml(body),
+      administratieId,
+    })
+  } catch (err) {
+    console.error('Prijswaarschuwing-mail bij verlopen acceptatie mislukt:', err)
+  }
+}
+
 export async function acceptOfferte(id: string) {
   const supabase = await createClient()
   const adminId = await getAdministratieId()
@@ -1522,7 +1563,7 @@ export async function acceptOfferte(id: string) {
 
   const { data: offerte } = await supabase
     .from('offertes')
-    .select('id, offertenummer, created_at, project_id, groep_id, administratie_id')
+    .select('id, offertenummer, created_at, project_id, groep_id, administratie_id, status, geldig_tot, relatie:relaties(email, contactpersoon, bedrijfsnaam)')
     .eq('id', id)
     .maybeSingle()
   if (!offerte) return { error: 'Offerte niet gevonden' }
@@ -1536,6 +1577,14 @@ export async function acceptOfferte(id: string) {
     .eq('id', id)
 
   if (error) return { error: error.message }
+
+  const relatieInfo = offerte.relatie as { email?: string; contactpersoon?: string; bedrijfsnaam?: string } | null
+  await stuurPrijsWaarschuwingBijVerlopenAcceptatie(
+    offerte,
+    relatieInfo?.email,
+    relatieInfo?.contactpersoon || relatieInfo?.bedrijfsnaam || '',
+    adminId,
+  )
 
   try {
     const { logAudit } = await import('@/lib/audit')
@@ -3391,7 +3440,7 @@ export async function crediteerFactuur(factuurId: string, reden?: string) {
 // koppeling stuk is (de vervallen-wissel in syncSnelstartBetalingen hangt
 // wél af van een geslaagde SnelStart-call en faalt dus stil mee als die
 // koppeling eruit ligt — vandaar deze aparte, betrouwbare route).
-export async function updateVervallenFacturen(administratieIdOverride?: string) {
+export async function updateVervallenFacturen(administratieIdOverride?: string): Promise<{ error: string } | { success: true; vervallen: number; hersteld: number }> {
   const adminId = administratieIdOverride || await getAdministratieId()
   if (!adminId) return { error: 'Niet ingelogd' }
 
@@ -3422,6 +3471,48 @@ export async function updateVervallenFacturen(administratieIdOverride?: string) 
     revalidatePath('/rapportages')
   }
   return { success: true, vervallen: teVervallen?.length || 0, hersteld: teHerstellen?.length || 0 }
+}
+
+// Zet verstuurde offertes op 'verlopen' zodra 'geldig_tot' verstreken is, en
+// terug naar 'verzonden' als de geldigheid alsnog verlengd is (bv. via een
+// bewerking — zie saveOfferte, die 'geldig_tot' bij elke bewerking vernieuwt).
+// Puur een datumcheck: verlopen betekent NIET dat de klant niet meer akkoord
+// kan geven — dat blijft mogelijk, alleen met een waarschuwing dat de
+// prijzen mogelijk gewijzigd zijn (zie acceptOfferte/acceptOffertePublic/
+// acceptOffertePortaal).
+export async function updateVerlopenOffertes(administratieIdOverride?: string): Promise<{ error: string } | { success: true; verlopen: number; hersteld: number }> {
+  const adminId = administratieIdOverride || await getAdministratieId()
+  if (!adminId) return { error: 'Niet ingelogd' }
+
+  const supabaseAdmin = createAdminClient()
+  const vandaag = new Date().toISOString().slice(0, 10)
+
+  const { data: teVerlopen, error: err1 } = await supabaseAdmin
+    .from('offertes')
+    .update({ status: 'verlopen' })
+    .eq('administratie_id', adminId)
+    .eq('status', 'verzonden')
+    .not('geldig_tot', 'is', null)
+    .lt('geldig_tot', vandaag)
+    .select('id')
+  if (err1) return { error: err1.message }
+
+  const { data: teHerstellen, error: err2 } = await supabaseAdmin
+    .from('offertes')
+    .update({ status: 'verzonden' })
+    .eq('administratie_id', adminId)
+    .eq('status', 'verlopen')
+    .not('geldig_tot', 'is', null)
+    .gte('geldig_tot', vandaag)
+    .select('id')
+  if (err2) return { error: err2.message }
+
+  if ((teVerlopen?.length || 0) + (teHerstellen?.length || 0) > 0) {
+    revalidatePath('/offertes')
+    revalidatePath('/')
+    revalidatePath('/rapportages')
+  }
+  return { success: true, verlopen: teVerlopen?.length || 0, hersteld: teHerstellen?.length || 0 }
 }
 
 // Haalt uit SnelStart de openstaande bedragen op en update betaald_bedrag + status
@@ -8582,7 +8673,7 @@ export async function acceptOffertePublic(token: string) {
 
   const { data: offerte, error: fetchError } = await supabaseAdmin
     .from('offertes')
-    .select('id, status, administratie_id, relatie_id, offertenummer, onderwerp, subtotaal, btw_totaal, totaal, created_at, project_id, groep_id, relatie:relaties(email, contactpersoon, bedrijfsnaam)')
+    .select('id, status, administratie_id, relatie_id, offertenummer, onderwerp, subtotaal, btw_totaal, totaal, created_at, project_id, groep_id, geldig_tot, relatie:relaties(email, contactpersoon, bedrijfsnaam)')
     .eq('publiek_token', token)
     .single()
 
@@ -8659,10 +8750,10 @@ export async function acceptOffertePublic(token: string) {
 
   // Bevestigingsmail naar klant
   const relatieEmail = (offerte.relatie as { email?: string } | null)?.email
+  const klantNaam = (offerte.relatie as { contactpersoon?: string; bedrijfsnaam?: string } | null)?.contactpersoon
+    || (offerte.relatie as { bedrijfsnaam?: string } | null)?.bedrijfsnaam || ''
   if (relatieEmail) {
     try {
-      const klantNaam = (offerte.relatie as { contactpersoon?: string; bedrijfsnaam?: string } | null)?.contactpersoon
-        || (offerte.relatie as { bedrijfsnaam?: string } | null)?.bedrijfsnaam || ''
       const bevestigBody = `Beste ${klantNaam},
 
 Bedankt voor het accepteren van offerte ${offerte.offertenummer}.
@@ -8683,6 +8774,7 @@ Kunststofkozijnnodig.nl`
     } catch (err) {
       console.error('Bevestigingsmail verzenden mislukt:', err)
     }
+    await stuurPrijsWaarschuwingBijVerlopenAcceptatie(offerte, relatieEmail, klantNaam, offerte.administratie_id)
   }
 
   return { success: true }

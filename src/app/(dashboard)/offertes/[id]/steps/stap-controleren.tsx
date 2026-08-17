@@ -771,7 +771,10 @@ export function StapControleren({
                 <Input id="offertenummer" name="offertenummer" label="Offertenummer" defaultValue={(offerte?.offertenummer as string) || ''} readOnly />
               )}
               <Input id="datum" name="datum" label="Datum *" type="date" defaultValue={(offerte?.datum as string) || new Date().toISOString().split('T')[0]} required />
-              <Input id="geldig_tot" name="geldig_tot" label="Geldig tot" type="date" defaultValue={(offerte?.geldig_tot as string) || new Date(Date.now() + 60 * 86400000).toISOString().split('T')[0]} />
+              {/* 30 dagen — moet matchen met de instelling 'offerte_geldigheid_dagen'
+                  (standaard 30), die server-side (saveOfferte) alleen als fallback
+                  geldt zolang dit veld hier niet leeg wordt aangeleverd. */}
+              <Input id="geldig_tot" name="geldig_tot" label="Geldig tot" type="date" defaultValue={(offerte?.geldig_tot as string) || new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0]} />
               <div>
                 <Input id="verwachte_valdatum" name="verwachte_valdatum" label="Verwachte valdatum" type="date" defaultValue={(offerte?.verwachte_valdatum as string) || ''} />
                 <p className="text-xs text-gray-400 mt-1">Wanneer verwacht je dat de klant beslist? Stuurt de opvolgtaak en de omzetprognose.</p>
