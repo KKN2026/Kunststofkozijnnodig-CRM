@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/empty-state'
 import { formatCurrency, formatDateShort } from '@/lib/utils'
 import { FileText, Plus, Receipt, AlertTriangle, CheckCircle, Clock, ExternalLink, FolderKanban, RefreshCw, Download, Send, Loader2 } from 'lucide-react'
-import { syncSnelstartBetalingen, verstuurFactuurSnel, setFactuurGeplandeDatum } from '@/lib/actions'
+import { syncSnelstartBetalingen, verstuurFactuurSnel, setFactuurGeplandeDatum, hermailAlleOpenstaandeFacturen } from '@/lib/actions'
 import { FACTUUR_VERVAL_GRACE_DAGEN } from '@/lib/constants'
 import Link from 'next/link'
 import { showToast } from '@/components/ui/toast'
@@ -276,6 +276,7 @@ export function FactuurList({ facturen, ordersMetStatus, sleutelWaarschuwing, be
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams])
   const [syncing, setSyncing] = useState(false)
+  const [hermailBezig, setHermailBezig] = useState(false)
   const [versturenLoading, setVersturenLoading] = useState<string | null>(null)
   const [versturenStatus, setVersturenStatus] = useState<Record<string, 'ok' | 'error'>>({})
   // Jaar-filter voor het 'Alle facturen'-tabblad: standaard het huidige jaar
@@ -419,6 +420,26 @@ export function FactuurList({ facturen, ordersMetStatus, sleutelWaarschuwing, be
     }
   }
 
+  async function handleHermailOpenstaand() {
+    if (hermailBezig) return
+    if (!window.confirm('Alle openstaande facturen opnieuw mailen naar de klant? Dit verstuurt direct e-mails.')) return
+    setHermailBezig(true)
+    try {
+      const res = await hermailAlleOpenstaandeFacturen()
+      if ('error' in res && res.error) {
+        showToast(res.error, 'error')
+      } else if ('verzonden' in res) {
+        const foutenMsg = res.fouten.length > 0 ? `, ${res.fouten.length} mislukt` : ''
+        showToast(`${res.verzonden} herinnering(en) verstuurd, ${res.overgeslagen} overgeslagen${foutenMsg}`, res.fouten.length > 0 ? 'error' : 'success')
+        router.refresh()
+      }
+    } catch (err) {
+      showToast('Hermailen mislukt: ' + (err instanceof Error ? err.message : String(err)), 'error')
+    } finally {
+      setHermailBezig(false)
+    }
+  }
+
   const tabs: { key: TabType; label: string; count?: number }[] = [
     { key: 'alle', label: 'Alle facturen' },
     { key: 'openstaand', label: vervallenOnly ? 'Openstaand · alleen vervallen' : 'Openstaand', count: openstaandFacturen.length },
@@ -542,6 +563,10 @@ export function FactuurList({ facturen, ordersMetStatus, sleutelWaarschuwing, be
             <Button variant="ghost" size="sm" onClick={handleSyncSnelstart} disabled={syncing} title="SnelStart-betalingen ophalen">
               <RefreshCw className={`h-3.5 w-3.5 ${syncing ? 'animate-spin' : ''}`} />
               {syncing ? 'Bezig…' : 'Sync'}
+            </Button>
+            <Button variant="ghost" size="sm" onClick={handleHermailOpenstaand} disabled={hermailBezig} title="Stuurt alle openstaande facturen opnieuw naar de klant, met een vernieuwde betaallink">
+              <Send className={`h-3.5 w-3.5 ${hermailBezig ? 'animate-pulse' : ''}`} />
+              {hermailBezig ? 'Bezig…' : 'Herinner alles'}
             </Button>
             <Button variant="ghost" size="sm" onClick={exportXlsx} title="Exporteer huidige weergave naar Excel">
               <Download className="h-3.5 w-3.5" />

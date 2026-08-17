@@ -2813,7 +2813,10 @@ export async function verstuurFactuurSnel(factuurId: string) {
  * Mollie Payment Link + permanente Kunststofkozijnnodig.nl-URL). SnelStart wordt NIET opnieuw
  * aangeroepen (skipSnelStart=true in sendFactuurEmail).
  */
-export async function hermailAlleOpenstaandeFacturen(overrideAdminId?: string) {
+export async function hermailAlleOpenstaandeFacturen(overrideAdminId?: string): Promise<
+  | { error: string }
+  | { verzonden: number; overgeslagen: number; fouten: { factuurnummer: string; error: string }[] }
+> {
   const adminId = overrideAdminId || await getAdministratieId()
   if (!adminId) return { error: 'Niet ingelogd' }
   const sb = createAdminClient()
