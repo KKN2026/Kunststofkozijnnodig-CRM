@@ -12735,7 +12735,7 @@ export async function getOfferteDashboard(): Promise<OfferteDashboardData> {
 
   const { data: offertes } = await supabase
     .from('offertes')
-    .select('id, offertenummer, onderwerp, status, subtotaal, datum, updated_at, verkoper_id, versie_nummer, groep_id, relatie:relaties(id, bedrijfsnaam, herkomst), project:projecten(naam)')
+    .select('id, offertenummer, onderwerp, status, subtotaal, datum, created_at, updated_at, verkoper_id, versie_nummer, groep_id, relatie:relaties(id, bedrijfsnaam, herkomst), project:projecten(naam)')
     .eq('administratie_id', adminId)
     .in('status', ['verzonden', 'geaccepteerd', 'afgewezen'])
     .order('created_at', { ascending: false })
@@ -12745,14 +12745,23 @@ export async function getOfferteDashboard(): Promise<OfferteDashboardData> {
   // één deal en mag niet dubbel meetellen in aantallen en conversie. De
   // geaccepteerde versie wint; anders de hoogste versie (zelfde regel als de
   // conversie-funnel in de rapportages).
+  //
+  // Sleutel is het offertenummer, niet groep_id: versies delen per definitie
+  // hun nummer, maar groep_id bleek bij sommige aanmaakroutes leeg te blijven
+  // waardoor dezelfde deal twee keer in het dashboard stond (OFF-0024, 18 aug).
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const perGroep = new Map<string, any>()
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   for (const o of (offertes || []) as any[]) {
-    const key = o.groep_id || o.id
+    const key = o.offertenummer || o.groep_id || o.id
     const huidig = perGroep.get(key)
+    // Geaccepteerd wint; daarna hoogste versie; bij gelijke versie (kapotte
+    // versienummering) wint de laatst aangemaakte.
     const wint = !huidig || (huidig.status !== 'geaccepteerd'
-      && (o.status === 'geaccepteerd' || (o.versie_nummer || 1) > (huidig.versie_nummer || 1)))
+      && (o.status === 'geaccepteerd'
+        || (o.versie_nummer || 1) > (huidig.versie_nummer || 1)
+        || ((o.versie_nummer || 1) === (huidig.versie_nummer || 1)
+          && new Date(o.created_at || o.datum || 0).getTime() > new Date(huidig.created_at || huidig.datum || 0).getTime())))
     if (wint) perGroep.set(key, o)
   }
   const uniekeOffertes = [...perGroep.values()]
