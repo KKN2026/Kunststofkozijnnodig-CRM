@@ -64,6 +64,22 @@ export async function GET(req: NextRequest) {
   let takenAangemaakt = 0
 
   for (const off of acceptaties || []) {
+    // Vangrail tegen valse meldingen: updated_at verandert ook bij onderhoud
+    // aan oude rijen (zoals de groepsreparatie van 18 aug, die 71 spooktaken
+    // opleverde). Een acceptatie die in Rebu al gefactureerd is, is per
+    // definitie oud en afgehandeld — geen taak voor nodig.
+    const { data: versieIds } = await rebu
+      .from('offertes')
+      .select('id')
+      .eq('offertenummer', off.offertenummer)
+    const { data: bestaandeFactuur } = await rebu
+      .from('facturen')
+      .select('id')
+      .in('offerte_id', (versieIds || []).map(v => v.id))
+      .limit(1)
+      .maybeSingle()
+    if (bestaandeFactuur) continue
+
     // 1. KKN-kopie (zelfde UUID) meezetten naar geaccepteerd
     const { data: kknOff } = await kkn
       .from('offertes')
