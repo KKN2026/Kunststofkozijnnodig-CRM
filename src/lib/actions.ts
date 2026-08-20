@@ -20,7 +20,7 @@ async function heeftEigenMailbox(
 }
 import { revalidatePath } from 'next/cache'
 import { cookies, headers } from 'next/headers'
-import { sendEmail, normaliseerOntvangers } from '@/lib/email'
+import { sendEmail, normaliseerOntvangers, maxBroadcastOntvangersPerMail } from '@/lib/email'
 import { buildRebuEmailHtml, buildFactuurEmailHtml } from '@/lib/email-template'
 import { NAAM_WIJZIGING_MELDING } from '@/lib/rebrand-melding'
 import { FACTUUR_VERVAL_GRACE_DAGEN } from '@/lib/constants'
@@ -12299,10 +12299,13 @@ export async function sendBroadcastEmail(onderwerp: string, bericht: string, typ
 
   const emailHtml = buildRebuEmailHtml(bericht)
   const from = process.env.SMTP_FROM || process.env.SMTP_USER || 'Nick@kunststofkozijnnodig.nl'
-  const BATCH_SIZE = 90
+  // Batchgrootte hangt af van de verzendlaag: Resend weigert mails met meer
+  // dan 50 ontvangers; met de oude vaste 90 zou een broadcast naar alle
+  // klanten op elke batch stuklopen zodra Resend aan staat.
+  const BATCH_SIZE = maxBroadcastOntvangersPerMail()
 
   try {
-    // Verstuur in batches van 90 (Gmail SMTP limiet)
+    // Verstuur in batches (limiet per transport, zie maxBroadcastOntvangersPerMail)
     for (let i = 0; i < emailAdressen.length; i += BATCH_SIZE) {
       const batch = emailAdressen.slice(i, i + BATCH_SIZE)
       await sendEmail({

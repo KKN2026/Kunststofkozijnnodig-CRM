@@ -9,6 +9,14 @@ import { Resend } from 'resend'
 const resendApiKey = process.env.RESEND_API_KEY
 const resend = resendApiKey ? new Resend(resendApiKey) : null
 
+// Maximaal aantal broadcast-ontvangers per mail. Resend telt to+cc+bcc samen
+// en weigert alles boven de 50; naast de BCC-batch gaan ook het afzenderadres
+// (to) en eventueel de universele controle-BCC mee, vandaar 48. Gmail-SMTP
+// trekt de grens in de praktijk rond de 100 — daar blijft de bestaande 90.
+export function maxBroadcastOntvangersPerMail(): number {
+  return resend ? 48 : 90
+}
+
 // Strakke timeouts zodat de request niet 60+ seconden blijft hangen als SMTP
 // traag/niet bereikbaar is (bv. bij een login-flow waar de user onmiddellijke
 // feedback nodig heeft). Alleen relevant in de SMTP-fallback.
