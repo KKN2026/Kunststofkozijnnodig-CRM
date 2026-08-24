@@ -3037,6 +3037,7 @@ export async function sendFactuurEmail(factuurId: string, options: {
     attachments.push(...options.extraBijlagen)
   }
 
+  const tVerzend = Date.now()
   try {
     // Alleen medewerkers met een eigen mailbox versturen vanuit hun eigen
     // adres. Andere medewerkers gebruiken de gedeelde info@-postbus.
@@ -3055,8 +3056,12 @@ export async function sendFactuurEmail(factuurId: string, options: {
       fromEmail: eigenMailbox ? mwInfo!.email : undefined,
       replyTo: eigenMailbox ? mwInfo!.email : undefined,
     })
+    // Timing-log zodat een toekomstige "mail komt niet aan" direct in de
+    // Vercel-logs te herleiden is naar een trage SMTP-verzending (zelfde
+    // aanpak als [offerte-mail]).
+    console.log(`[factuur-mail] SMTP-verzending in ${Date.now() - tVerzend}ms`)
   } catch (err) {
-    console.error('Factuur e-mail verzenden mislukt:', err)
+    console.error(`Factuur e-mail verzenden mislukt na ${Date.now() - tVerzend}ms:`, err)
     return { error: 'E-mail verzenden mislukt' }
   }
 

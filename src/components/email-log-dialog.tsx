@@ -52,14 +52,21 @@ export function EmailLogDialog({ emailLogId, onClose }: { emailLogId: string | n
     setResending(true)
     setError('')
     setResendStatus(null)
-    const result = await resendEmailLog(detail.id)
-    setResending(false)
-    if (result.error) {
-      setError(result.error)
-    } else if (result.ontbrekend && result.ontbrekend.length > 0) {
-      setResendStatus({ type: 'warn', text: `Verstuurd naar ${result.verstuurdNaar}, maar deze bijlage(n) ontbraken: ${result.ontbrekend.join(', ')}` })
-    } else {
-      setResendStatus({ type: 'ok', text: `Opnieuw verstuurd naar ${result.verstuurdNaar}` })
+    // try/finally: liep resendEmailLog stuk of over de tijdslimiet heen, dan
+    // gooide de await en bleef de knop hangen op "Bezig..." zonder melding.
+    try {
+      const result = await resendEmailLog(detail.id)
+      if (result.error) {
+        setError(result.error)
+      } else if (result.ontbrekend && result.ontbrekend.length > 0) {
+        setResendStatus({ type: 'warn', text: `Verstuurd naar ${result.verstuurdNaar}, maar deze bijlage(n) ontbraken: ${result.ontbrekend.join(', ')}` })
+      } else {
+        setResendStatus({ type: 'ok', text: `Opnieuw verstuurd naar ${result.verstuurdNaar}` })
+      }
+    } catch (err) {
+      setError(`Versturen is niet gelukt: ${err instanceof Error ? err.message : 'onbekende fout'}.`)
+    } finally {
+      setResending(false)
     }
   }
 

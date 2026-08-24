@@ -173,28 +173,42 @@ export function FactuurForm({ factuur, relaties, producten, nummerPreview = '', 
 
   async function handleSendEmail() {
     setSending(true)
-    const extraBijlagen: { filename: string; content: string }[] = []
-    for (const file of emailAttachments) {
-      const base64 = await new Promise<string>((resolve) => {
-        const reader = new FileReader()
-        reader.onload = () => resolve((reader.result as string).split(',')[1])
-        reader.readAsDataURL(file)
+    // Zonder try/catch: liep sendFactuurEmail stuk of over de tijdslimiet
+    // heen, dan gooide de await en werd setSending(false) nooit bereikt — de
+    // knop bleef dan eindeloos op "Versturen..." staan zonder enige melding,
+    // terwijl de mail feitelijk niet (volledig) verstuurd was. Gebruiker
+    // stuurde 'm dan nog een keer. Zelfde fix als bij offertes versturen.
+    try {
+      const extraBijlagen: { filename: string; content: string }[] = []
+      for (const file of emailAttachments) {
+        const base64 = await new Promise<string>((resolve) => {
+          const reader = new FileReader()
+          reader.onload = () => resolve((reader.result as string).split(',')[1])
+          reader.readAsDataURL(file)
+        })
+        extraBijlagen.push({ filename: file.name, content: base64 })
+      }
+      const result = await sendFactuurEmail(factuur!.id as string, {
+        to: combineerOntvangers(gekozenEmails, extraEmail), subject: emailSubject, body: emailBody,
+        extraBijlagen: extraBijlagen.length > 0 ? extraBijlagen : undefined,
       })
-      extraBijlagen.push({ filename: file.name, content: base64 })
-    }
-    const result = await sendFactuurEmail(factuur!.id as string, {
-      to: combineerOntvangers(gekozenEmails, extraEmail), subject: emailSubject, body: emailBody,
-      extraBijlagen: extraBijlagen.length > 0 ? extraBijlagen : undefined,
-    })
-    setSending(false)
-    setShowEmailDialog(false)
-    if (result.error) {
-      setShowEmailResult(result.error)
-    } else {
-      // Bij succes hoeft de gebruiker niet handmatig te sluiten en terug te
-      // navigeren — de bevestiging gaat als toast mee terug naar het overzicht.
-      showToast(result.warning ? `Factuur verstuurd — ${result.warning}` : 'Factuur verstuurd!', 'success')
-      navigateBack('/facturatie')
+      setShowEmailDialog(false)
+      if (result.error) {
+        setShowEmailResult(result.error)
+      } else {
+        // Bij succes hoeft de gebruiker niet handmatig te sluiten en terug te
+        // navigeren — de bevestiging gaat als toast mee terug naar het overzicht.
+        showToast(result.warning ? `Factuur verstuurd — ${result.warning}` : 'Factuur verstuurd!', 'success')
+        navigateBack('/facturatie')
+      }
+    } catch (err) {
+      setShowEmailDialog(false)
+      setShowEmailResult(
+        `Versturen is niet gelukt: ${err instanceof Error ? err.message : 'onbekende fout'}. ` +
+        'Controleer bij Verzonden of de mail alsnog is aangekomen voordat u het opnieuw probeert.',
+      )
+    } finally {
+      setSending(false)
     }
   }
 
