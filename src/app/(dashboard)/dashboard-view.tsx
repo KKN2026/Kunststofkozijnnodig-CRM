@@ -1612,9 +1612,13 @@ export function DashboardView({ data }: { data: DashboardData | null }) {
               opnieuw opgehaald op volgorde van updated_at. */}
           {data.recenteBetalingen && data.recenteBetalingen.length > 0 && (
             <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-              <div className="px-5 py-3.5 border-b border-gray-100">
+              <Link
+                href="/facturatie?tab=alle"
+                className="px-5 py-3.5 border-b border-gray-100 flex items-center justify-between hover:bg-gray-50 transition-colors"
+              >
                 <h3 className="text-sm font-semibold text-gray-900">Recente betalingen</h3>
-              </div>
+                <ArrowRight className="h-3.5 w-3.5 text-gray-300" />
+              </Link>
               <div className="divide-y divide-gray-50">
                 {data.recenteBetalingen.map((b, i) => (
                   <Link
