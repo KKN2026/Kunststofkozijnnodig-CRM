@@ -5765,7 +5765,7 @@ export async function getDashboardData() {
     getGemiddeldeVerkoopkanswaardeDitJaar(),
   ])
 
-  const [relatiesRes, profielenRes, openOffertesRes, tePlannenRes, geplandeLeveringenRes, ongelezenBerichtenRes, geaccepteerdRes, openstaandeFacturenRes, omzetdoelenRes, recenteOffertesRes, moetBesteldRes, actieveMwsRes, relatieNaamData, triageEmailsRes, aanvragenTakenRes, aanvraagEmailsRes, openVerkoopkansenRes, recenteNotitiesRes, voormaligeRelatiesRes] = await Promise.all([
+  const [relatiesRes, profielenRes, openOffertesRes, tePlannenRes, geplandeLeveringenRes, ongelezenBerichtenRes, geaccepteerdRes, openstaandeFacturenRes, omzetdoelenRes, recenteOffertesRes, moetBesteldRes, actieveMwsRes, relatieNaamData, triageEmailsRes, aanvragenTakenRes, aanvraagEmailsRes, openVerkoopkansenRes, recenteNotitiesRes, voormaligeRelatiesRes, recenteBetalingenRes] = await Promise.all([
     supabase.from('relaties').select('type', { count: 'exact' }).eq('administratie_id', adminId),
     supabase.from('profielen').select('id, naam').eq('administratie_id', adminId),
     // Open offertes-lijst: zelfde 90-dagen-filter als de KPI-count (data.openOffertes)
@@ -5788,6 +5788,11 @@ export async function getDashboardData() {
     supabase.from('projecten').select('id, naam, status, created_at, bron, relatie:relaties(id, bedrijfsnaam), offertes:offertes(id)').eq('administratie_id', adminId).in('status', ['actief', 'on_hold']).order('created_at', { ascending: false }),
     supabaseAdmin.from('notities').select('id, tekst, created_at, relatie:relaties(id, bedrijfsnaam), gebruiker:profielen(naam)').eq('administratie_id', adminId).order('created_at', { ascending: false }).limit(10),
     supabaseAdmin.from('relaties').select('id').eq('administratie_id', adminId).eq('actief', false),
+    // Meest recente betalingen voor het dashboard-widget: er is geen aparte
+    // 'betaald op'-kolom, dus updated_at (bijgewerkt door de Mollie-webhook en
+    // de SnelStart-sync zodra betaald_bedrag/status wijzigt) is de beste
+    // beschikbare proxy voor 'wanneer is dit betaald'.
+    supabase.from('facturen').select('id, factuurnummer, totaal, betaald_bedrag, status, updated_at, relatie_id, relatie:relaties(id, bedrijfsnaam)').eq('administratie_id', adminId).in('status', ['betaald', 'deels_betaald']).order('updated_at', { ascending: false }).limit(10),
   ])
 
   const relatiesData = relatiesRes.data || []
@@ -6443,6 +6448,16 @@ export async function getDashboardData() {
   const voormaligeRelaties = voormaligeRelatiesRes.data
   const voormaligeRelatieIds = (voormaligeRelaties || []).map(r => r.id)
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const recenteBetalingen = (recenteBetalingenRes.data || []).map((f: any) => ({
+    id: f.id as string,
+    factuurnummer: f.factuurnummer as string,
+    bedrag: Number(f.betaald_bedrag ?? f.totaal ?? 0),
+    relatie_id: f.relatie_id as string | null,
+    relatie_naam: (f.relatie as { bedrijfsnaam?: string } | null)?.bedrijfsnaam || '-',
+    betaald_op: f.updated_at as string,
+  }))
+
   return {
     omzet, omzetVorigeMaand, openstaand, achterstallig, openOffertes, openTaken,
     ongelezenBerichten: ongelezenBerichtenRes.count || 0,
@@ -6455,6 +6470,7 @@ export async function getDashboardData() {
     restbetalingTeVersturen,
     conceptFacturenGepland,
     voormaligeRelatieIds,
+    recenteBetalingen,
   }
 }
 

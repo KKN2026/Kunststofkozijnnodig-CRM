@@ -57,6 +57,14 @@ interface DashboardData {
   funnel: FunnelData
   recenteNotities?: RecenteNotitie[]
   voormaligeRelatieIds?: string[]
+  recenteBetalingen?: {
+    id: string
+    factuurnummer: string
+    bedrag: number
+    relatie_id: string | null
+    relatie_naam: string
+    betaald_op: string
+  }[]
   ongelezenBerichten: number
   maandOmzet: { maand: string; bedrag: number }[]
   gefactureerdPerMaand: { maand: string; bedrag: number; aantal: number }[]
@@ -1595,6 +1603,38 @@ export function DashboardView({ data }: { data: DashboardData | null }) {
               })()}
             </div>
           </Link>
+
+          {/* Meest recente betalingen — nummer 1 is de laatst betaalde factuur.
+              Geen aparte 'betaald op'-kolom in de database, dus updated_at
+              (bijgewerkt door Mollie-webhook/SnelStart-sync bij elke wijziging
+              van betaald_bedrag/status) is de proxy voor 'wanneer betaald'.
+              Schuift vanzelf door: elke keer dat het dashboard laadt, wordt dit
+              opnieuw opgehaald op volgorde van updated_at. */}
+          {data.recenteBetalingen && data.recenteBetalingen.length > 0 && (
+            <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+              <div className="px-5 py-3.5 border-b border-gray-100">
+                <h3 className="text-sm font-semibold text-gray-900">Recente betalingen</h3>
+              </div>
+              <div className="divide-y divide-gray-50">
+                {data.recenteBetalingen.map((b, i) => (
+                  <Link
+                    key={b.id}
+                    href={`/facturatie/${b.id}`}
+                    className="flex items-center gap-2.5 px-5 py-2.5 hover:bg-gray-50 transition-colors"
+                  >
+                    <span className="h-5 w-5 shrink-0 rounded-full bg-gray-100 text-gray-500 text-[11px] font-semibold flex items-center justify-center">
+                      {i + 1}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <KlantNaam id={b.relatie_id} naam={b.relatie_naam} className="text-xs font-medium text-gray-900 truncate" />
+                      <div className="text-[11px] text-gray-400 truncate">{b.factuurnummer}</div>
+                    </div>
+                    <span className="text-xs font-semibold text-[#00a66e] shrink-0">{formatCurrency(b.bedrag)}</span>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* 'Snel overzicht' en 'Top klanten' zijn verwijderd uit de sidebar:
               Snel overzicht was redundant met KPI's, Top klanten staat op /rapportages. */}
