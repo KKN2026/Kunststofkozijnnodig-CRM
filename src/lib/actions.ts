@@ -5077,7 +5077,7 @@ export async function getTaken() {
   const taken = await fetchAllRows<any>((from, to) => {
     let query = supabase
       .from('taken')
-      .select('*, categorie, project:projecten(naam, offertes:offertes(subtotaal, totaal, datum, versie_nummer, created_at)), toegewezen:profielen(naam), medewerker:medewerkers(naam), offerte:offertes(id, offertenummer, status, totaal, subtotaal), relatie:relaties(bedrijfsnaam)')
+      .select('*, categorie, project:projecten(naam, offertes:offertes(subtotaal, totaal, datum, versie_nummer, created_at)), toegewezen:profielen(naam), medewerker:medewerkers(naam), offerte:offertes(id, offertenummer, status, totaal, subtotaal), relatie:relaties(bedrijfsnaam), taak_notities(tekst, created_at)')
       .order('created_at', { ascending: true })
       .range(from, to)
     if (rol === 'medewerker') {
@@ -5110,6 +5110,21 @@ export async function getTaken() {
     })[0]
     t.project.laatste_offerte_bedrag = laatsteOfferte?.subtotaal || null
     delete t.project.offertes
+  }
+
+  // Laatste 3 taak-notities apart tonen (voor de hover-preview in de
+  // takenlijst — daar hoeft niet de hele geschiedenis heen, alleen de recente
+  // stand van zaken). De array zelf halen we weg zodat de payload klein blijft.
+  for (const t of taken) {
+    const notities = (t.taak_notities || []) as { tekst: string; created_at: string | null }[]
+    t.laatste_notities = [...notities]
+      .sort((a, b) => {
+        const ca = a.created_at ? new Date(a.created_at).getTime() : 0
+        const cb = b.created_at ? new Date(b.created_at).getTime() : 0
+        return cb - ca
+      })
+      .slice(0, 3)
+    delete t.taak_notities
   }
 
   // Weergavenaam van de toegewezen persoon: laat de gekoppelde medewerkernaam

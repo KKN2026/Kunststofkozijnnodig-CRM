@@ -13,12 +13,13 @@ import { formatDateShort, formatCurrency } from '@/lib/utils'
 import { completeTaak, uncompleteTaak, updateTaakDeadline, updateTaakMedewerker, acceptOfferte, rejectOfferte, convertToFactuur } from '@/lib/actions'
 import { Dialog } from '@/components/ui/dialog'
 import { showToast } from '@/components/ui/toast'
-import { Plus, CheckSquare, X, Phone, FileText, ListTodo, ThumbsUp, ThumbsDown, ArrowRight } from 'lucide-react'
+import { Plus, CheckSquare, X, Phone, FileText, ListTodo, ThumbsUp, ThumbsDown, ArrowRight, StickyNote } from 'lucide-react'
 
 interface Taak {
   id: string
   taaknummer: string | null
   titel: string
+  omschrijving: string | null
   status: string
   prioriteit: string
   deadline: string | null
@@ -32,6 +33,37 @@ interface Taak {
   medewerker: { naam: string } | null
   offerte: { id?: string; offertenummer?: string | null; status?: string; totaal: number; subtotaal: number | null } | null
   relatie: { bedrijfsnaam: string } | null
+  laatste_notities: { tekst: string; created_at: string | null }[]
+}
+
+// Klein icoontje bij de klantnaam: hover toont de omschrijving + laatste 3
+// notities van de taak in 1 oogopslag, zonder de taak te hoeven openen —
+// precies wat je nodig hebt vlak voordat je iemand belt.
+function NotitieHint({ omschrijving, laatsteNotities }: { omschrijving: string | null; laatsteNotities: { tekst: string; created_at: string | null }[] }) {
+  const notities = laatsteNotities.filter(n => n.tekst?.trim())
+  if (!omschrijving?.trim() && notities.length === 0) return null
+  return (
+    <span className="relative inline-flex group/hint shrink-0" onClick={(e) => e.stopPropagation()}>
+      <StickyNote className="h-3.5 w-3.5 text-amber-500 cursor-help" />
+      <span className="pointer-events-none absolute z-50 left-1/2 -translate-x-1/2 bottom-full mb-2 hidden group-hover/hint:block w-80 max-w-[85vw] rounded-lg bg-gray-900 text-white text-xs p-3 shadow-lg text-left space-y-2">
+        {omschrijving?.trim() && <p className="whitespace-pre-wrap break-words">{omschrijving}</p>}
+        {omschrijving?.trim() && notities.length > 0 && <div className="border-t border-white/20" />}
+        {notities.length > 0 && (
+          <div className="space-y-2">
+            <p className="text-white/50">Laatste {notities.length > 1 ? `${notities.length} notities` : 'notitie'}:</p>
+            {notities.map((n, i) => (
+              <p key={i} className="whitespace-pre-wrap break-words">
+                <span className="text-white/50">{n.created_at ? formatDateShort(n.created_at) : ''}</span>
+                {n.created_at && <br />}
+                {n.tekst}
+              </p>
+            ))}
+          </div>
+        )}
+        <span className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-900" />
+      </span>
+    </span>
+  )
 }
 
 type TabType = 'alle' | 'opvolgen' | 'offerte' | 'afgerond'
@@ -101,7 +133,12 @@ function getColumns(
     },
     { accessorKey: 'taaknummer', header: 'Nummer', cell: ({ getValue }) => <span className="text-gray-500 font-mono text-xs">{(getValue() as string) || '-'}</span> },
     { accessorKey: 'titel', header: 'Titel' },
-    { id: 'relatie', header: 'Relatie', accessorFn: (row) => row.relatie?.bedrijfsnaam || '-' },
+    { id: 'relatie', header: 'Relatie', accessorFn: (row) => row.relatie?.bedrijfsnaam || '-', cell: ({ row }) => (
+      <span className="inline-flex items-center gap-1.5">
+        <span>{row.original.relatie?.bedrijfsnaam || '-'}</span>
+        <NotitieHint omschrijving={row.original.omschrijving} laatsteNotities={row.original.laatste_notities} />
+      </span>
+    ) },
     { accessorKey: 'status', header: 'Status', cell: ({ getValue }) => <Badge status={getValue() as string} /> },
     { accessorKey: 'prioriteit', header: 'Prioriteit', cell: ({ getValue }) => <Badge status={getValue() as string} /> },
     { id: 'project', header: 'Verkoopkans', accessorFn: (row) => row.project?.naam || '-', cell: ({ row }) => {
