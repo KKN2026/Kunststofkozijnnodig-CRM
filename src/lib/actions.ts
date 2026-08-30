@@ -9843,6 +9843,14 @@ export async function saveNotitie(data: {
     .single()
   if (error) return { error: error.message }
 
+  // Productiviteit: een nieuwe notitie bij een (bestaande) klant is meestal het
+  // bijproduct van een telefoongesprek — telt automatisch mee als "klant
+  // gesproken", zelfde patroon als bij leads (zie updateLeadStatus). Alleen bij
+  // een nieuwe notitie, niet bij het bewerken van een bestaande (dat is vaker
+  // een tikfout corrigeren dan een nieuw gesprek).
+  const { eigenMedewerkerId } = await getRolEnEigenMedewerker(supabase, adminId)
+  await logMedewerkerActiviteit(supabase, adminId, eigenMedewerkerId, 'klant_gesproken', data.relatie_id, 'relatie')
+
   revalidatePath(`/relatiebeheer/${data.relatie_id}`)
   return {
     success: true,
@@ -11123,8 +11131,24 @@ export async function updateLead(id: string, formData: FormData) {
     updated_at: new Date().toISOString(),
   }
 
+  // Productiviteit: een gewijzigde notitie is het duidelijkste bewijs dat de
+  // medewerker deze lead net gesproken heeft (vaak letterlijk de
+  // gesprekssamenvatting) — vooraf de oude notitie ophalen zodat alleen een
+  // échte wijziging telt, niet elke opslag van dit formulier (bv. een adres
+  // corrigeren telt niet automatisch mee als "klant gesproken").
+  const { data: vorige } = await supabase.from('leads').select('notities').eq('id', id).maybeSingle()
+
   const { error } = await supabase.from('leads').update(record).eq('id', id)
   if (error) return { error: error.message }
+
+  if (record.notities && record.notities !== (vorige?.notities || null)) {
+    const adminId = await getAdministratieId()
+    if (adminId) {
+      const { eigenMedewerkerId } = await getRolEnEigenMedewerker(supabase, adminId)
+      await logMedewerkerActiviteit(supabase, adminId, eigenMedewerkerId, 'klant_gesproken', id, 'lead')
+    }
+  }
+
   revalidatePath('/leads')
   revalidatePath(`/leads/${id}`)
   return { success: true }
