@@ -32,10 +32,16 @@ export async function POST(req: NextRequest) {
 }
 
 async function handle(req: NextRequest) {
-  // Auth: óf x-admin-key header met service role, óf Vercel Cron signature
+  // Auth: óf x-admin-key header met service role, óf Vercel Cron (stuurt
+  // automatisch een Authorization header met CRON_SECRET — zelfde patroon als
+  // de andere cron-routes). LET OP: dit gebruikte eerder een niet-bestaande
+  // 'x-vercel-cron'-header, waardoor de dagelijkse backup sinds het aanmaken
+  // van deze route nog nooit automatisch was gelukt (403, stil genegeerd door
+  // Vercel Cron). Ontdekt en gefixt op 30-08-2026.
   const adminKey = req.headers.get('x-admin-key')
-  const cronHeader = req.headers.get('x-vercel-cron')
-  const autorized = adminKey === process.env.SUPABASE_SERVICE_ROLE_KEY || !!cronHeader
+  const auth = req.headers.get('authorization')
+  const cronOk = !!process.env.CRON_SECRET && auth === `Bearer ${process.env.CRON_SECRET}`
+  const autorized = adminKey === process.env.SUPABASE_SERVICE_ROLE_KEY || cronOk
   if (!autorized) return NextResponse.json({ error: 'forbidden' }, { status: 403 })
 
   const sb = createAdminClient()
