@@ -26,6 +26,8 @@ interface RelatieData {
   iban: string | null
   opmerkingen: string | null
   standaard_marge: number | null
+  factuur_email?: string | null
+  website?: string | null
 }
 
 interface KvkResult {
@@ -395,7 +397,7 @@ export function RelatieForm({ relatie }: { relatie: RelatieData | null }) {
               />
               <Input id="contactpersoon" name="contactpersoon" label="Contactpersoon" defaultValue={relatie?.contactpersoon || ''} />
               <Input ref={emailRef} id="email" name="email" label="E-mail" type="email" defaultValue={relatie?.email || ''} />
-              <Input id="factuur_email" name="factuur_email" label="Factuur-e-mail (optioneel)" type="email" defaultValue={(relatie as Record<string, unknown> | undefined)?.factuur_email as string || ''} placeholder="Leeg = algemene e-mail gebruiken" />
+              <Input id="factuur_email" name="factuur_email" label="Factuur-e-mail (optioneel)" type="email" defaultValue={relatie?.factuur_email || ''} placeholder="Leeg = algemene e-mail gebruiken" />
               <Input ref={telefoonRef} id="telefoon" name="telefoon" label="Telefoon" defaultValue={relatie?.telefoon || ''} />
               <Input ref={adresRef} id="adres" name="adres" label="Adres (straat + huisnummer)" defaultValue={relatie?.adres || ''} />
               <div className="grid grid-cols-[1fr_120px] gap-2">
@@ -408,7 +410,7 @@ export function RelatieForm({ relatie }: { relatie: RelatieData | null }) {
               <Input id="iban" name="iban" label="IBAN" defaultValue={relatie?.iban || ''} />
               <div className="flex gap-2 items-end">
                 <div className="flex-1">
-                  <Input ref={websiteRef} id="website" name="website" label="Website" defaultValue={(relatie as Record<string, unknown> | undefined)?.website as string || ''} placeholder="https://..." />
+                  <Input ref={websiteRef} id="website" name="website" label="Website" defaultValue={relatie?.website || ''} placeholder="https://..." />
                 </div>
                 <Button type="button" variant="secondary" size="sm" onClick={aiVerrijk} disabled={verrijken} title="Vul lege velden + opmerkingen aan via AI op basis van de website">
                   {verrijken ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}

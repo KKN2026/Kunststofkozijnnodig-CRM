@@ -381,7 +381,7 @@ export function TaakForm({ taak, projecten, medewerkers, relaties, offertes, not
           taak met een offerte koppeling). Geeft de medewerker direct inzicht:
           - Is de offerte verzonden?
           - Wat heeft de klant ontvangen (inclusief bijlagen)? */}
-      {!isNew && offerteStatus && taak?.offerte_id && (
+      {!isNew && offerteStatus && (taak?.offerte_id as string | undefined) && (
         <div className="mt-6">
           <h3 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
             <FileText className="h-4 w-4 text-gray-500" />

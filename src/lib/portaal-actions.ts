@@ -121,7 +121,7 @@ export async function getPortaalDashboard() {
       onderwerp: o.onderwerp,
       status: o.status,
       totaal: o.totaal,
-      relatie_bedrijfsnaam: (o.relatie as { bedrijfsnaam: string } | null)?.bedrijfsnaam || '-',
+      relatie_bedrijfsnaam: (o.relatie as unknown as { bedrijfsnaam: string } | null)?.bedrijfsnaam || '-',
     })),
     recenteOrders: (recenteOrdersRes.data || []).map(o => ({
       id: o.id,
@@ -130,7 +130,7 @@ export async function getPortaalDashboard() {
       onderwerp: o.onderwerp,
       status: o.status,
       totaal: o.totaal,
-      relatie_bedrijfsnaam: (o.relatie as { bedrijfsnaam: string } | null)?.bedrijfsnaam || '-',
+      relatie_bedrijfsnaam: (o.relatie as unknown as { bedrijfsnaam: string } | null)?.bedrijfsnaam || '-',
     })),
     recenteEmails: await (async () => {
       // Verzonden mails (vanuit CRM) naar klant — uit email_log
@@ -168,7 +168,7 @@ export async function getPortaalOffertes() {
 
   return (data || []).map(o => ({
     ...o,
-    relatie_bedrijfsnaam: (o.relatie as { bedrijfsnaam: string } | null)?.bedrijfsnaam || '-',
+    relatie_bedrijfsnaam: (o.relatie as unknown as { bedrijfsnaam: string } | null)?.bedrijfsnaam || '-',
   }))
 }
 
@@ -216,7 +216,7 @@ export async function getPortaalOrders() {
 
   return (data || []).map(o => ({
     ...o,
-    relatie_bedrijfsnaam: (o.relatie as { bedrijfsnaam: string } | null)?.bedrijfsnaam || '-',
+    relatie_bedrijfsnaam: (o.relatie as unknown as { bedrijfsnaam: string } | null)?.bedrijfsnaam || '-',
   }))
 }
 
@@ -235,7 +235,7 @@ export async function getPortaalFacturen() {
 
   return (data || []).map(f => ({
     ...f,
-    relatie_bedrijfsnaam: (f.relatie as { bedrijfsnaam: string } | null)?.bedrijfsnaam || '-',
+    relatie_bedrijfsnaam: (f.relatie as unknown as { bedrijfsnaam: string } | null)?.bedrijfsnaam || '-',
   }))
 }
 
@@ -254,7 +254,7 @@ export async function getPortaalLeveringen() {
 
   return (data || []).map(o => ({
     ...o,
-    relatie_bedrijfsnaam: (o.relatie as { bedrijfsnaam: string } | null)?.bedrijfsnaam || '-',
+    relatie_bedrijfsnaam: (o.relatie as unknown as { bedrijfsnaam: string } | null)?.bedrijfsnaam || '-',
   }))
 }
 

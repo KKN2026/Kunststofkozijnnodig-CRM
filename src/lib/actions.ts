@@ -3613,8 +3613,12 @@ export async function syncSnelstartBetalingen(administratieIdOverride?: string) 
       .range(from, to)
   )
 
-  // SnelStart lijst met openstaand bedragen per factuurnummer
-  let ssFacturen: { factuurnummer: string; factuurBedrag: number; openstaand: number; gecrediteerd?: boolean }[] = []
+  // SnelStart lijst met openstaand bedragen per factuurnummer. Type komt uit
+  // listAllVerkoopfacturen zelf (Awaited<ReturnType<...>>) i.p.v. hier los
+  // over te typen — een eerdere losse annotatie miste 'vervaldatum', waardoor
+  // TypeScript de latere ss.vervaldatum-toegang (regel ~3712) niet meer kon
+  // checken. Runtime werkte dit altijd al goed (het veld bestond gewoon).
+  let ssFacturen: Awaited<ReturnType<typeof listAllVerkoopfacturen>> = []
   try {
     ssFacturen = await listAllVerkoopfacturen()
   } catch (err) {
@@ -5266,7 +5270,7 @@ export async function getAgendaLeveringen() {
     leverdatum: o.leverdatum,
     status: o.status,
     onderwerp: o.onderwerp,
-    relatie_bedrijfsnaam: (o.relatie as { bedrijfsnaam: string } | null)?.bedrijfsnaam || '-',
+    relatie_bedrijfsnaam: (o.relatie as unknown as { bedrijfsnaam: string } | null)?.bedrijfsnaam || '-',
   }))
 }
 
@@ -6060,13 +6064,13 @@ export async function getDashboardData() {
     .sort((a, b) => new Date(b.datum).getTime() - new Date(a.datum).getTime())
     .slice(0, 15)
     .map(o => {
-      const rel = o.relatie as { id?: string; bedrijfsnaam: string } | null
+      const rel = o.relatie as unknown as { id?: string; bedrijfsnaam: string } | null
       return {
         id: o.id,
         offertenummer: o.offertenummer,
         relatie_id: rel?.id || null,
         relatie_bedrijfsnaam: rel?.bedrijfsnaam || '-',
-        project_naam: (o.project as { naam: string } | null)?.naam || null,
+        project_naam: (o.project as unknown as { naam: string } | null)?.naam || null,
         status: o.status,
         totaal: o.totaal || 0,
         datum: o.datum,
@@ -6119,13 +6123,13 @@ export async function getDashboardData() {
   const openOffertesList = (openOffertesRes.data || []).map(o => {
     const datumDate = new Date(o.datum)
     const dagenOpen = Math.floor((vandaag.getTime() - datumDate.getTime()) / (1000 * 60 * 60 * 24))
-    const rel = o.relatie as { id?: string; bedrijfsnaam: string } | null
+    const rel = o.relatie as unknown as { id?: string; bedrijfsnaam: string } | null
     return {
       id: o.id,
       offertenummer: o.offertenummer,
       relatie_id: rel?.id || null,
       relatie_bedrijfsnaam: rel?.bedrijfsnaam || '-',
-      project_naam: (o.project as { naam: string } | null)?.naam || null,
+      project_naam: (o.project as unknown as { naam: string } | null)?.naam || null,
       totaal: o.totaal || 0,
       datum: o.datum,
       dagen_open: dagenOpen,
@@ -6134,9 +6138,9 @@ export async function getDashboardData() {
 
   // Te plannen leveringen
   const tePlannenOrders = (tePlannenRes.data || []).map(o => {
-    const rel = o.relatie as { id?: string; bedrijfsnaam: string; contactpersoon: string | null; email: string | null } | null
+    const rel = o.relatie as unknown as { id?: string; bedrijfsnaam: string; contactpersoon: string | null; email: string | null } | null
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const off = o.offerte as { offertenummer: string; project?: { id: string; naam: string } | null } | null
+    const off = o.offerte as unknown as { offertenummer: string; project?: { id: string; naam: string } | null } | null
     return {
       id: o.id,
       ordernummer: o.ordernummer,
@@ -6158,7 +6162,7 @@ export async function getDashboardData() {
   const geplandeLeveringen = (geplandeLeveringenRes.data || []).map(o => {
     const facturen = (o.facturen || []) as { id: string; factuurnummer: string; status: string; factuur_type: string; totaal: number }[]
     const restbetaling = facturen.find(f => f.factuur_type === 'restbetaling')
-    const rel = o.relatie as { id?: string; bedrijfsnaam: string; adres?: string | null; postcode?: string | null; plaats?: string | null } | null
+    const rel = o.relatie as unknown as { id?: string; bedrijfsnaam: string; adres?: string | null; postcode?: string | null; plaats?: string | null } | null
     return {
       id: o.id,
       ordernummer: o.ordernummer,
@@ -6214,7 +6218,7 @@ export async function getDashboardData() {
   const geaccepteerdeOffertes = (geaccepteerdRes.data || [])
     .filter(o => !o.facturen || (o.facturen as { id: string }[]).length === 0)
     .map(o => {
-      const rel = o.relatie as { id?: string; bedrijfsnaam: string } | null
+      const rel = o.relatie as unknown as { id?: string; bedrijfsnaam: string } | null
       return {
         id: o.id,
         offertenummer: o.offertenummer,
@@ -6393,7 +6397,7 @@ export async function getDashboardData() {
 
   // Tel emails per project
   const projectIds = (openVerkoopkansenData || []).map(p => p.id)
-  let emailCountMap = new Map<string, number>()
+  const emailCountMap = new Map<string, number>()
   if (projectIds.length > 0) {
     const { data: emailCounts } = await supabaseAdmin
       .from('emails')
@@ -6406,7 +6410,7 @@ export async function getDashboardData() {
   }
 
   const openVerkoopkansen = (openVerkoopkansenData || []).map(p => {
-    const rel = p.relatie as { id?: string; bedrijfsnaam: string } | null
+    const rel = p.relatie as unknown as { id?: string; bedrijfsnaam: string } | null
     return {
       id: p.id,
       naam: p.naam,
@@ -6422,13 +6426,13 @@ export async function getDashboardData() {
 
   // Moet besteld orders
   const moetBesteldOrders = (moetBesteldRes.data || []).map(o => {
-    const rel = o.relatie as { id?: string; bedrijfsnaam: string } | null
+    const rel = o.relatie as unknown as { id?: string; bedrijfsnaam: string } | null
     return {
       id: o.id,
       ordernummer: o.ordernummer,
       relatie_id: rel?.id || null,
       relatie_bedrijfsnaam: rel?.bedrijfsnaam || '-',
-      offerte_nummer: (o.offerte as { offertenummer: string } | null)?.offertenummer || null,
+      offerte_nummer: (o.offerte as unknown as { offertenummer: string } | null)?.offertenummer || null,
       onderwerp: o.onderwerp,
       totaal: o.totaal || 0,
       datum: o.datum,
@@ -7881,7 +7885,7 @@ export async function getRelatieDetail(id: string) {
         id: (n as { id: string }).id,
         tekst: (n as { tekst: string }).tekst,
         created_at: (n as { created_at: string }).created_at,
-        gebruiker_naam: (n as { gebruiker: { naam: string } | null }).gebruiker?.naam ?? null,
+        gebruiker_naam: (n as unknown as { gebruiker: { naam: string } | null }).gebruiker?.naam ?? null,
       })
       projectNotitiesMap.set(pid, list)
     }
@@ -11506,13 +11510,13 @@ export async function getAgendaItems(): Promise<AgendaItem[]> {
       type: 'taak',
       titel: t.titel,
       datum: t.deadline!,
-      meta: (t.project as { naam: string } | null)?.naam || undefined,
+      meta: (t.project as unknown as { naam: string } | null)?.naam || undefined,
       link: `/taken/${t.id}`,
     })
   }
 
   for (const o of leveringenRes.data || []) {
-    const bedrijf = (o.relatie as { bedrijfsnaam: string } | null)?.bedrijfsnaam || '-'
+    const bedrijf = (o.relatie as unknown as { bedrijfsnaam: string } | null)?.bedrijfsnaam || '-'
     items.push({
       id: o.id,
       type: 'levering',
@@ -11535,8 +11539,8 @@ export async function getAgendaItems(): Promise<AgendaItem[]> {
   }
 
   for (const a of afsprakenRes.data || []) {
-    const relNaam = (a.relatie as { bedrijfsnaam: string } | null)?.bedrijfsnaam
-    const leadNaam = (a.lead as { bedrijfsnaam: string } | null)?.bedrijfsnaam
+    const relNaam = (a.relatie as unknown as { bedrijfsnaam: string } | null)?.bedrijfsnaam
+    const leadNaam = (a.lead as unknown as { bedrijfsnaam: string } | null)?.bedrijfsnaam
     items.push({
       id: a.id,
       type: 'afspraak',

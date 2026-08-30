@@ -157,7 +157,7 @@ export function Timeline({ items, onEmailClick, onEdit, onDelete, onInlineRename
               const config = iconConfig[item.type] || iconConfig.project_aangemaakt
               const Icon = config.icon
 
-              const isClickableEmail = item.type === 'email_verstuurd' && onEmailClick && item.meta?.emailLogId
+              const isClickableEmail = !!(item.type === 'email_verstuurd' && onEmailClick && item.meta?.emailLogId)
               const showActions = SUPPORTS_ACTIONS.has(item.type) && (onEdit || onDelete || onInlineRename)
               const supportsInlineRename = SUPPORTS_RENAME.has(item.type) && onInlineRename
               const isEditing = editingId === item.id
