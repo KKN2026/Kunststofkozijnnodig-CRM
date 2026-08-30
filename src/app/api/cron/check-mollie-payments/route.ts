@@ -56,11 +56,16 @@ export async function GET(req: NextRequest) {
     afletterFouten.push(e instanceof Error ? e.message : 'afletteren mislukt')
   }
 
+  // Bij losse fouten (bv. Mollie- of SnelStart-API even onbereikbaar) gaf dit
+  // altijd status 200 terug — onzichtbaar voor cron-monitoring, ook als élke
+  // factuur faalde. Status 207 (partial) bij fouten zodat Vercel Cron-logs het
+  // ook zonder de JSON-body te lezen laten zien.
+  const heeftFouten = errors.length > 0 || afletterFouten.length > 0
   return NextResponse.json({
     checked: facturen.length,
     updated,
     snelstart_afgeletterd: afgeletterd,
     errors: errors.length ? errors : undefined,
     snelstart_errors: afletterFouten.length ? afletterFouten : undefined,
-  })
+  }, { status: heeftFouten ? 207 : 200 })
 }
