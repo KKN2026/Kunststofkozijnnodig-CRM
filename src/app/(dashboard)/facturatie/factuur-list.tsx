@@ -580,6 +580,62 @@ export function FactuurList({ facturen, ordersMetStatus, sleutelWaarschuwing, be
         }
       />
 
+      {/* Mini-dashboard: klikbare tegels die tab/vervallen-filter of de
+          maand-drilldown sturen — hergebruikt dezelfde berekeningen als de
+          rest van de pagina. */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <Card
+          role="button"
+          tabIndex={0}
+          onClick={() => { setTab('openstaand'); setVervallenOnly(false) }}
+          className={`cursor-pointer hover:border-primary/40 hover:shadow transition-all text-left w-full ${tab === 'openstaand' && !vervallenOnly ? 'border-primary/40 ring-1 ring-primary/20' : ''}`}
+        >
+          <CardContent>
+            <p className="text-sm text-gray-500">Totaal openstaand</p>
+            <p className="text-3xl font-bold text-gray-900 mt-1">{formatCurrency(berekenStats(openstaandFacturenAll).open)}</p>
+            <p className="text-xs text-gray-400 mt-1">{openstaandFacturenAll.length} facturen</p>
+          </CardContent>
+        </Card>
+        <Card
+          role="button"
+          tabIndex={0}
+          onClick={() => { setTab('openstaand'); setVervallenOnly(true) }}
+          className={`cursor-pointer hover:border-primary/40 hover:shadow transition-all text-left w-full ${tab === 'openstaand' && vervallenOnly ? 'border-primary/40 ring-1 ring-primary/20' : ''}`}
+        >
+          <CardContent>
+            <p className="text-sm text-gray-500">Achterstallig (vervallen)</p>
+            <p className="text-3xl font-bold text-gray-900 mt-1">{openstaandFacturenAll.filter(f => f.vervaldatum && f.vervaldatum < vervalGrensStr).length}</p>
+            <p className="text-xs text-gray-400 mt-1">klik voor alleen deze</p>
+          </CardContent>
+        </Card>
+        <Card
+          role="button"
+          tabIndex={0}
+          onClick={() => router.push(`/facturatie?periode=${new Date().toISOString().slice(0, 7)}`)}
+          className="cursor-pointer hover:border-primary/40 hover:shadow transition-all text-left w-full"
+        >
+          <CardContent>
+            <p className="text-sm text-gray-500">Omzet deze maand</p>
+            <p className="text-3xl font-bold text-gray-900 mt-1">
+              {formatCurrency(sorted.filter(f => (f.datum || '').slice(0, 7) === new Date().toISOString().slice(0, 7) && f.status !== 'concept' && f.status !== 'gecrediteerd' && f.factuur_type !== 'credit').reduce((s, f) => s + (f.subtotaal ?? ((f.totaal || 0) - (f.btw_totaal || 0))), 0))}
+            </p>
+            <p className="text-xs text-gray-400 mt-1">excl. BTW · klik voor detail</p>
+          </CardContent>
+        </Card>
+        <Card
+          role="button"
+          tabIndex={0}
+          onClick={() => setTab('aanbetaling')}
+          className={`cursor-pointer hover:border-primary/40 hover:shadow transition-all text-left w-full ${tab === 'aanbetaling' ? 'border-primary/40 ring-1 ring-primary/20' : ''}`}
+        >
+          <CardContent>
+            <p className="text-sm text-gray-500">Aanbetalingen open</p>
+            <p className="text-3xl font-bold text-gray-900 mt-1">{aanbetalingOpenAantal}</p>
+            <p className="text-xs text-gray-400 mt-1">klik om te bekijken</p>
+          </CardContent>
+        </Card>
+      </div>
+
       {/* Actie-banner: klussen die eindafrekening nodig hebben */}
       {ordersMetActie.length > 0 && tab !== 'per-klus' && (
         <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-4">

@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { type ColumnDef } from '@tanstack/react-table'
 import { DataTable } from '@/components/ui/data-table'
 import { PageHeader } from '@/components/ui/page-header'
+import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -332,6 +333,29 @@ export function TakenView({ taken, isAdmin, currentUserId, alleMedewerkers = [] 
     return [...map.values()].sort((a, b) => b.aantal - a.aantal)
   }, [taken, alleMedewerkers])
 
+  // Trend: taken per medewerker per maand (laatste 6, op aanmaakdatum). Er is
+  // geen betrouwbare 'afgerond op'-datum in de database, dus dit toont
+  // werklast-instroom over tijd, niet doorlooptijd/afgerond-per-maand.
+  const MAAND_KORT = ['jan', 'feb', 'mrt', 'apr', 'mei', 'jun', 'jul', 'aug', 'sep', 'okt', 'nov', 'dec']
+  const laatste6Maanden = useMemo(() => {
+    const nu = new Date()
+    return Array.from({ length: 6 }, (_, i) => {
+      const d = new Date(nu.getFullYear(), nu.getMonth() - (5 - i), 1)
+      return { sleutel: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`, label: MAAND_KORT[d.getMonth()] }
+    })
+  }, [])
+  const perCollegaPerMaand = useMemo(() => {
+    const namen = [...new Set(taken.map(t => t.medewerker?.naam || t.toegewezen?.naam || 'Niet toegewezen'))].sort()
+    return namen.map(naam => ({
+      naam,
+      maanden: laatste6Maanden.map(({ sleutel }) => taken.filter(t => (t.medewerker?.naam || t.toegewezen?.naam || 'Niet toegewezen') === naam && (t.created_at || '').slice(0, 7) === sleutel).length),
+    }))
+  }, [taken, laatste6Maanden])
+  const totaalTakenPerMaand = useMemo(
+    () => laatste6Maanden.map((_, i) => perCollegaPerMaand.reduce((s, r) => s + r.maanden[i], 0)),
+    [perCollegaPerMaand, laatste6Maanden]
+  )
+
   // Filter op basis van tab + URL params + medewerker dropdown
   const gefilterd = takenGesorteerd.filter(t => {
     if (filterCollega && t.toegewezen_aan !== filterCollega) return false
@@ -523,6 +547,30 @@ export function TakenView({ taken, isAdmin, currentUserId, alleMedewerkers = [] 
         }
       />
 
+      {/* Mini-dashboard: dezelfde tellingen als de tabs hieronder, als klikbare tegels. */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        {tabs.map(tab => {
+          const Icon = tab.icon
+          return (
+            <Card
+              key={tab.key}
+              role="button"
+              tabIndex={0}
+              onClick={() => setActiveTabPersist(tab.key)}
+              className={`cursor-pointer hover:border-primary/40 hover:shadow transition-all text-left w-full ${activeTab === tab.key ? 'border-primary/40 ring-1 ring-primary/20' : ''}`}
+            >
+              <CardContent>
+                <div className="flex items-center gap-1.5 text-sm text-gray-500">
+                  <Icon className="h-3.5 w-3.5" />
+                  {tab.label}
+                </div>
+                <p className="text-3xl font-bold text-gray-900 mt-1">{tab.count}</p>
+              </CardContent>
+            </Card>
+          )
+        })}
+      </div>
+
       {/* Tabs */}
       <div className="mb-4 flex gap-1 border-b border-gray-200">
         {tabs.map(tab => {
@@ -572,6 +620,46 @@ export function TakenView({ taken, isAdmin, currentUserId, alleMedewerkers = [] 
             )
           })}
         </div>
+      )}
+
+      {/* Trend: taken per medewerker per maand (werklast-instroom, laatste 6 maanden). */}
+      {perCollegaPerMaand.length > 1 && (
+        <Card className="mb-6">
+          <CardContent>
+            <h3 className="text-sm font-semibold text-gray-900 mb-3">Taken per medewerker per maand</h3>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-left text-gray-500">
+                    <th className="pb-2 font-medium">Medewerker</th>
+                    {laatste6Maanden.map(m => (
+                      <th key={m.sleutel} className="pb-2 font-medium text-right">{m.label}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {perCollegaPerMaand.map(rij => (
+                    <tr key={rij.naam} className="border-b border-gray-100">
+                      <td className="py-2 font-medium">{rij.naam}</td>
+                      {rij.maanden.map((aantal, i) => (
+                        <td key={i} className="py-2 text-right">
+                          {aantal > 0 ? aantal : <span className="text-gray-300">-</span>}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                  <tr className="border-t-2 border-gray-300 font-semibold">
+                    <td className="py-2">Totaal</td>
+                    {totaalTakenPerMaand.map((aantal, i) => (
+                      <td key={i} className="py-2 text-right">{aantal > 0 ? aantal : <span className="text-gray-300">-</span>}</td>
+                    ))}
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <p className="text-xs text-gray-400 mt-2">Aantal taken op aanmaakdatum (alle statussen) — geen doorlooptijd, want er is geen betrouwbare 'afgerond op'-datum.</p>
+          </CardContent>
+        </Card>
       )}
 
       {/* Filters */}

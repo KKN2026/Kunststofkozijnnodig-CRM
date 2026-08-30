@@ -192,7 +192,7 @@ export function ProjectDetail({ timeline, relaties, isNew, emails = [], document
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <Input id="naam" name="naam" label="Naam verkoopkans *" required />
                 <Select id="relatie_id" name="relatie_id" label="Klant" placeholder="Selecteer klant..." options={relaties.map(r => ({ value: r.id, label: r.bedrijfsnaam }))} />
-                <Select id="medewerker_id" name="medewerker_id" label="Toegewezen aan" placeholder="Niemand toegewezen" options={medewerkers.map(m => ({ value: m.id, label: m.naam }))} />
+                <Select id="medewerker_id" name="medewerker_id" label="Toegewezen aan" placeholder="Leeg = Nick Burgers" options={medewerkers.map(m => ({ value: m.id, label: m.naam }))} />
                 <Select id="status" name="status" label="Status" defaultValue="actief" options={[
                   { value: 'actief', label: 'Actief' },
                   { value: 'gewonnen', label: 'Gewonnen' },
@@ -297,7 +297,7 @@ export function ProjectDetail({ timeline, relaties, isNew, emails = [], document
                 <form action={handleSubmit} className="space-y-3">
                   <Input id="naam" name="naam" label="Naam verkoopkans *" defaultValue={project.naam as string} required />
                   <Select id="relatie_id" name="relatie_id" label="Klant" defaultValue={relatieId || ''} placeholder="Selecteer klant..." options={relaties.map(r => ({ value: r.id, label: r.bedrijfsnaam }))} />
-                  <Select id="medewerker_id" name="medewerker_id" label="Toegewezen aan" defaultValue={(project.medewerker_id as string) || ''} placeholder="Niemand toegewezen" options={medewerkers.map(m => ({ value: m.id, label: m.naam }))} />
+                  <Select id="medewerker_id" name="medewerker_id" label="Toegewezen aan" defaultValue={(project.medewerker_id as string) || ''} placeholder="Leeg = Nick Burgers" options={medewerkers.map(m => ({ value: m.id, label: m.naam }))} />
                   <Select id="status" name="status" label="Status" defaultValue={projectStatus} options={[
                     { value: 'actief', label: 'Actief' },
                     { value: 'gewonnen', label: 'Gewonnen' },

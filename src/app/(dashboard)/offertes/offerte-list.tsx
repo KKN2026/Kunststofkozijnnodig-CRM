@@ -43,6 +43,7 @@ interface Offerte {
   verwachte_valdatum: string | null
   relatie: { bedrijfsnaam: string } | null
   project: { naam: string } | null
+  verkoper: { naam: string } | null
   onderwerp: string | null
 }
 
@@ -125,6 +126,25 @@ export function OfferteList({ offertes, valmaand }: { offertes: Offerte[]; valma
   const beslistDitJaar = offertes.filter(o => (o.status === 'geaccepteerd' || o.status === 'afgewezen') && new Date(o.datum).getFullYear() === nu.getFullYear())
   const akkoordDitJaar = beslistDitJaar.filter(o => o.status === 'geaccepteerd').length
   const conversieDitJaar = beslistDitJaar.length > 0 ? Math.round((akkoordDitJaar / beslistDitJaar.length) * 100) : null
+
+  // Trend: offertes per verkoper per maand (laatste 6 maanden, op offertedatum).
+  const MAAND_KORT = ['jan', 'feb', 'mrt', 'apr', 'mei', 'jun', 'jul', 'aug', 'sep', 'okt', 'nov', 'dec']
+  const laatste6Maanden = Array.from({ length: 6 }, (_, i) => {
+    const d = new Date(nu.getFullYear(), nu.getMonth() - (5 - i), 1)
+    return { sleutel: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`, label: MAAND_KORT[d.getMonth()] }
+  })
+  const verkoperNamen = [...new Set(offertes.map(o => o.verkoper?.naam || 'Nick Burgers'))].sort()
+  const perVerkoperPerMaand = verkoperNamen.map(naam => ({
+    naam,
+    maanden: laatste6Maanden.map(({ sleutel }) => {
+      const inMaand = offertes.filter(o => (o.verkoper?.naam || 'Nick Burgers') === naam && (o.datum || '').slice(0, 7) === sleutel)
+      return { aantal: inMaand.length, waarde: inMaand.reduce((s, o) => s + (o.subtotaal ?? ((o.totaal || 0) - (o.btw_totaal || 0))), 0) }
+    }),
+  }))
+  const totaalPerMaandOffertes = laatste6Maanden.map((_, i) => ({
+    aantal: perVerkoperPerMaand.reduce((s, r) => s + r.maanden[i].aantal, 0),
+    waarde: perVerkoperPerMaand.reduce((s, r) => s + r.maanden[i].waarde, 0),
+  }))
 
   async function exportXlsx() {
     if (filteredOffertes.length === 0) return
@@ -226,6 +246,52 @@ export function OfferteList({ offertes, valmaand }: { offertes: Offerte[]; valma
             </CardContent>
           </Card>
         </div>
+      )}
+
+      {/* Trend: offertes per verkoper per maand, laatste 6 maanden. */}
+      {perVerkoperPerMaand.length > 1 && (
+        <Card className="mb-6">
+          <CardContent>
+            <h3 className="text-sm font-semibold text-gray-900 mb-3">Offertes per verkoper per maand</h3>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-left text-gray-500">
+                    <th className="pb-2 font-medium">Verkoper</th>
+                    {laatste6Maanden.map(m => (
+                      <th key={m.sleutel} className="pb-2 font-medium text-right">{m.label}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {perVerkoperPerMaand.map(rij => (
+                    <tr key={rij.naam} className="border-b border-gray-100">
+                      <td className="py-2 font-medium">{rij.naam}</td>
+                      {rij.maanden.map((cel, i) => (
+                        <td key={i} className="py-2 text-right">
+                          {cel.aantal > 0 ? (
+                            <span title={formatCurrency(cel.waarde)}>{cel.aantal}</span>
+                          ) : (
+                            <span className="text-gray-300">-</span>
+                          )}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                  <tr className="border-t-2 border-gray-300 font-semibold">
+                    <td className="py-2">Totaal</td>
+                    {totaalPerMaandOffertes.map((cel, i) => (
+                      <td key={i} className="py-2 text-right">
+                        {cel.aantal > 0 ? <span title={formatCurrency(cel.waarde)}>{cel.aantal}</span> : <span className="text-gray-300">-</span>}
+                      </td>
+                    ))}
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <p className="text-xs text-gray-400 mt-2">Aantal offertes op offertedatum · hover op een getal voor de waarde excl. BTW</p>
+          </CardContent>
+        </Card>
       )}
 
       {offertes.length === 0 ? (

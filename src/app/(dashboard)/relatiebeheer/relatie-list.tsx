@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { type ColumnDef } from '@tanstack/react-table'
 import { DataTable } from '@/components/ui/data-table'
 import { PageHeader } from '@/components/ui/page-header'
+import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -322,6 +323,58 @@ export function RelatieList({ relaties }: { relaties: Relatie[] }) {
           </div>
         }
       />
+
+      {/* Mini-dashboard: klikbare tegels die het filterType-filter hieronder sturen. */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <Card
+          role="button"
+          tabIndex={0}
+          onClick={() => setFilterType('alle')}
+          className={`cursor-pointer hover:border-primary/40 hover:shadow transition-all text-left w-full ${filterType === 'alle' ? 'border-primary/40 ring-1 ring-primary/20' : ''}`}
+        >
+          <CardContent>
+            <p className="text-sm text-gray-500">Totaal aantal relaties</p>
+            <p className="text-3xl font-bold text-gray-900 mt-1">{relaties.length}</p>
+            <p className="text-xs text-gray-400 mt-1">klik voor alle</p>
+          </CardContent>
+        </Card>
+        <Card
+          role="button"
+          tabIndex={0}
+          onClick={() => setFilterType(filterType === 'zakelijk' ? 'alle' : 'zakelijk')}
+          className={`cursor-pointer hover:border-primary/40 hover:shadow transition-all text-left w-full ${filterType === 'zakelijk' ? 'border-primary/40 ring-1 ring-primary/20' : ''}`}
+        >
+          <CardContent>
+            <p className="text-sm text-gray-500">Zakelijke klanten</p>
+            <p className="text-3xl font-bold text-gray-900 mt-1">{relaties.filter(r => r.type === 'zakelijk').length}</p>
+            <p className="text-xs text-gray-400 mt-1">klik om te filteren</p>
+          </CardContent>
+        </Card>
+        <Card
+          role="button"
+          tabIndex={0}
+          onClick={() => setFilterType(filterType === 'particulier' ? 'alle' : 'particulier')}
+          className={`cursor-pointer hover:border-primary/40 hover:shadow transition-all text-left w-full ${filterType === 'particulier' ? 'border-primary/40 ring-1 ring-primary/20' : ''}`}
+        >
+          <CardContent>
+            <p className="text-sm text-gray-500">Particuliere klanten</p>
+            <p className="text-3xl font-bold text-gray-900 mt-1">{relaties.filter(r => r.type === 'particulier').length}</p>
+            <p className="text-xs text-gray-400 mt-1">klik om te filteren</p>
+          </CardContent>
+        </Card>
+        <Card
+          role="button"
+          tabIndex={0}
+          onClick={() => setFilterType(filterType === 'top' ? 'alle' : 'top')}
+          className={`cursor-pointer hover:border-primary/40 hover:shadow transition-all text-left w-full ${filterType === 'top' ? 'border-primary/40 ring-1 ring-primary/20' : ''}`}
+        >
+          <CardContent>
+            <p className="text-sm text-gray-500">Top klant (omzet)</p>
+            <p className="text-3xl font-bold text-gray-900 mt-1 truncate">{[...relaties].sort((a, b) => (b.totaal_gefactureerd || 0) - (a.totaal_gefactureerd || 0))[0]?.bedrijfsnaam || '-'}</p>
+            <p className="text-xs text-gray-400 mt-1">klik voor volledige ranglijst</p>
+          </CardContent>
+        </Card>
+      </div>
 
       <ImportRelatiesDialog open={importOpen} onClose={() => setImportOpen(false)} />
 

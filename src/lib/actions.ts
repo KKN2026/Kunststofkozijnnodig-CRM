@@ -787,7 +787,7 @@ export async function getOffertes(includeArchief = false) {
   const data = await fetchAllRows<any>((from, to) => {
     let q = supabase
       .from('offertes')
-      .select('*, relatie:relaties(bedrijfsnaam), project:projecten(naam)')
+      .select('*, relatie:relaties(bedrijfsnaam), project:projecten(naam), verkoper:profielen(naam)')
       .order('datum', { ascending: false })
       .range(from, to)
     if (!includeArchief) q = q.or('gearchiveerd.is.null,gearchiveerd.eq.false')
@@ -1237,7 +1237,17 @@ export async function saveOfferte(formData: FormData) {
   // Wie de offerte aanmaakt wordt automatisch de verkoper — alleen bij het
   // aanmaken, niet bij latere bewerkingen (anders overschrijft elke tussentijdse
   // opslag de eventuele handmatige hertoewijzing via setOfferteVerkoper).
-  const insertRecord = id ? record : { ...record, verkoper_id: (await supabase.auth.getUser()).data.user?.id || null }
+  // Geen ingelogde gebruiker-id (zou niet moeten voorkomen) → val terug op
+  // Nick Burgers, zodat een offerte nooit zonder verkoper komt te staan.
+  let nieuweVerkoperId: string | null = null
+  if (!id) {
+    nieuweVerkoperId = (await supabase.auth.getUser()).data.user?.id || null
+    if (!nieuweVerkoperId) {
+      const { data: nick } = await supabase.from('medewerkers').select('profiel_id').eq('administratie_id', adminId).ilike('naam', 'Nick Burgers%').maybeSingle()
+      nieuweVerkoperId = nick?.profiel_id || null
+    }
+  }
+  const insertRecord = id ? record : { ...record, verkoper_id: nieuweVerkoperId }
 
   let offerteId = id
   try {
@@ -4880,13 +4890,22 @@ export async function saveProject(formData: FormData) {
   const adminId = await getAdministratieId()
   if (!adminId) return { error: 'Niet ingelogd' }
 
+  // Een verkoopkans mag nooit zonder eigenaar blijven — anders verdwijnt hij
+  // uit de 'per medewerker'-overzichten (dashboard + verkoopkansenpagina).
+  // Leeg gelaten in het formulier → valt terug op Nick Burgers.
+  let medewerkerId = formData.get('medewerker_id') as string || null
+  if (!medewerkerId) {
+    const { data: nick } = await supabase.from('medewerkers').select('id').eq('administratie_id', adminId).ilike('naam', 'Nick Burgers%').maybeSingle()
+    medewerkerId = nick?.id || null
+  }
+
   const id = formData.get('id') as string
   const record = {
     administratie_id: adminId,
     naam: formData.get('naam') as string,
     omschrijving: formData.get('omschrijving') as string || null,
     relatie_id: formData.get('relatie_id') as string || null,
-    medewerker_id: formData.get('medewerker_id') as string || null,
+    medewerker_id: medewerkerId,
     status: formData.get('status') as string || 'actief',
     startdatum: formData.get('startdatum') as string || null,
     einddatum: formData.get('einddatum') as string || null,
@@ -12958,9 +12977,17 @@ export async function setOfferteVerkoper(offerteId: string, verkoperId: string |
   const { rol } = await getRolEnEigenMedewerker(supabase, adminId)
   if (rol !== 'admin') return { error: 'Alleen een beheerder kan de verkoper wijzigen' }
 
+  // Een offerte mag nooit zonder verkoper komen te staan — anders verdwijnt
+  // hij uit de 'per verkoper'-overzichten. Leegmaken valt terug op Nick Burgers.
+  let finalVerkoperId = verkoperId
+  if (!finalVerkoperId) {
+    const { data: nick } = await supabase.from('medewerkers').select('profiel_id').eq('administratie_id', adminId).ilike('naam', 'Nick Burgers%').maybeSingle()
+    finalVerkoperId = nick?.profiel_id || null
+  }
+
   const { error } = await supabase
     .from('offertes')
-    .update({ verkoper_id: verkoperId })
+    .update({ verkoper_id: finalVerkoperId })
     .eq('id', offerteId)
     .eq('administratie_id', adminId)
   if (error) return { error: error.message }

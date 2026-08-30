@@ -367,7 +367,12 @@ function Section({ title, icon: Icon, iconColor, count, children, defaultOpen, l
   )
 }
 
-export function DashboardView({ data }: { data: DashboardData | null }) {
+export function DashboardView({ data, verkoopkansenPerMedewerker = [], verkoopkansenPerMedewerkerPerMaand = [], laatste6Maanden = [] }: {
+  data: DashboardData | null
+  verkoopkansenPerMedewerker?: { naam: string; aantal: number; waarde: number }[]
+  verkoopkansenPerMedewerkerPerMaand?: { naam: string; maanden: { aantal: number; waarde: number }[] }[]
+  laatste6Maanden?: { sleutel: string; label: string }[]
+}) {
   const router = useRouter()
   const [planning, setPlanning] = useState<{ order: PlanOrder; mode: 'indicatief' | 'definitief' } | null>(null)
   const [conversieDialogOpen, setConversieDialogOpen] = useState(false)
@@ -614,6 +619,10 @@ export function DashboardView({ data }: { data: DashboardData | null }) {
   )
 
   const voormaligeSet = new Set(data.voormaligeRelatieIds || [])
+  const verkoopkansenTotaalPerMaand = laatste6Maanden.map((_, i) => ({
+    aantal: verkoopkansenPerMedewerkerPerMaand.reduce((s, r) => s + r.maanden[i].aantal, 0),
+    waarde: verkoopkansenPerMedewerkerPerMaand.reduce((s, r) => s + r.maanden[i].waarde, 0),
+  }))
 
   return (
     <VoormaligeRelatiesContext.Provider value={voormaligeSet}>
@@ -1124,6 +1133,71 @@ export function DashboardView({ data }: { data: DashboardData | null }) {
               </div>
             </Section>
           </div>
+
+          {/* Open verkoopkansen per medewerker: wie heeft wat, en welke
+              offertewaarde staat daar open. Klik gaat naar /projecten met die
+              medewerker voorgefilterd. Zelfde idee/stijl als 'Taken per collega'. */}
+          {verkoopkansenPerMedewerker.length > 1 && (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-px bg-gray-100 rounded-xl overflow-hidden border border-gray-100">
+              {verkoopkansenPerMedewerker.map(m => (
+                <Link
+                  key={m.naam}
+                  href={`/projecten?medewerker=${encodeURIComponent(m.naam)}`}
+                  className="text-left px-4 py-3 bg-white hover:bg-gray-50 transition-colors"
+                >
+                  <p className="text-xs truncate text-gray-500">{m.naam}</p>
+                  <p className="text-xl font-bold mt-0.5 text-gray-900">{formatCurrency(m.waarde)}</p>
+                  <p className="text-[11px] mt-0.5 text-gray-400">{m.aantal} open kansen</p>
+                </Link>
+              ))}
+            </div>
+          )}
+
+          {/* Trend: nieuwe verkoopkansen per medewerker per maand, laatste 6
+              maanden — zelfde berekening/tabel als op /projecten. */}
+          {verkoopkansenPerMedewerkerPerMaand.length > 1 && (
+            <Card>
+              <CardContent>
+                <h3 className="text-sm font-semibold text-gray-900 mb-3">Nieuwe verkoopkansen per medewerker per maand</h3>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b text-left text-gray-500">
+                        <th className="pb-2 font-medium">Medewerker</th>
+                        {laatste6Maanden.map(m => (
+                          <th key={m.sleutel} className="pb-2 font-medium text-right">{m.label}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {verkoopkansenPerMedewerkerPerMaand.map(rij => (
+                        <tr key={rij.naam} className="border-b border-gray-100">
+                          <td className="py-2 font-medium">{rij.naam}</td>
+                          {rij.maanden.map((cel, i) => (
+                            <td key={i} className="py-2 text-right">
+                              {cel.aantal > 0 ? (
+                                <span title={formatCurrency(cel.waarde)}>{cel.aantal}</span>
+                              ) : (
+                                <span className="text-gray-300">-</span>
+                              )}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                      <tr className="border-t-2 border-gray-300 font-semibold">
+                        <td className="py-2">Totaal</td>
+                        {verkoopkansenTotaalPerMaand.map((cel, i) => (
+                          <td key={i} className="py-2 text-right">
+                            {cel.aantal > 0 ? <span title={formatCurrency(cel.waarde)}>{cel.aantal}</span> : <span className="text-gray-300">-</span>}
+                          </td>
+                        ))}
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Openstaande verkoopkansen */}
           <div id="verkoopkansen" className="scroll-mt-20">
