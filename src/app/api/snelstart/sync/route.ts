@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import { syncSnelstartBetalingen } from '@/lib/actions'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { stuurCronFoutAlert } from '@/lib/cron-alert'
+import { logAudit } from '@/lib/audit'
 
 // Gebruikt door de cron én door de handmatige "Sync SnelStart" knop.
 export const dynamic = 'force-dynamic'
@@ -42,7 +44,19 @@ export async function GET(req: Request) {
     // monitoring/cron-logs, zelfde patroon als de eerder gevonden backup-bug.
     // 'result' bevat hier geen 'error' bij een menselijke frontend-aanroep
     // (die roept syncSnelstartBetalingen rechtstreeks aan, niet deze route).
-    const status = 'error' in result && result.error ? 502 : 200
+    const heeftFout = 'error' in result && !!result.error
+    // Alleen alerten bij een échte cron-mislukking — een menselijke klik op de
+    // knop zonder geldige sessie ('Niet ingelogd') is een UI-aangelegenheid,
+    // geen structureel probleem dat iemand per mail moet horen.
+    if (heeftFout && isCron) {
+      await stuurCronFoutAlert('snelstart-sync', result.error as string)
+      await logAudit({
+        actie: 'cron.snelstart_sync_mislukt',
+        details: { fout: result.error },
+        administratieId: adminIdOverride,
+      })
+    }
+    const status = heeftFout ? 502 : 200
     return NextResponse.json({ ...result, isCron }, { status })
   } catch (err) {
     return NextResponse.json(

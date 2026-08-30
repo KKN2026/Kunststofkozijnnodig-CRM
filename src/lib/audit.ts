@@ -10,23 +10,33 @@ export async function logAudit(input: {
   entiteitId?: string
   details?: Record<string, unknown>
   ipAdres?: string
+  // Cron-routes hebben geen ingelogde gebruiker (auth.getUser() geeft niks
+  // terug), maar draaien wel voor een bekende administratie — die hier
+  // expliciet meegeven zodat de entry toch bij de juiste tenant zichtbaar
+  // wordt in de audit-log-tab i.p.v. onvindbaar te blijven met
+  // administratie_id = null.
+  administratieId?: string
 }) {
   try {
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
     const admin = createAdminClient()
-
-    let administratieId: string | null = null
+    let administratieId: string | null = input.administratieId || null
     let userEmail: string | null = null
-    if (user) {
-      userEmail = user.email || null
-      const { data: profiel } = await admin.from('profielen').select('administratie_id').eq('id', user.id).maybeSingle()
-      administratieId = profiel?.administratie_id || null
+    let userId: string | null = null
+
+    if (!administratieId) {
+      const supabase = await createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        userId = user.id
+        userEmail = user.email || null
+        const { data: profiel } = await admin.from('profielen').select('administratie_id').eq('id', user.id).maybeSingle()
+        administratieId = profiel?.administratie_id || null
+      }
     }
 
     await admin.from('audit_log').insert({
       administratie_id: administratieId,
-      user_id: user?.id || null,
+      user_id: userId,
       user_email: userEmail,
       actie: input.actie,
       entiteit_type: input.entiteitType || null,
