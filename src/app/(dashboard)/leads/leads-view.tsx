@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { type ColumnDef } from '@tanstack/react-table'
 import { DataTable } from '@/components/ui/data-table'
 import { PageHeader } from '@/components/ui/page-header'
+import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -212,6 +213,26 @@ export function LeadsView({ leads, aiScoutLeads = [] }: { leads: Lead[]; aiScout
           </div>
         }
       />
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        {statusTabs.map(tab => {
+          const count = tab.value === 'alle' ? leads.length : leads.filter(l => l.status === tab.value).length
+          return (
+            <Card
+              key={tab.value}
+              role="button"
+              tabIndex={0}
+              onClick={() => setActiveTab(tab.value)}
+              className={`cursor-pointer hover:border-primary/40 hover:shadow transition-all text-left w-full ${activeTab === tab.value ? 'border-primary/40 ring-1 ring-primary/20' : ''}`}
+            >
+              <CardContent>
+                <p className="text-sm text-gray-500">{tab.label}</p>
+                <p className="text-3xl font-bold text-gray-900 mt-1">{count}</p>
+              </CardContent>
+            </Card>
+          )
+        })}
+      </div>
 
       <div className="flex gap-2 mb-4">
         {statusTabs.map(tab => (

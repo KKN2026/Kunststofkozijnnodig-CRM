@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { type ColumnDef } from '@tanstack/react-table'
 import { DataTable } from '@/components/ui/data-table'
 import { PageHeader } from '@/components/ui/page-header'
+import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -106,6 +107,28 @@ export function MedewerkerList({ medewerkers }: { medewerkers: Medewerker[] }) {
           </div>
         }
       />
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        {[
+          { label: 'Alle medewerkers', value: 'alle', count: medewerkers.length },
+          { label: 'Actief', value: 'actief', count: medewerkers.filter(m => m.actief).length },
+          { label: 'Werknemers', value: 'werknemer', count: medewerkers.filter(m => m.type === 'werknemer').length },
+          { label: "ZZP'ers", value: 'zzp', count: medewerkers.filter(m => m.type === 'zzp').length },
+        ].map(tile => (
+          <Card
+            key={tile.value}
+            role="button"
+            tabIndex={0}
+            onClick={() => setActiveTab(activeTab === tile.value ? 'alle' : tile.value)}
+            className={`cursor-pointer hover:border-primary/40 hover:shadow transition-all text-left w-full ${activeTab === tile.value ? 'border-primary/40 ring-1 ring-primary/20' : ''}`}
+          >
+            <CardContent>
+              <p className="text-sm text-gray-500">{tile.label}</p>
+              <p className="text-3xl font-bold text-gray-900 mt-1">{tile.count}</p>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
 
       <div className="flex gap-1 mb-4">
         {filterTabs.map(tab => (

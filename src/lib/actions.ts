@@ -5296,7 +5296,13 @@ export async function saveTaak(formData: FormData) {
   if (!adminId) return { error: 'Niet ingelogd' }
 
   const id = formData.get('id') as string
-  const medewerkerId = formData.get('medewerker_id') as string || null
+  // Een taak mag nooit zonder toewijzing blijven — anders verdwijnt hij uit de
+  // 'per medewerker'-overzichten. Leeg gelaten → valt terug op Nick Burgers.
+  let medewerkerId = formData.get('medewerker_id') as string || null
+  if (!medewerkerId) {
+    const { data: nick } = await supabase.from('medewerkers').select('id').eq('administratie_id', adminId).ilike('naam', 'Nick Burgers%').maybeSingle()
+    medewerkerId = nick?.id || null
+  }
 
   // Lookup profiel_id van medewerker → opslaan als toegewezen_aan
   let toegewezenAan: string | null = null

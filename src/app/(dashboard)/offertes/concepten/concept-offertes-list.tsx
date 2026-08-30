@@ -59,6 +59,17 @@ export function ConceptOffertesList({ offertes: raw }: { offertes: ConceptOffert
     project: normalize(o.project) as { id: string; naam: string } | null,
   }))
 
+  const [filter, setFilter] = useState<'alle' | 'zonder_bedrag' | 'oud' | 'deze_week'>('alle')
+  const zevenDagenGeleden = new Date(Date.now() - 7 * 86400000)
+  const startDezeWeek = (() => { const d = new Date(); const dag = (d.getDay() + 6) % 7; d.setDate(d.getDate() - dag); d.setHours(0, 0, 0, 0); return d })()
+  const aantalZonderBedrag = offertes.filter(o => !o.totaal || o.totaal === 0).length
+  const aantalOud = offertes.filter(o => new Date(o.created_at) < zevenDagenGeleden).length
+  const aantalDezeWeek = offertes.filter(o => new Date(o.created_at) >= startDezeWeek).length
+  const gefilterd = filter === 'zonder_bedrag' ? offertes.filter(o => !o.totaal || o.totaal === 0)
+    : filter === 'oud' ? offertes.filter(o => new Date(o.created_at) < zevenDagenGeleden)
+    : filter === 'deze_week' ? offertes.filter(o => new Date(o.created_at) >= startDezeWeek)
+    : offertes
+
   // Close menu on outside click
   useEffect(() => {
     if (!menuOpen) return
@@ -140,7 +151,54 @@ export function ConceptOffertesList({ offertes: raw }: { offertes: ConceptOffert
         </div>
       </div>
 
-      {offertes.length === 0 ? (
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <Card
+          role="button"
+          tabIndex={0}
+          onClick={() => setFilter('alle')}
+          className={`cursor-pointer hover:border-primary/40 hover:shadow transition-all text-left w-full ${filter === 'alle' ? 'border-primary/40 ring-1 ring-primary/20' : ''}`}
+        >
+          <CardContent>
+            <p className="text-sm text-gray-500">Alle concepten</p>
+            <p className="text-3xl font-bold text-gray-900 mt-1">{offertes.length}</p>
+          </CardContent>
+        </Card>
+        <Card
+          role="button"
+          tabIndex={0}
+          onClick={() => setFilter(filter === 'zonder_bedrag' ? 'alle' : 'zonder_bedrag')}
+          className={`cursor-pointer hover:border-primary/40 hover:shadow transition-all text-left w-full ${filter === 'zonder_bedrag' ? 'border-primary/40 ring-1 ring-primary/20' : ''}`}
+        >
+          <CardContent>
+            <p className="text-sm text-gray-500">Zonder bedrag</p>
+            <p className="text-3xl font-bold text-gray-900 mt-1">{aantalZonderBedrag}</p>
+          </CardContent>
+        </Card>
+        <Card
+          role="button"
+          tabIndex={0}
+          onClick={() => setFilter(filter === 'oud' ? 'alle' : 'oud')}
+          className={`cursor-pointer hover:border-primary/40 hover:shadow transition-all text-left w-full ${filter === 'oud' ? 'border-primary/40 ring-1 ring-primary/20' : ''}`}
+        >
+          <CardContent>
+            <p className="text-sm text-gray-500">Ouder dan 7 dagen</p>
+            <p className="text-3xl font-bold text-gray-900 mt-1">{aantalOud}</p>
+          </CardContent>
+        </Card>
+        <Card
+          role="button"
+          tabIndex={0}
+          onClick={() => setFilter(filter === 'deze_week' ? 'alle' : 'deze_week')}
+          className={`cursor-pointer hover:border-primary/40 hover:shadow transition-all text-left w-full ${filter === 'deze_week' ? 'border-primary/40 ring-1 ring-primary/20' : ''}`}
+        >
+          <CardContent>
+            <p className="text-sm text-gray-500">Deze week aangemaakt</p>
+            <p className="text-3xl font-bold text-gray-900 mt-1">{aantalDezeWeek}</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {gefilterd.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center">
             <FileText className="h-12 w-12 text-gray-300 mx-auto mb-3" />
@@ -151,7 +209,7 @@ export function ConceptOffertesList({ offertes: raw }: { offertes: ConceptOffert
       ) : (
         <Card>
           <div className="divide-y divide-gray-100">
-            {offertes.map(offerte => (
+            {gefilterd.map(offerte => (
               <div
                 key={offerte.id}
                 onClick={() => router.push(`/offertes/${offerte.id}?wizard=concept`)}
