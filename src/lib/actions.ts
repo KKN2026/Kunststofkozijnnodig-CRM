@@ -1676,6 +1676,33 @@ export async function deleteOfferte(id: string) {
   return { success: true }
 }
 
+// Bulk-variant voor de offertes-lijst: hergebruikt deleteOfferte per item i.p.v.
+// de opruimlogica te dupliceren. Een offerte waarvan de gekoppelde order al een
+// factuur of faalkosten-registratie heeft loopt hard vast op een FK-constraint
+// (orders.offerte_id/facturen.order_id hebben geen ON DELETE-cascade) — die
+// slaan we over i.p.v. de hele selectie te laten mislukken, en melden we terug
+// zodat de gebruiker weet welke er (nog) niet weg konden.
+export async function deleteOffertes(ids: string[]): Promise<
+  | { error: string }
+  | { success: true; verwijderd: number; mislukt: number; mislukteNummers: string[] }
+> {
+  if (!ids?.length) return { error: 'Geen offertes geselecteerd' }
+  let verwijderd = 0
+  const mislukt: string[] = []
+  for (const id of ids) {
+    const result = await deleteOfferte(id)
+    if ('success' in result && result.success) verwijderd++
+    else mislukt.push(id)
+  }
+  let mislukteNummers: string[] = []
+  if (mislukt.length > 0) {
+    const supabase = await createClient()
+    const { data } = await supabase.from('offertes').select('offertenummer').in('id', mislukt).limit(10)
+    mislukteNummers = (data || []).map(n => n.offertenummer as string)
+  }
+  return { success: true, verwijderd, mislukt: mislukt.length, mislukteNummers }
+}
+
 // === ORDERS ===
 export async function getOrders() {
   const supabase = await createClient()
@@ -1804,6 +1831,31 @@ export async function deleteOrder(id: string) {
   if (error) return { error: error.message }
   revalidatePath('/offertes/orders')
   return { success: true }
+}
+
+// Bulk-variant voor de orders-lijst — zelfde aanpak als deleteOffertes: per
+// item de bestaande deleteOrder hergebruiken (facturen.order_id heeft geen
+// ON DELETE-cascade, dus een order met al een factuur loopt vast) en de
+// geblokkeerde orders overslaan i.p.v. de hele selectie te laten mislukken.
+export async function deleteOrders(ids: string[]): Promise<
+  | { error: string }
+  | { success: true; verwijderd: number; mislukt: number; mislukteNummers: string[] }
+> {
+  if (!ids?.length) return { error: 'Geen orders geselecteerd' }
+  let verwijderd = 0
+  const mislukt: string[] = []
+  for (const id of ids) {
+    const result = await deleteOrder(id)
+    if ('success' in result && result.success) verwijderd++
+    else mislukt.push(id)
+  }
+  let mislukteNummers: string[] = []
+  if (mislukt.length > 0) {
+    const supabase = await createClient()
+    const { data } = await supabase.from('orders').select('ordernummer').in('id', mislukt).limit(10)
+    mislukteNummers = (data || []).map(n => n.ordernummer as string)
+  }
+  return { success: true, verwijderd, mislukt: mislukt.length, mislukteNummers }
 }
 
 // Tribe-override map. LET OP: dit is legacy data uit het oude Rebu/Tribe-

@@ -11,7 +11,10 @@ import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/empty-state'
 import { formatCurrency, formatDateShort } from '@/lib/utils'
 import { orderStatussen, statusKleuren } from '@/lib/constants'
-import { Plus, ShoppingCart, AlertTriangle, CheckCircle, Clock } from 'lucide-react'
+import { Plus, ShoppingCart, AlertTriangle, CheckCircle, Clock, Trash2, Loader2 } from 'lucide-react'
+import { deleteOrders } from '@/lib/actions'
+import { Dialog } from '@/components/ui/dialog'
+import { showToast } from '@/components/ui/toast'
 
 interface FactuurInfo {
   id: string
@@ -158,6 +161,8 @@ const columns: ColumnDef<Order, unknown>[] = [
 export function OrderList({ orders }: { orders: Order[] }) {
   const router = useRouter()
   const [statusFilter, setStatusFilter] = useState<string | null>(null)
+  const [verwijderDialog, setVerwijderDialog] = useState<{ ids: string[]; clear: () => void } | null>(null)
+  const [verwijderBusy, setVerwijderBusy] = useState(false)
 
   const filteredOrders = statusFilter
     ? orders.filter(o => o.status === statusFilter)
@@ -243,9 +248,74 @@ export function OrderList({ orders }: { orders: Order[] }) {
             data={filteredOrders}
             searchPlaceholder="Zoek order..."
             onRowClick={(row) => router.push(`/offertes/orders/${row.id}`)}
+            selectable
+            getRowId={(row) => row.id}
+            bulkActions={(selectedIds, clearSelection) => (
+              <button
+                type="button"
+                onClick={() => setVerwijderDialog({ ids: selectedIds, clear: clearSelection })}
+                className="inline-flex items-center gap-1 px-3 py-1.5 bg-red-600 text-white text-xs rounded-md hover:bg-red-700"
+              >
+                <Trash2 className="h-3 w-3" />
+                Verwijderen
+              </button>
+            )}
           />
         </>
       )}
+
+      <Dialog
+        open={!!verwijderDialog}
+        onClose={() => { if (!verwijderBusy) setVerwijderDialog(null) }}
+        title={`${verwijderDialog?.ids.length || 0} ${verwijderDialog?.ids.length === 1 ? 'order' : 'orders'} verwijderen`}
+      >
+        <div className="space-y-4">
+          <div className="flex gap-3 p-3 bg-red-50 border border-red-200 rounded-md">
+            <AlertTriangle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
+            <div className="text-sm text-red-800">
+              <p className="font-medium">Dit kan niet ongedaan gemaakt worden.</p>
+              <p className="mt-1">
+                Een order waar al een factuur aan hangt wordt overgeslagen — die
+                kan niet zomaar weg zonder de boekhouding te raken.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center justify-end gap-2 pt-2 border-t">
+            <Button variant="ghost" onClick={() => setVerwijderDialog(null)} disabled={verwijderBusy}>
+              Annuleren
+            </Button>
+            <button
+              type="button"
+              disabled={verwijderBusy}
+              onClick={async () => {
+                if (!verwijderDialog) return
+                setVerwijderBusy(true)
+                const result = await deleteOrders(verwijderDialog.ids)
+                setVerwijderBusy(false)
+                if ('error' in result) {
+                  showToast(result.error, 'error')
+                  return
+                }
+                verwijderDialog.clear()
+                setVerwijderDialog(null)
+                if (result.mislukt > 0) {
+                  showToast(
+                    `${result.verwijderd} verwijderd, ${result.mislukt} overgeslagen (al gefactureerd: ${result.mislukteNummers.join(', ')})`,
+                    'error',
+                  )
+                } else {
+                  showToast(`${result.verwijderd} order${result.verwijderd === 1 ? '' : 's'} verwijderd`, 'success')
+                }
+                router.refresh()
+              }}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-md hover:bg-red-700 disabled:opacity-60"
+            >
+              {verwijderBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+              Definitief verwijderen
+            </button>
+          </div>
+        </div>
+      </Dialog>
     </div>
   )
 }
