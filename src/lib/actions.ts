@@ -4494,6 +4494,10 @@ export async function setVerkoopkansVerwachteMaand(projectId: string, maand: str
   const valmaand = maand ? `${maand}-01` : null
   const { error } = await supabase.from('projecten').update({ verwachte_valmaand: valmaand }).eq('id', projectId)
   if (error) return { error: error.message }
+  // Productiviteit: een verkoopkans naar een nieuwe verwachte maand
+  // verplaatsen telt bewust NIET mee als "klant gesproken" — dat kan net zo
+  // goed betekenen dat er nog geen tijd voor was, niet dat er echt contact is
+  // geweest. Alleen een notitie toevoegen (saveProjectNotitie) telt wél mee.
   revalidatePath('/projecten/kanban')
   revalidatePath('/rapportages')
   return { success: true }
@@ -9907,6 +9911,11 @@ export async function saveProjectNotitie(data: { id?: string; project_id: string
         tekst: data.tekst,
       })
     if (error) return { error: error.message }
+
+    // Productiviteit: een nieuwe notitie bij een verkoopkans telt mee als
+    // "klant gesproken" — zelfde patroon als bij leads/relaties.
+    const { eigenMedewerkerId } = await getRolEnEigenMedewerker(supabase, adminId)
+    await logMedewerkerActiviteit(supabase, adminId, eigenMedewerkerId, 'klant_gesproken', data.project_id, 'project')
   }
 
   revalidatePath(`/relatiebeheer`)
@@ -11222,16 +11231,16 @@ export async function setTerugbelMoment(id: string, datum: string, notitie: stri
     })
     .eq('id', id)
   if (error) return { error: error.message }
-  // Productiviteit: een klant "vooruit plannen" (terugbelmoment zetten)
-  // betekent dat de klant is gesproken — telt automatisch mee, geen aparte knop.
+  // Productiviteit: een terugbelmoment zetten telt NIET meer mee als "klant
+  // gesproken" — vooruitzetten kan net zo goed betekenen dat er nog geen tijd
+  // was, niet dat er daadwerkelijk gebeld is (feedback: dat zou oneerlijk
+  // tellen). "Nieuwe klant benaderd" blijft wel staan: dat meet alleen dat er
+  // voor het eerst iets met een verse lead gedaan is, niet of er gesproken is.
   if (datum) {
     const adminId = await getAdministratieId()
-    if (adminId) {
+    if (adminId && vorige?.status === 'nieuw') {
       const { eigenMedewerkerId } = await getRolEnEigenMedewerker(supabase, adminId)
-      await logMedewerkerActiviteit(supabase, adminId, eigenMedewerkerId, 'klant_gesproken', id, 'lead')
-      if (vorige?.status === 'nieuw') {
-        await logMedewerkerActiviteit(supabase, adminId, eigenMedewerkerId, 'nieuwe_klant_benaderd', id, 'lead')
-      }
+      await logMedewerkerActiviteit(supabase, adminId, eigenMedewerkerId, 'nieuwe_klant_benaderd', id, 'lead')
     }
   }
   revalidatePath('/leads')

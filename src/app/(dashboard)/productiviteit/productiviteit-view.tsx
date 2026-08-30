@@ -182,9 +182,11 @@ export function ProductiviteitView({
       <div className="rounded-lg bg-blue-50 border border-blue-200 p-3 flex items-start gap-2">
         <Info className="h-4 w-4 text-blue-600 mt-0.5 shrink-0" />
         <p className="text-xs text-blue-800">
-          Activiteiten worden volledig automatisch geteld als bijproduct van bestaand werk: een lead <strong>vooruit plannen</strong>
-          (terugbelmoment) of de status vooruit zetten telt als &ldquo;klant gesproken&rdquo; (en bij een verse lead ook als
-          &ldquo;nieuwe klant benaderd&rdquo;); een offerte <strong>aanmaken of bewerken</strong> telt (max 1x per dag) als &ldquo;offerte gemaakt/aangepast&rdquo;.
+          Activiteiten worden volledig automatisch geteld als bijproduct van bestaand werk: een <strong>notitie toevoegen</strong>
+          bij een lead, klant of verkoopkans, of de status van een lead vooruit zetten, telt als &ldquo;klant gesproken&rdquo;
+          (en bij een verse lead ook als &ldquo;nieuwe klant benaderd&rdquo;); een offerte <strong>aanmaken of bewerken</strong>
+          telt (max 1x per dag) als &ldquo;offerte gemaakt/aangepast&rdquo;. Een terugbelmoment of verwachte maand
+          <strong> verzetten</strong> telt bewust niet mee — dat kan net zo goed &ldquo;nog geen tijd voor gehad&rdquo; betekenen.
           Vul bij een lead een <strong>geschatte waarde</strong> in, dan tellen gesprekken ook mee als potentiële omzet — offertes
           gebruiken automatisch hun echte offertebedrag. Doelen zijn alleen door de beheerder in te stellen.
         </p>
