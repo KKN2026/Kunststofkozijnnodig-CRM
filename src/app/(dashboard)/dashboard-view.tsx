@@ -703,7 +703,11 @@ export function DashboardView({ data, verkoopkansenPerMedewerker = [], verkoopka
               <div className="min-w-0">
                 <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">Openstaand</p>
                 <p className="text-2xl sm:text-3xl font-bold text-gray-900 mt-2 tracking-tight">{formatCurrency(data.openstaand)}</p>
-                <p className="text-xs text-gray-400 mt-2">{data.openstaandeFacturen.length} {data.openstaandeFacturen.length === 1 ? 'factuur' : 'facturen'}</p>
+                <div className="flex items-center gap-2 mt-2 text-xs text-gray-400">
+                  <span>incl. BTW</span>
+                  <span>·</span>
+                  <span>{data.openstaandeFacturen.length} {data.openstaandeFacturen.length === 1 ? 'factuur' : 'facturen'}</span>
+                </div>
               </div>
               <div className="h-12 w-12 rounded-full bg-blue-50 flex items-center justify-center shrink-0">
                 <Receipt className="h-5 w-5 text-blue-600" />
@@ -755,9 +759,11 @@ export function DashboardView({ data, verkoopkansenPerMedewerker = [], verkoopka
                 <p className={`text-2xl sm:text-3xl font-bold mt-2 tracking-tight ${achterstalligBedrag > 0 ? 'text-red-600' : 'text-gray-900'}`}>
                   {formatCurrency(achterstalligBedrag)}
                 </p>
-                <p className="text-xs text-gray-400 mt-2">
-                  {achterstalligeFacturen.length > 0 ? `${achterstalligeFacturen.length} vervallen` : 'Geen vervallen'}
-                </p>
+                <div className="flex items-center gap-2 mt-2 text-xs text-gray-400">
+                  <span>incl. BTW</span>
+                  <span>·</span>
+                  <span>{achterstalligeFacturen.length > 0 ? `${achterstalligeFacturen.length} vervallen` : 'Geen vervallen'}</span>
+                </div>
               </div>
               <div className={`h-12 w-12 rounded-full flex items-center justify-center shrink-0 ${achterstalligBedrag > 0 ? 'bg-red-50' : 'bg-gray-50'}`}>
                 <AlertTriangle className={`h-5 w-5 ${achterstalligBedrag > 0 ? 'text-red-500' : 'text-gray-400'}`} />
