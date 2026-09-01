@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { sendEmail } from '@/lib/email'
+import { logAudit } from '@/lib/audit'
 
 // Controleert of de dagelijkse database-backup (/api/admin/backup-db, draait
 // 03:00 UTC) gisteren daadwerkelijk een bestand heeft weggeschreven naar de
@@ -25,23 +25,14 @@ export async function GET(req: NextRequest) {
   const ok = !error && !!files?.some(f => f.name.startsWith('backup-') && f.name.endsWith('.json'))
 
   if (!ok) {
-    const ontvanger = process.env.BACKUP_ALERT_EMAIL || 'info@kunststofkozijnnodig.nl'
-    try {
-      await sendEmail({
-        to: ontvanger,
-        subject: `⚠️ Database-backup mislukt of ontbreekt — ${gisteren}`,
-        html: `
-          <p>De dagelijkse database-backup voor <strong>${gisteren}</strong> is niet aangetroffen in de
-          <code>db-backups</code>-opslag (map <code>${gisteren}/</code>).</p>
-          <p>Mogelijke oorzaken: de backup-cron faalde, de Supabase Storage-bucket is niet bereikbaar,
-          of er is een fout in <code>/api/admin/backup-db</code>.</p>
-          <p>Handmatig opnieuw proberen: <code>curl -X POST -H "x-admin-key: &lt;SUPABASE_SERVICE_ROLE_KEY&gt;"
-          https://kunststofkozijnnodig-crm.vercel.app/api/admin/backup-db</code></p>
-        `,
-      })
-    } catch (e) {
-      console.error('Backup-alert versturen mislukt:', e instanceof Error ? e.message : e)
-    }
+    // Geen losse mail meer per fout — die worden om 16:00 gebundeld door de
+    // dagelijks-overzicht-cron (zie src/app/api/cron/dagelijks-overzicht).
+    const { data: admins } = await sb.from('administraties').select('id').limit(1)
+    await logAudit({
+      actie: 'cron.backup_check_mislukt',
+      details: { datum: gisteren, bericht: `Database-backup voor ${gisteren} niet aangetroffen in db-backups/${gisteren}/` },
+      administratieId: admins?.[0]?.id,
+    })
   }
 
   return NextResponse.json({ datum: gisteren, ok })

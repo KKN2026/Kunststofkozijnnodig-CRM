@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { logAudit } from '@/lib/audit'
 
 // Bewaakt het oude Rebu-CRM tijdens de overstap: oude offerte-mails bevatten
 // acceptatielinks naar de Rebu-app, dus een late acceptatie komt alléén in de
@@ -57,6 +58,11 @@ export async function GET(req: NextRequest) {
     .order('updated_at', { ascending: true })
     .limit(50)
   if (rebuErr) {
+    await logAudit({
+      actie: 'cron.rebu_acceptaties_fouten',
+      details: { fout: `Rebu-DB onbereikbaar: ${rebuErr.message}` },
+      administratieId: adminId,
+    })
     return NextResponse.json({ error: `Rebu-DB onbereikbaar: ${rebuErr.message}` }, { status: 502 })
   }
 

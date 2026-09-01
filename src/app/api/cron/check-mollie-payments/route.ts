@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { syncFactuurFromMollie } from '@/lib/mollie-sync'
-import { stuurCronFoutAlert } from '@/lib/cron-alert'
 import { logAudit } from '@/lib/audit'
 
 // Safety-net: webhook van Mollie kan missen (Mollie endpoint down, Vercel cold
@@ -61,12 +60,12 @@ export async function GET(req: NextRequest) {
   // Bij losse fouten (bv. Mollie- of SnelStart-API even onbereikbaar) gaf dit
   // altijd status 200 terug — onzichtbaar voor cron-monitoring, ook als élke
   // factuur faalde. Status 207 (partial) bij fouten zodat Vercel Cron-logs het
-  // ook zonder de JSON-body te lezen laten zien, plus een mailtje + audit-log
-  // entry zodat het ook echt iemand bereikt.
+  // ook zonder de JSON-body te lezen laten zien, plus een audit-log entry.
+  // Geen losse mail per fout meer — die worden om 16:00 gebundeld door de
+  // dagelijks-overzicht-cron (zie src/app/api/cron/dagelijks-overzicht).
   const heeftFouten = errors.length > 0 || afletterFouten.length > 0
   if (heeftFouten) {
     const alleFouten = [...errors, ...afletterFouten]
-    await stuurCronFoutAlert('check-mollie-payments', alleFouten)
     const { data: admins } = await sb.from('administraties').select('id').limit(1)
     await logAudit({
       actie: 'cron.check_mollie_payments_fouten',

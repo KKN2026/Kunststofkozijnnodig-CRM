@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server'
 import { syncSnelstartBetalingen } from '@/lib/actions'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { stuurCronFoutAlert } from '@/lib/cron-alert'
 import { logAudit } from '@/lib/audit'
 
 // Gebruikt door de cron én door de handmatige "Sync SnelStart" knop.
@@ -49,7 +48,6 @@ export async function GET(req: Request) {
     // knop zonder geldige sessie ('Niet ingelogd') is een UI-aangelegenheid,
     // geen structureel probleem dat iemand per mail moet horen.
     if (heeftFout && isCron) {
-      await stuurCronFoutAlert('snelstart-sync', result.error as string)
       await logAudit({
         actie: 'cron.snelstart_sync_mislukt',
         details: { fout: result.error },

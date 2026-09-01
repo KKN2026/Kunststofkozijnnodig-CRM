@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { logAudit } from '@/lib/audit'
 
 // Cleanup-cron: verwijdert offerte_concept_state records die approved zijn
 // en ouder dan 30 dagen, plus afgekeurde concepten ouder dan 90 dagen.
@@ -35,6 +36,12 @@ export async function GET(req: NextRequest) {
     .select('id')
 
   if (e1 || e2) {
+    const { data: admins } = await sb.from('administraties').select('id').limit(1)
+    await logAudit({
+      actie: 'cron.cleanup_concept_state_fouten',
+      details: { fouten: [e1?.message, e2?.message].filter(Boolean) },
+      administratieId: admins?.[0]?.id,
+    })
     return NextResponse.json({
       error: e1?.message || e2?.message,
       approved_deleted: deletedApproved?.length || 0,

@@ -1,24 +1,33 @@
 import { sendEmail } from '@/lib/email'
 
-// Gedeelde helper voor cron-routes: stuur een korte waarschuwingsmail zodra
-// een geplande taak met fouten afrondt. Zonder dit soort actieve melding
-// verdwijnt een structureel probleem stil in Vercel-logs die niemand leest —
-// precies wat er met de database-backup gebeurde (maandenlang onopgemerkt).
+// Was ooit: direct een mailtje per mislukte cron-run. Dat gaf tientallen
+// losse mails op een slechte dag (bv. SnelStart plat → elke halfuur-sync
+// faalt). Cron-routes loggen fouten nu naar audit_log ('cron.*'-acties, zie
+// logAudit-aanroepen in de route-handlers); deze functie bundelt dat één keer
+// per dag tot 1 mail — aangeroepen door /api/cron/dagelijks-overzicht (16:00).
 // Faalt zelf nooit hard: een mislukte alert mag de cron niet laten crashen.
-export async function stuurCronFoutAlert(cronNaam: string, details: string[] | string) {
+export async function stuurCronDagOverzicht(fouten: { actie: string; aantal: number; voorbeelden: string[] }[]) {
+  if (fouten.length === 0) return // geen ruis bij een schone dag
   const ontvanger = process.env.CRON_ALERT_EMAIL || process.env.BACKUP_ALERT_EMAIL || 'info@kunststofkozijnnodig.nl'
-  const lijst = Array.isArray(details) ? details : [details]
+  const totaalFouten = fouten.reduce((s, f) => s + f.aantal, 0)
   try {
     await sendEmail({
       to: ontvanger,
-      subject: `⚠️ Cron-taak met fouten: ${cronNaam}`,
+      subject: `⚠️ Dagoverzicht cron-fouten (${totaalFouten})`,
       html: `
-        <p>De cron-taak <strong>${cronNaam}</strong> is afgerond, maar met ${lijst.length} fout${lijst.length === 1 ? '' : 'en'}:</p>
-        <ul>${lijst.map(d => `<li>${d}</li>`).join('')}</ul>
-        <p style="color:#6b7280;font-size:12px;">Automatisch verstuurd — check de Vercel-logs voor meer details.</p>
+        <p>De volgende geplande taken liepen de afgelopen 24 uur tegen fouten aan:</p>
+        <ul>
+          ${fouten.map(f => `
+            <li>
+              <strong>${f.actie}</strong> — ${f.aantal}×
+              <ul>${f.voorbeelden.map(v => `<li style="color:#6b7280;font-size:13px;">${v}</li>`).join('')}</ul>
+            </li>
+          `).join('')}
+        </ul>
+        <p style="color:#6b7280;font-size:12px;">Automatisch verstuurd, 1x per dag om 16:00 — check de audit-log of Vercel-logs voor meer details.</p>
       `,
     })
   } catch (e) {
-    console.error(`Cron-alert versturen mislukt (${cronNaam}):`, e instanceof Error ? e.message : e)
+    console.error('Dagoverzicht cron-fouten versturen mislukt:', e instanceof Error ? e.message : e)
   }
 }

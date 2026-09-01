@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { updateVerlopenOffertes } from '@/lib/actions'
-import { stuurCronFoutAlert } from '@/lib/cron-alert'
 import { logAudit } from '@/lib/audit'
 
 // Zet verstuurde offertes op 'verlopen' zodra 'geldig_tot' (standaard 30 dagen
@@ -37,7 +36,6 @@ export async function GET(req: NextRequest) {
   const fouten = resultaten.filter(r => r.error)
   if (fouten.length > 0) {
     const details = fouten.map(f => `administratie ${f.administratieId}: ${f.error}`)
-    await stuurCronFoutAlert('offerte-verlopen-check', details)
     await logAudit({
       actie: 'cron.offerte_verlopen_check_fouten',
       details: { fouten: details },

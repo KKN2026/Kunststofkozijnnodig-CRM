@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { updateVervallenFacturen } from '@/lib/actions'
-import { stuurCronFoutAlert } from '@/lib/cron-alert'
 import { logAudit } from '@/lib/audit'
 
 // Zet facturen op 'vervallen' (of terug naar 'verzonden') puur op basis van de
@@ -36,7 +35,6 @@ export async function GET(req: NextRequest) {
   const fouten = resultaten.filter(r => r.error)
   if (fouten.length > 0) {
     const details = fouten.map(f => `administratie ${f.administratieId}: ${f.error}`)
-    await stuurCronFoutAlert('factuur-vervallen-check', details)
     await logAudit({
       actie: 'cron.factuur_vervallen_check_fouten',
       details: { fouten: details },

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { logAudit } from '@/lib/audit'
 
 export const maxDuration = 300
 export const dynamic = 'force-dynamic'
@@ -69,6 +70,19 @@ async function handle(req: NextRequest) {
     }
   }
 
+  // Per-tabel fouten (bv. RLS/kolomwijziging) gaan verder niet mee in de dump
+  // maar mogen niet stil verdwijnen — audit-log entry zodat de 16:00-cron ze
+  // meeneemt in het dagoverzicht.
+  const tabelFouten = TABLES.filter(t => dump[t] && typeof dump[t] === 'object' && 'error' in (dump[t] as Record<string, unknown>))
+  if (tabelFouten.length > 0) {
+    const { data: admins } = await sb.from('administraties').select('id').limit(1)
+    await logAudit({
+      actie: 'cron.backup_db_tabel_fouten',
+      details: { tabellen: tabelFouten.map(t => `${t}: ${(dump[t] as { error: string }).error}`) },
+      administratieId: admins?.[0]?.id,
+    })
+  }
+
   // Zorg dat de bucket bestaat
   const buckets = await sb.storage.listBuckets()
   if (!buckets.data?.find(b => b.name === 'db-backups')) {
@@ -84,7 +98,15 @@ async function handle(req: NextRequest) {
     contentType: 'application/json',
     upsert: true,
   })
-  if (upErr) return NextResponse.json({ error: upErr.message }, { status: 500 })
+  if (upErr) {
+    const { data: admins } = await sb.from('administraties').select('id').limit(1)
+    await logAudit({
+      actie: 'cron.backup_db_upload_mislukt',
+      details: { fout: upErr.message },
+      administratieId: admins?.[0]?.id,
+    })
+    return NextResponse.json({ error: upErr.message }, { status: 500 })
+  }
 
   // Ruim oude backups op (> 14 dagen)
   try {
