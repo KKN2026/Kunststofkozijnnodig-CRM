@@ -1,6 +1,20 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
+// LET OP: cron-/sync-endpoints MOETEN publiek zijn — anders redirect deze
+// middleware ze naar /login (307) en draait de route nooit (Vercel Cron
+// stuurt geen sessie-cookie mee). De herinnering-cron checkt vóór elke
+// aanmaning live bij Mollie of de factuur al betaald is en slaat 'm dan over,
+// zodat een klant die al betaald heeft nooit een aanmaning krijgt. De
+// cleanup-cron raakt alleen lege wizard-drafts aan (geen taken/notities).
+const publicPaths = ['/login', '/registreren', '/wachtwoord-vergeten', '/api/email/sync', '/api/mollie/webhook', '/api/admin/', '/api/factuur/', '/api/cron/', '/api/snelstart/']
+
+function isPubliekPad(request: NextRequest) {
+  return publicPaths.some((path) =>
+    request.nextUrl.pathname.startsWith(path)
+  ) || Boolean(request.nextUrl.pathname.match(/^\/offerte\/[^/]+$/))
+}
+
 export async function updateSession(request: NextRequest) {
   // Prefetch-requests NIET door de auth-flow halen. Next.js prefetcht links
   // (bij hover, en bij de terug-knop). Zo'n prefetch raakt de middleware
@@ -13,6 +27,20 @@ export async function updateSession(request: NextRequest) {
     request.headers.get('purpose') === 'prefetch' ||
     (request.headers.get('sec-purpose') || '').includes('prefetch')
   if (isPrefetch) {
+    // Prefetch ZONDER enige Supabase-sessiecookie: de echte navigatie zou
+    // toch naar /login redirecten, dus de pagina hoeft niet gerenderd te
+    // worden. Elke doorgelaten prefetch is anders een volledige
+    // function-invocation. Gezien in de praktijk: één browser in een
+    // prefetch-lus deed ~800 requests/min op alle sidebar-links, en dat
+    // telde volledig mee in de Vercel-kosten.
+    const heeftSessieCookie = request.cookies
+      .getAll()
+      .some((c) => c.name.startsWith('sb-') && c.name.includes('-auth-token'))
+    if (!heeftSessieCookie && !isPubliekPad(request)) {
+      const url = request.nextUrl.clone()
+      url.pathname = '/login'
+      return NextResponse.redirect(url)
+    }
     return NextResponse.next({ request })
   }
 
@@ -58,16 +86,7 @@ export async function updateSession(request: NextRequest) {
     return res
   }
 
-  // LET OP: cron-/sync-endpoints MOETEN publiek zijn — anders redirect deze
-  // middleware ze naar /login (307) en draait de route nooit (Vercel Cron
-  // stuurt geen sessie-cookie mee). De herinnering-cron checkt vóór elke
-  // aanmaning live bij Mollie of de factuur al betaald is en slaat 'm dan over,
-  // zodat een klant die al betaald heeft nooit een aanmaning krijgt. De
-  // cleanup-cron raakt alleen lege wizard-drafts aan (geen taken/notities).
-  const publicPaths = ['/login', '/registreren', '/wachtwoord-vergeten', '/api/email/sync', '/api/mollie/webhook', '/api/admin/', '/api/factuur/', '/api/cron/', '/api/snelstart/']
-  const isPublicPath = publicPaths.some((path) =>
-    request.nextUrl.pathname.startsWith(path)
-  ) || request.nextUrl.pathname.match(/^\/offerte\/[^/]+$/)
+  const isPublicPath = isPubliekPad(request)
   const isPortaalPath = request.nextUrl.pathname.startsWith('/portaal')
   // API routes NOOIT redirecten — ze hebben hun eigen auth en moeten ook
   // voor ingelogde admins normaal kunnen worden aangeroepen (bv. de
