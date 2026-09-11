@@ -35,6 +35,10 @@ export function MobileBottomNav({ rol }: { rol?: string }) {
           <Link
             key={item.href}
             href={item.href}
+            // Geen prefetch: zie de toelichting in sidebar.tsx — permanent
+            // zichtbare navigatielinks naar dynamische pagina's zorgden voor
+            // bursts van server-renders.
+            prefetch={false}
             className={cn(
               'flex flex-col items-center justify-center py-2 text-[10px] font-medium gap-0.5 transition-colors',
               isActive ? 'text-primary' : 'text-gray-500 hover:text-gray-900',

@@ -153,6 +153,14 @@ export function Sidebar({ rol, mobileOpen, onMobileClose }: { rol?: string; mobi
             >
               <Link
                 href={item.href}
+                // GEEN prefetch. Deze ~20 links staan permanent in beeld en
+                // wijzen allemaal naar dynamische pagina's die de database
+                // bevragen. Next.js prefetcht ze daardoor opnieuw bij elke
+                // router-cache-invalidatie (dus na élke server action), wat
+                // bursts van honderden volledige server-renders opleverde:
+                // ~800 requests/min vanaf één tab en een navenante
+                // Vercel-rekening. Navigatie blijft snel door loading.tsx.
+                prefetch={false}
                 className={cn(
                   'flex items-center gap-3 px-4 py-2.5 text-sm transition-colors',
                   isActive
