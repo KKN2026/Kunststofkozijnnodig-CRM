@@ -4503,7 +4503,10 @@ export async function setVerkoopkansVerwachteMaand(projectId: string, maand: str
   // goed betekenen dat er nog geen tijd voor was, niet dat er echt contact is
   // geweest. Alleen een notitie toevoegen (saveProjectNotitie) telt wél mee.
   revalidatePath('/projecten/kanban')
+  revalidatePath('/projecten')
+  revalidatePath(`/projecten/${projectId}`)
   revalidatePath('/rapportages')
+  revalidatePath('/')
   return { success: true }
 }
 
