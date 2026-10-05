@@ -22,6 +22,7 @@ import {
 } from '@/lib/instellingen'
 import { Save, RotateCcw, Loader2, Lock, Plus, Trash2, UserPlus, Pencil, KeyRound } from 'lucide-react'
 import { RebuAcceptatiesTab } from './rebu-acceptaties-tab'
+import { RebuFacturenTab } from './rebu-facturen-tab'
 
 interface Administratie {
   id: string
@@ -71,8 +72,9 @@ const BEHEER_TABS = [
   { key: 'gebruikers' as const, label: 'Gebruikers' },
   { key: 'nummering' as const, label: 'Nummering' },
   // Tijdelijk tijdens de overstap van Rebu-CRM naar KKN — mag weer weg zodra
-  // Rebu definitief dicht gaat (zie rebu-acceptaties-tab.tsx).
+  // Rebu definitief dicht gaat (zie rebu-acceptaties-tab.tsx / rebu-facturen-tab.tsx).
   { key: 'rebu' as const, label: 'Rebu-acceptaties' },
+  { key: 'rebu-facturen' as const, label: 'Rebu-concept-facturen' },
 ]
 
 export function InstellingenView({
@@ -481,6 +483,8 @@ export function InstellingenView({
       )}
 
       {tab === 'rebu' && <RebuAcceptatiesTab />}
+
+      {tab === 'rebu-facturen' && <RebuFacturenTab />}
 
       {actieveGroep && (() => {
         const items = INSTELLINGEN.filter(d => d.groep === actieveGroep.key)

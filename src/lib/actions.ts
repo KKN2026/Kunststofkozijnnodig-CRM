@@ -13160,20 +13160,42 @@ export async function getRebuTeImporterenOffertes() {
   return { offertes }
 }
 
-export async function importeerRebuOfferte(rebuOfferteId: string) {
-  const supabase = await createClient()
-  const adminId = await getAdministratieId()
-  if (!adminId) return { error: 'Niet ingelogd' }
-  const { rol } = await getRolEnEigenMedewerker(supabase, adminId)
-  if (rol !== 'admin') return { error: 'Alleen een beheerder kan Rebu-offertes overzetten' }
+// Zorgt dat een Rebu-relatie (+ contactpersonen) in KKN staat — idempotent,
+// doet niets als de relatie (op id) al bestaat. Gedeeld door zorgOfferteInKkn
+// en de factuur-import (die heeft een eigen relatie_id, niet per se gelijk
+// aan die van de gekoppelde offerte).
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function zorgRelatieInKkn(rebu: any, admin: any, adminId: string, rebuRelatieId: string): Promise<{ error?: string }> {
+  const { data: kknRelatie } = await admin.from('relaties').select('id').eq('id', rebuRelatieId).maybeSingle()
+  if (kknRelatie) return {}
 
-  const rebu = await createRebuClient()
-  if (!rebu) return { error: 'REBU_SUPABASE_* env ontbreekt — Rebu-koppeling staat uit' }
+  const { data: rebuRelatie } = await rebu.from('relaties').select('*').eq('id', rebuRelatieId).maybeSingle()
+  if (rebuRelatie) {
+    const relatieRij = { ...rebuRelatie, administratie_id: adminId }
+    delete relatieRij.snelstart_relatie_id
+    delete relatieRij.snelstart_synced_at
+    const { error: relatieErr } = await admin.from('relaties').upsert(relatieRij, { onConflict: 'id' })
+    if (relatieErr) return { error: `Relatie overzetten mislukt: ${relatieErr.message}` }
+  }
+  const { data: rebuContacten } = await rebu.from('contactpersonen').select('*').eq('relatie_id', rebuRelatieId)
+  if (rebuContacten && rebuContacten.length > 0) {
+    const { error: contactErr } = await admin
+      .from('contactpersonen')
+      .upsert(rebuContacten.map((c: Record<string, unknown>) => ({ ...c, administratie_id: adminId })), { onConflict: 'id' })
+    if (contactErr) return { error: `Contactpersonen overzetten mislukt: ${contactErr.message}` }
+  }
+  return {}
+}
 
-  // Defensief opnieuw checken — voorkomt dat een KKN-offerte per ongeluk
-  // overschreven wordt (bv. dubbelklik, of verouderde lijst in de browser).
-  const { data: bestaat } = await supabase.from('offertes').select('id').eq('id', rebuOfferteId).maybeSingle()
-  if (bestaat) return { error: 'Deze offerte staat al in KKN' }
+// Zorgt dat een Rebu-offerte (+ regels, project, relatie/contactpersonen,
+// leverancier-documenten) in KKN staat — idempotent, doet niets als de
+// offerte (op id) al bestaat. Gedeeld door importeerRebuOfferte() en de
+// factuur-import hieronder (een concept-factuur hangt bijna altijd aan een
+// offerte die zelf nog niet per se al is overgezet).
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function zorgOfferteInKkn(rebu: any, admin: any, adminId: string, rebuOfferteId: string): Promise<{ error?: string; offertenummer?: string }> {
+  const { data: bestaat } = await admin.from('offertes').select('id, offertenummer').eq('id', rebuOfferteId).maybeSingle()
+  if (bestaat) return { offertenummer: bestaat.offertenummer }
 
   const { data: offerte, error: offerteErr } = await rebu
     .from('offertes')
@@ -13181,9 +13203,6 @@ export async function importeerRebuOfferte(rebuOfferteId: string) {
     .eq('id', rebuOfferteId)
     .maybeSingle()
   if (offerteErr || !offerte) return { error: offerteErr?.message || 'Offerte niet gevonden in Rebu' }
-  if (offerte.status !== 'geaccepteerd') return { error: 'Offerte staat in Rebu niet (meer) op geaccepteerd' }
-
-  const admin = createAdminClient()
 
   // Medewerker-mapping (rebu -> kkn) op naam, voor project.medewerker_id —
   // zelfde matching-logica als scripts/migreer-rebu-lopend.mjs.
@@ -13201,24 +13220,8 @@ export async function importeerRebuOfferte(rebuOfferteId: string) {
 
   // ---------- relatie + contactpersonen (alleen als nog niet in KKN) ----------
   if (offerte.relatie_id) {
-    const { data: kknRelatie } = await admin.from('relaties').select('id').eq('id', offerte.relatie_id).maybeSingle()
-    if (!kknRelatie) {
-      const { data: rebuRelatie } = await rebu.from('relaties').select('*').eq('id', offerte.relatie_id).maybeSingle()
-      if (rebuRelatie) {
-        const relatieRij = { ...rebuRelatie, administratie_id: adminId }
-        delete relatieRij.snelstart_relatie_id
-        delete relatieRij.snelstart_synced_at
-        const { error: relatieErr } = await admin.from('relaties').upsert(relatieRij, { onConflict: 'id' })
-        if (relatieErr) return { error: `Relatie overzetten mislukt: ${relatieErr.message}` }
-      }
-      const { data: rebuContacten } = await rebu.from('contactpersonen').select('*').eq('relatie_id', offerte.relatie_id)
-      if (rebuContacten && rebuContacten.length > 0) {
-        const { error: contactErr } = await admin
-          .from('contactpersonen')
-          .upsert(rebuContacten.map((c: Record<string, unknown>) => ({ ...c, administratie_id: adminId })), { onConflict: 'id' })
-        if (contactErr) return { error: `Contactpersonen overzetten mislukt: ${contactErr.message}` }
-      }
-    }
+    const relatieRes = await zorgRelatieInKkn(rebu, admin, adminId, offerte.relatie_id)
+    if (relatieRes.error) return { error: relatieRes.error }
   }
 
   // ---------- project (verkoopkans) ----------
@@ -13256,7 +13259,6 @@ export async function importeerRebuOfferte(rebuOfferteId: string) {
     .select('*')
     .eq('entiteit_id', rebuOfferteId)
     .in('entiteit_type', offerteDocTypes)
-  let bestandenGekopieerd = 0
   if (rebuDocs && rebuDocs.length > 0) {
     const docsRij = rebuDocs.map((d: Record<string, unknown>) => ({ ...d, administratie_id: adminId }))
     const { error: docsErr } = await admin.from('documenten').upsert(docsRij, { onConflict: 'id' })
@@ -13273,10 +13275,80 @@ export async function importeerRebuOfferte(rebuOfferteId: string) {
         if (!blob) continue
         const { error: upErr } = await admin.storage.from('documenten')
           .upload(pad, Buffer.from(await blob.arrayBuffer()), { upsert: true, contentType: blob.type || undefined })
-        if (!upErr) bestandenGekopieerd++
+        if (!upErr) { /* bestand gekopieerd */ }
       }
     }
   }
+
+  return { offertenummer: offerte.offertenummer as string }
+}
+
+// Zorgt dat een Rebu-order (+ orderregels) in KKN staat. Zorgt eerst dat de
+// onderliggende offerte er is; als die offerte al eerder (via de knop hierboven
+// of via createOrderFromOfferte) een eigen KKN-order kreeg, wordt die hergebruikt
+// i.p.v. een dubbele order aan te maken — anders wordt de Rebu-order 1:1
+// overgezet (zelfde UUID, net als offerte/relatie/project).
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function zorgOrderInKkn(rebu: any, admin: any, adminId: string, rebuOrderId: string): Promise<{ error?: string; orderId?: string }> {
+  const { data: bestaandeOrder } = await admin.from('orders').select('id').eq('id', rebuOrderId).maybeSingle()
+  if (bestaandeOrder) return { orderId: bestaandeOrder.id }
+
+  const { data: rebuOrder } = await rebu.from('orders').select('*').eq('id', rebuOrderId).maybeSingle()
+  if (!rebuOrder) return { error: 'Order niet gevonden in Rebu' }
+
+  if (rebuOrder.offerte_id) {
+    const offRes = await zorgOfferteInKkn(rebu, admin, adminId, rebuOrder.offerte_id)
+    if (offRes.error) return { error: offRes.error }
+
+    // Al een (mogelijk eerder, ander-UUID) order gekoppeld aan deze offerte?
+    const { data: gekoppeldeOrder } = await admin.from('orders').select('id').eq('offerte_id', rebuOrder.offerte_id).maybeSingle()
+    if (gekoppeldeOrder) return { orderId: gekoppeldeOrder.id }
+  }
+  if (rebuOrder.relatie_id) {
+    const relatieRes = await zorgRelatieInKkn(rebu, admin, adminId, rebuOrder.relatie_id)
+    if (relatieRes.error) return { error: relatieRes.error }
+  }
+
+  const orderRij = { ...rebuOrder, administratie_id: adminId }
+  const { error: orderErr } = await admin.from('orders').upsert(orderRij, { onConflict: 'id' })
+  if (orderErr) return { error: `Order overzetten mislukt: ${orderErr.message}` }
+
+  const { data: rebuOrderRegels } = await rebu.from('order_regels').select('*').eq('order_id', rebuOrderId)
+  if (rebuOrderRegels && rebuOrderRegels.length > 0) {
+    const regelsRij = rebuOrderRegels.map((r: Record<string, unknown>) => ({ ...r, product_id: null }))
+    const { error: regelsErr } = await admin.from('order_regels').upsert(regelsRij, { onConflict: 'id' })
+    if (regelsErr) return { error: `Orderregels overzetten mislukt: ${regelsErr.message}` }
+  }
+
+  return { orderId: rebuOrderId }
+}
+
+export async function importeerRebuOfferte(rebuOfferteId: string) {
+  const supabase = await createClient()
+  const adminId = await getAdministratieId()
+  if (!adminId) return { error: 'Niet ingelogd' }
+  const { rol } = await getRolEnEigenMedewerker(supabase, adminId)
+  if (rol !== 'admin') return { error: 'Alleen een beheerder kan Rebu-offertes overzetten' }
+
+  const rebu = await createRebuClient()
+  if (!rebu) return { error: 'REBU_SUPABASE_* env ontbreekt — Rebu-koppeling staat uit' }
+
+  // Defensief opnieuw checken — voorkomt dat een KKN-offerte per ongeluk
+  // overschreven wordt (bv. dubbelklik, of verouderde lijst in de browser).
+  const { data: bestaat } = await supabase.from('offertes').select('id').eq('id', rebuOfferteId).maybeSingle()
+  if (bestaat) return { error: 'Deze offerte staat al in KKN' }
+
+  const { data: offerteCheck, error: offerteErr } = await rebu
+    .from('offertes')
+    .select('status, offertenummer')
+    .eq('id', rebuOfferteId)
+    .maybeSingle()
+  if (offerteErr || !offerteCheck) return { error: offerteErr?.message || 'Offerte niet gevonden in Rebu' }
+  if (offerteCheck.status !== 'geaccepteerd') return { error: 'Offerte staat in Rebu niet (meer) op geaccepteerd' }
+
+  const admin = createAdminClient()
+  const res = await zorgOfferteInKkn(rebu, admin, adminId, rebuOfferteId)
+  if (res.error) return { error: res.error }
 
   // ---------- order aanmaken (zelfde stap als een interne acceptatie) ----------
   try {
@@ -13293,7 +13365,7 @@ export async function importeerRebuOfferte(rebuOfferteId: string) {
       actie: 'offerte.overgezet_uit_rebu',
       entiteitType: 'offerte',
       entiteitId: rebuOfferteId,
-      details: { offertenummer: offerte.offertenummer, bestandenGekopieerd },
+      details: { offertenummer: res.offertenummer },
       administratieId: adminId,
     })
   } catch { /* audit niet-blokkerend */ }
@@ -13301,5 +13373,136 @@ export async function importeerRebuOfferte(rebuOfferteId: string) {
   revalidatePath('/offertes')
   revalidatePath('/instellingen')
   revalidatePath('/')
-  return { success: true, offertenummer: offerte.offertenummer as string }
+  return { success: true, offertenummer: res.offertenummer as string }
+}
+
+export async function getRebuTeImporterenFacturen() {
+  const supabase = await createClient()
+  const adminId = await getAdministratieId()
+  if (!adminId) return { error: 'Niet ingelogd' }
+  const { rol } = await getRolEnEigenMedewerker(supabase, adminId)
+  if (rol !== 'admin') return { error: 'Alleen een beheerder kan Rebu-facturen overzetten' }
+
+  const rebu = await createRebuClient()
+  if (!rebu) return { error: 'REBU_SUPABASE_* env ontbreekt — Rebu-koppeling staat uit', facturen: [] }
+
+  const { data: concepten, error: rebuErr } = await rebu
+    .from('facturen')
+    .select('id, factuurnummer, onderwerp, totaal, created_at, relatie:relaties(bedrijfsnaam)')
+    .eq('status', 'concept')
+    .order('created_at', { ascending: false })
+    .limit(200)
+  if (rebuErr) return { error: `Rebu-DB onbereikbaar: ${rebuErr.message}`, facturen: [] }
+  if (!concepten || concepten.length === 0) return { facturen: [] }
+
+  const ids = concepten.map((f: { id: string }) => f.id)
+  const { data: bestaandeKkn } = await supabase.from('facturen').select('id').in('id', ids)
+  const bestaandeIds = new Set((bestaandeKkn || []).map(f => f.id))
+
+  const facturen = concepten
+    .filter((f: { id: string }) => !bestaandeIds.has(f.id))
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .map((f: any) => ({
+      id: f.id as string,
+      factuurnummer: f.factuurnummer as string,
+      onderwerp: f.onderwerp as string | null,
+      totaal: f.totaal as number,
+      klantNaam: (Array.isArray(f.relatie) ? f.relatie[0] : f.relatie)?.bedrijfsnaam || null,
+      aangemaaktOp: f.created_at as string,
+    }))
+
+  return { facturen }
+}
+
+export async function importeerRebuFactuur(rebuFactuurId: string) {
+  const supabase = await createClient()
+  const adminId = await getAdministratieId()
+  if (!adminId) return { error: 'Niet ingelogd' }
+  const { rol } = await getRolEnEigenMedewerker(supabase, adminId)
+  if (rol !== 'admin') return { error: 'Alleen een beheerder kan Rebu-facturen overzetten' }
+
+  const rebu = await createRebuClient()
+  if (!rebu) return { error: 'REBU_SUPABASE_* env ontbreekt — Rebu-koppeling staat uit' }
+
+  // Defensief opnieuw checken — voorkomt dubbele import (dubbelklik/verouderde lijst).
+  const { data: bestaat } = await supabase.from('facturen').select('id').eq('id', rebuFactuurId).maybeSingle()
+  if (bestaat) return { error: 'Deze factuur staat al in KKN' }
+
+  const { data: factuur, error: factuurErr } = await rebu
+    .from('facturen')
+    .select('*')
+    .eq('id', rebuFactuurId)
+    .maybeSingle()
+  if (factuurErr || !factuur) return { error: factuurErr?.message || 'Factuur niet gevonden in Rebu' }
+  if (factuur.status !== 'concept') return { error: 'Factuur staat in Rebu niet (meer) op concept' }
+
+  const admin = createAdminClient()
+
+  // Zorg eerst dat de onderliggende order/offerte er staat, zodat de factuur
+  // in KKN naar een bestaande order/offerte kan verwijzen i.p.v. in de lucht
+  // te hangen.
+  let orderId: string | null = null
+  if (factuur.order_id) {
+    const orderRes = await zorgOrderInKkn(rebu, admin, adminId, factuur.order_id)
+    if (orderRes.error) return { error: orderRes.error }
+    orderId = orderRes.orderId || null
+  } else if (factuur.offerte_id) {
+    const offRes = await zorgOfferteInKkn(rebu, admin, adminId, factuur.offerte_id)
+    if (offRes.error) return { error: offRes.error }
+  }
+
+  // De factuur heeft een eigen relatie_id (niet per se al afgedekt door de
+  // order/offerte hierboven) — zonder deze check zou de foreign key falen
+  // bij een factuur waarvan de klant nog nergens anders in voorkomt.
+  if (factuur.relatie_id) {
+    const relatieRes = await zorgRelatieInKkn(rebu, admin, adminId, factuur.relatie_id)
+    if (relatieRes.error) return { error: relatieRes.error }
+  }
+
+  // Factuurnummers zijn niet uniek over Rebu/KKN heen gegarandeerd — voorkom
+  // een stille botsing i.p.v. een halve import achter te laten.
+  const { data: nummerBotsing } = await admin
+    .from('facturen')
+    .select('id')
+    .eq('administratie_id', adminId)
+    .eq('factuurnummer', factuur.factuurnummer)
+    .maybeSingle()
+  if (nummerBotsing) return { error: `Factuurnummer ${factuur.factuurnummer} bestaat al in KKN — eerst handmatig controleren` }
+
+  // gerelateerde_factuur_id (bv. bij credit-/termijnfacturen) verwijst naar
+  // een andere factuur die mogelijk nog niet in KKN staat — dan zou de
+  // foreign key de hele import blokkeren. De koppeling is informatief, niet
+  // essentieel: laat 'm weg als het doel nog niet bestaat.
+  let gerelateerdeFactuurId = factuur.gerelateerde_factuur_id as string | null
+  if (gerelateerdeFactuurId) {
+    const { data: gerelateerdeBestaat } = await admin.from('facturen').select('id').eq('id', gerelateerdeFactuurId).maybeSingle()
+    if (!gerelateerdeBestaat) gerelateerdeFactuurId = null
+  }
+
+  const factuurRij = { ...factuur, administratie_id: adminId, order_id: orderId, gerelateerde_factuur_id: gerelateerdeFactuurId }
+  const { error: factuurUpsertErr } = await admin.from('facturen').upsert(factuurRij, { onConflict: 'id' })
+  if (factuurUpsertErr) return { error: `Factuur overzetten mislukt: ${factuurUpsertErr.message}` }
+
+  const { data: rebuRegels } = await rebu.from('factuur_regels').select('*').eq('factuur_id', rebuFactuurId)
+  if (rebuRegels && rebuRegels.length > 0) {
+    const regelsRij = rebuRegels.map((r: Record<string, unknown>) => ({ ...r, product_id: null }))
+    const { error: regelsErr } = await admin.from('factuur_regels').upsert(regelsRij, { onConflict: 'id' })
+    if (regelsErr) return { error: `Factuurregels overzetten mislukt: ${regelsErr.message}` }
+  }
+
+  try {
+    const { logAudit } = await import('@/lib/audit')
+    await logAudit({
+      actie: 'factuur.overgezet_uit_rebu',
+      entiteitType: 'factuur',
+      entiteitId: rebuFactuurId,
+      details: { factuurnummer: factuur.factuurnummer },
+      administratieId: adminId,
+    })
+  } catch { /* audit niet-blokkerend */ }
+
+  revalidatePath('/facturatie')
+  revalidatePath('/instellingen')
+  revalidatePath('/')
+  return { success: true, factuurnummer: factuur.factuurnummer as string }
 }
