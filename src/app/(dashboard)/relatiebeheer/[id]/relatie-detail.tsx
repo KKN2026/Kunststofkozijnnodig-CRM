@@ -4,7 +4,6 @@ import { HerkomstBadge } from '@/components/ui/herkomst-badge'
 import { EmailBijlageKnop } from '@/components/ui/email-bijlage-knop'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { useBackNav } from '@/lib/hooks/use-back-nav'
 import Link from 'next/link'
 import { saveRelatie, deleteRelatie, saveNotitie, deleteNotitie, deleteProject, saveContactpersoon, deleteContactpersoon, deleteTaak, saveProjectNotitie, toggleVasteKlant, toggleDoorverwijzingGevraagd, acceptOfferte, setProjectStatus } from '@/lib/actions'
 import { EmailLogDialog } from '@/components/email-log-dialog'
@@ -180,7 +179,6 @@ interface Props {
 export function RelatieDetail({ detail, notities: initialNotities, klantAccounts: initialKlantAccounts, relatieTaken = [], relatieEmails = [], contactpersonen: initialContactpersonen = [], verstuurdeEmails = [] }: Props) {
   const { relatie, offertes, facturen, projecten, stats } = detail
   const router = useRouter()
-  const { navigateBack } = useBackNav(`relatie-${relatie.id}`)
   const [vasteKlant, setVasteKlant] = useState<boolean>(!!relatie.vaste_klant)
   const [doorverwijzingGevraagd, setDoorverwijzingGevraagd] = useState<boolean>(!!relatie.om_doorverwijzing_gevraagd)
   type TabKey = 'overzicht' | 'tijdlijn' | 'projecten' | 'offertes' | 'facturen' | 'documenten' | 'taken' | 'notities' | 'portaal' | 'gegevens'
@@ -198,6 +196,14 @@ export function RelatieDetail({ detail, notities: initialNotities, klantAccounts
       else url.searchParams.set('tab', next)
       router.replace(url.pathname + url.search, { scroll: false })
     }
+  }
+  // Link naar een verkoopkans mét expliciete herkomst, zodat de Terug-knop
+  // daar (project-detail.tsx) betrouwbaar hierop terug navigeert — i.p.v. op
+  // de globale, sessiebrede nav-stack te vertrouwen (die bij elke tab-wissel
+  // hierboven een extra entry krijgt en bij een 2e Terug-klik overal kan
+  // uitkomen, tot aan het dashboard toe).
+  function projectHref(id: string) {
+    return `/projecten/${id}?van=relatiebeheer&relatie=${relatie.id}&tab=${tab}`
   }
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -472,7 +478,14 @@ export function RelatieDetail({ detail, notities: initialNotities, klantAccounts
         description={`${relatie.type.charAt(0).toUpperCase() + relatie.type.slice(1)} ${relatie.plaats ? `- ${relatie.plaats}` : ''}`}
         actions={
           <div className="flex gap-2">
-            <Button variant="ghost" onClick={() => navigateBack('/relatiebeheer')}>
+            {/* Bewust géén navigateBack() hier: die pakt de laatst bezochte
+                pagina uit een GLOBALE sessie-stack die bij elke tab-wissel
+                hierboven (router.replace met ?tab=...) een extra entry krijgt
+                — een 2e Terug-klik elders in de app kon daardoor op deze
+                stack belanden en zo overal uitkomen, tot het dashboard toe.
+                Vaste bestemming is voorspelbaar en lost dat structureel op
+                (zelfde aanpak als eerder bij de offerte-editor, 94825f1). */}
+            <Button variant="ghost" onClick={() => router.push('/relatiebeheer')}>
               <ArrowLeft className="h-4 w-4" />
               Terug
             </Button>
@@ -1033,7 +1046,7 @@ export function RelatieDetail({ detail, notities: initialNotities, klantAccounts
                 <Card key={p.id}>
                   <div
                     className="px-6 py-4 border-b border-gray-200 cursor-pointer hover:bg-gray-50 transition-colors"
-                    onClick={() => router.push(`/projecten/${p.id}`)}
+                    onClick={() => router.push(projectHref(p.id))}
                   >
                     <div className="flex items-center justify-between mb-3">
                       <div className="flex items-center gap-3">
@@ -1262,7 +1275,7 @@ export function RelatieDetail({ detail, notities: initialNotities, klantAccounts
                   return (
                     <Card key={p.id}
                       className="cursor-pointer hover:border-gray-300 transition-colors opacity-80 hover:opacity-100"
-                      onClick={() => router.push(`/projecten/${p.id}`)}
+                      onClick={() => router.push(projectHref(p.id))}
                     >
                       <div className="px-6 py-3 flex items-center justify-between">
                         <div className="flex items-center gap-3 min-w-0">
@@ -1312,7 +1325,7 @@ export function RelatieDetail({ detail, notities: initialNotities, klantAccounts
                   return (
                     <Card key={p.id}
                       className="cursor-pointer hover:border-gray-300 transition-colors opacity-70 hover:opacity-100"
-                      onClick={() => router.push(`/projecten/${p.id}`)}
+                      onClick={() => router.push(projectHref(p.id))}
                     >
                       <div className="px-6 py-3 flex items-center justify-between">
                         <div className="flex items-center gap-3 min-w-0">

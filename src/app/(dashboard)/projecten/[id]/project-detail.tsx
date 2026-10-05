@@ -1,12 +1,11 @@
 'use client'
 
 import { EmailBijlageKnop } from '@/components/ui/email-bijlage-knop'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { useState } from 'react'
 import { saveProject, deleteProject, duplicateOfferte, deleteOfferte, deleteTaak, deleteFactuur, deleteEmailLog, updateOfferteOnderwerp, getEmailBody, getDocumentUrl, setProjectStatus, factureerVerkoopkans, updateProjectMedewerker, setVerkoopkansVerwachteMaand } from '@/lib/actions'
 import type { TimelineItem } from '@/lib/actions'
-import { useBackNav } from '@/lib/hooks/use-back-nav'
 import { EmailLogDialog } from '@/components/email-log-dialog'
 import { Receipt } from 'lucide-react'
 import { showToast } from '@/components/ui/toast'
@@ -100,12 +99,26 @@ export function ProjectDetail({ timeline, relaties, isNew, emails = [], document
   medewerkers?: { id: string; naam: string }[]
 }) {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [loading, setLoading] = useState(false)
   const [medewerkerBezig, setMedewerkerBezig] = useState(false)
   const [valmaandBezig, setValmaandBezig] = useState(false)
   const [error, setError] = useState('')
   const [editing, setEditing] = useState(false)
-  const { navigateBack } = useBackNav(`project-${(timeline?.project?.id as string) || 'nieuw'}`)
+  // Bewust geen navigateBack()/globale nav-stack hier: die kreeg bij elke
+  // tab-wissel op relatiebeheer/[id] (router.replace met ?tab=...) een extra
+  // entry en kon een 2e Terug-klik overal laten uitkomen, tot het dashboard
+  // toe. Komt de gebruiker vanuit de "Projecten"-tab van een klant (via
+  // relatie-detail.tsx's projectHref, met ?van=relatiebeheer&relatie=&tab=),
+  // dan gaat Terug daar gericht naartoe; anders terug naar de lijst — vaste,
+  // voorspelbare bestemmingen i.p.v. sessie-geschiedenis (zelfde aanpak als
+  // eerder bij de offerte-editor, commit 94825f1).
+  const van = searchParams.get('van')
+  const vanRelatieId = searchParams.get('relatie')
+  const vanTab = searchParams.get('tab')
+  const terugHref = van === 'relatiebeheer' && vanRelatieId
+    ? `/relatiebeheer/${vanRelatieId}${vanTab ? `?tab=${vanTab}` : ''}`
+    : '/projecten'
   const [openEmailLogId, setOpenEmailLogId] = useState<string | null>(null)
   const [inboxEmailDetail, setInboxEmailDetail] = useState<{
     onderwerp: string | null
@@ -170,7 +183,7 @@ export function ProjectDetail({ timeline, relaties, isNew, emails = [], document
     const result = await saveProject(formData)
     if (result.error) { setError(result.error); setLoading(false); return }
     showToast('Verkoopkans opgeslagen')
-    if (isNew) navigateBack('/projecten')
+    if (isNew) router.push(terugHref)
     else { setEditing(false); setLoading(false); router.refresh() }
   }
 
@@ -178,14 +191,14 @@ export function ProjectDetail({ timeline, relaties, isNew, emails = [], document
     if (!project || !confirm('Weet u zeker dat u deze verkoopkans wilt verwijderen?')) return
     const result = await deleteProject(project.id as string)
     if (result.error) setError(result.error)
-    else navigateBack('/projecten')
+    else router.push(terugHref)
   }
 
   // Nieuw project: toon alleen het formulier
   if (isNew) {
     return (
       <div>
-        <PageHeader title="Nieuwe verkoopkans" actions={<Button variant="ghost" onClick={() => navigateBack('/projecten')}><ArrowLeft className="h-4 w-4" />Terug</Button>} />
+        <PageHeader title="Nieuwe verkoopkans" actions={<Button variant="ghost" onClick={() => router.push(terugHref)}><ArrowLeft className="h-4 w-4" />Terug</Button>} />
         {error && <div className="bg-red-50 text-red-600 text-sm p-3 rounded-md mb-4">{error}</div>}
         <form action={handleSubmit}>
           <Card>
@@ -226,7 +239,7 @@ export function ProjectDetail({ timeline, relaties, isNew, emails = [], document
   if (!project || !timeline) {
     return (
       <div>
-        <PageHeader title="Verkoopkans niet gevonden" actions={<Button variant="ghost" onClick={() => navigateBack('/projecten')}><ArrowLeft className="h-4 w-4" />Terug</Button>} />
+        <PageHeader title="Verkoopkans niet gevonden" actions={<Button variant="ghost" onClick={() => router.push(terugHref)}><ArrowLeft className="h-4 w-4" />Terug</Button>} />
       </div>
     )
   }
@@ -278,7 +291,7 @@ export function ProjectDetail({ timeline, relaties, isNew, emails = [], document
                 Heropenen
               </Button>
             )}
-            <Button variant="ghost" onClick={() => navigateBack('/projecten')}>
+            <Button variant="ghost" onClick={() => router.push(terugHref)}>
               <ArrowLeft className="h-4 w-4" />
               Terug
             </Button>
