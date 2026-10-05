@@ -5,9 +5,10 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { getRebuTeImporterenFacturen, importeerRebuFactuur } from '@/lib/actions'
 import { formatCurrency, formatDateShort } from '@/lib/utils'
-import { ArrowRightLeft, Loader2, RefreshCw, Inbox } from 'lucide-react'
+import { ArrowRightLeft, Loader2, RefreshCw, Inbox, Search } from 'lucide-react'
 
 interface RebuFactuur {
   id: string
@@ -28,6 +29,7 @@ export function RebuFacturenTab() {
   const [laden, setLaden] = useState(false)
   const [bezigId, setBezigId] = useState<string | null>(null)
   const [succesmelding, setSuccesmelding] = useState('')
+  const [zoek, setZoek] = useState('')
 
   async function laadLijst() {
     setLaden(true)
@@ -69,6 +71,9 @@ export function RebuFacturenTab() {
     router.refresh()
   }
 
+  const zoekLc = zoek.trim().toLowerCase()
+  const gefilterd = (facturen || []).filter(f => !zoekLc || [f.factuurnummer, f.klantNaam, f.onderwerp].some(v => v?.toLowerCase().includes(zoekLc)))
+
   return (
     <div>
       <div className="flex items-start justify-between mb-4 gap-4">
@@ -85,6 +90,18 @@ export function RebuFacturenTab() {
       {succesmelding && <div className="bg-green-50 text-green-700 text-sm p-3 rounded-md mb-4">{succesmelding}</div>}
       {error && <div className="bg-red-50 text-red-600 text-sm p-3 rounded-md mb-4">{error}</div>}
 
+      {facturen && facturen.length > 0 && (
+        <div className="relative mb-3 max-w-sm">
+          <Search className="h-4 w-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+          <Input
+            placeholder="Zoek op klant, factuurnummer of onderwerp…"
+            value={zoek}
+            onChange={e => setZoek(e.target.value)}
+            className="pl-9"
+          />
+        </div>
+      )}
+
       {facturen === null ? (
         <Card><CardContent className="py-10 text-center text-sm text-gray-400">Bezig met laden…</CardContent></Card>
       ) : facturen.length === 0 ? (
@@ -92,6 +109,12 @@ export function RebuFacturenTab() {
           <CardContent className="py-10 text-center">
             <Inbox className="h-8 w-8 text-gray-200 mx-auto mb-2" />
             <p className="text-sm text-gray-400">Geen openstaande Rebu-concept-facturen — niets om over te zetten.</p>
+          </CardContent>
+        </Card>
+      ) : gefilterd.length === 0 ? (
+        <Card>
+          <CardContent className="py-10 text-center">
+            <p className="text-sm text-gray-400">Niets gevonden voor &quot;{zoek}&quot;.</p>
           </CardContent>
         </Card>
       ) : (
@@ -110,7 +133,7 @@ export function RebuFacturenTab() {
                   </tr>
                 </thead>
                 <tbody>
-                  {facturen.map(f => (
+                  {gefilterd.map(f => (
                     <tr key={f.id} className="border-b border-gray-50 last:border-0">
                       <td className="px-4 py-2.5 font-mono text-xs">{f.factuurnummer}</td>
                       <td className="px-4 py-2.5">{f.klantNaam || '-'}</td>

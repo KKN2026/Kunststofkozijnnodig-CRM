@@ -5,9 +5,10 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { getRebuTeImporterenOffertes, importeerRebuOfferte } from '@/lib/actions'
 import { formatCurrency, formatDateShort } from '@/lib/utils'
-import { ArrowRightLeft, Loader2, RefreshCw, Inbox } from 'lucide-react'
+import { ArrowRightLeft, Loader2, RefreshCw, Inbox, Search } from 'lucide-react'
 
 interface RebuOfferte {
   id: string
@@ -29,6 +30,7 @@ export function RebuAcceptatiesTab() {
   const [laden, setLaden] = useState(false)
   const [bezigId, setBezigId] = useState<string | null>(null)
   const [succesmelding, setSuccesmelding] = useState('')
+  const [zoek, setZoek] = useState('')
 
   async function laadLijst() {
     setLaden(true)
@@ -72,6 +74,9 @@ export function RebuAcceptatiesTab() {
     router.refresh()
   }
 
+  const zoekLc = zoek.trim().toLowerCase()
+  const gefilterd = (offertes || []).filter(o => !zoekLc || [o.offertenummer, o.klantNaam, o.onderwerp].some(v => v?.toLowerCase().includes(zoekLc)))
+
   return (
     <div>
       <div className="flex items-start justify-between mb-4 gap-4">
@@ -88,13 +93,31 @@ export function RebuAcceptatiesTab() {
       {succesmelding && <div className="bg-green-50 text-green-700 text-sm p-3 rounded-md mb-4">{succesmelding}</div>}
       {error && <div className="bg-red-50 text-red-600 text-sm p-3 rounded-md mb-4">{error}</div>}
 
+      {offertes && offertes.length > 0 && (
+        <div className="relative mb-3 max-w-sm">
+          <Search className="h-4 w-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+          <Input
+            placeholder="Zoek op klant, offertenummer of onderwerp…"
+            value={zoek}
+            onChange={e => setZoek(e.target.value)}
+            className="pl-9"
+          />
+        </div>
+      )}
+
       {offertes === null ? (
         <Card><CardContent className="py-10 text-center text-sm text-gray-400">Bezig met laden…</CardContent></Card>
-      ) : offertes && offertes.length === 0 ? (
+      ) : offertes.length === 0 ? (
         <Card>
           <CardContent className="py-10 text-center">
             <Inbox className="h-8 w-8 text-gray-200 mx-auto mb-2" />
             <p className="text-sm text-gray-400">Geen openstaande Rebu-acceptaties — niets om over te zetten.</p>
+          </CardContent>
+        </Card>
+      ) : gefilterd.length === 0 ? (
+        <Card>
+          <CardContent className="py-10 text-center">
+            <p className="text-sm text-gray-400">Niets gevonden voor &quot;{zoek}&quot;.</p>
           </CardContent>
         </Card>
       ) : (
@@ -113,7 +136,7 @@ export function RebuAcceptatiesTab() {
                   </tr>
                 </thead>
                 <tbody>
-                  {(offertes || []).map(o => (
+                  {gefilterd.map(o => (
                     <tr key={o.id} className="border-b border-gray-50 last:border-0">
                       <td className="px-4 py-2.5 font-mono text-xs">{o.offertenummer}</td>
                       <td className="px-4 py-2.5">{o.klantNaam || '-'}</td>
