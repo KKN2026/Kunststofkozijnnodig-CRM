@@ -13123,6 +13123,29 @@ async function createRebuClient(): Promise<any | null> {
   return createSupabaseClient(url, key, { auth: { persistSession: false } })
 }
 
+// Rebu en KKN zijn twee los doorontwikkelde forks — hun tabellen lopen niet
+// meer helemaal gelijk (bv. relaties.om_referentie_gevraagd bestaat alleen in
+// Rebu). Een kolom die KKN niet kent, laat een upsert direct knallen
+// ("Could not find column X"). Filter daarom elke Rebu-rij naar alleen de
+// kolommen die KKN's tabel ook echt heeft, i.p.v. per ontdekte mismatch een
+// losse `delete rij.kolom` toe te voegen.
+const kknKolommenCache = new Map<string, Set<string> | null>()
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function filterNaarKknSchema(admin: any, tabel: string, rij: Record<string, unknown>): Promise<Record<string, unknown>> {
+  let kolommen = kknKolommenCache.get(tabel)
+  if (kolommen === undefined) {
+    const { data } = await admin.from(tabel).select('*').limit(1)
+    kolommen = data && data.length > 0 ? new Set(Object.keys(data[0])) : null
+    kknKolommenCache.set(tabel, kolommen)
+  }
+  if (!kolommen) return rij // tabel leeg (onwaarschijnlijk) — niet filteren, origineel gedrag
+  const gefilterd: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(rij)) {
+    if (kolommen.has(k)) gefilterd[k] = v
+  }
+  return gefilterd
+}
+
 export async function getRebuTeImporterenOffertes() {
   const supabase = await createClient()
   const adminId = await getAdministratieId()
@@ -13174,17 +13197,23 @@ async function zorgRelatieInKkn(rebu: any, admin: any, adminId: string, rebuRela
 
   const { data: rebuRelatie } = await rebu.from('relaties').select('*').eq('id', rebuRelatieId).maybeSingle()
   if (rebuRelatie) {
-    const relatieRij = { ...rebuRelatie, administratie_id: adminId }
-    delete relatieRij.snelstart_relatie_id
-    delete relatieRij.snelstart_synced_at
+    // snelstart_relatie_id/synced_at horen bij Rébu's eigen SnelStart-koppeling
+    // — nooit overnemen, anders denkt KKN's eigen sync dat dit al gekoppeld is.
+    const relatieRij = await filterNaarKknSchema(admin, 'relaties', {
+      ...rebuRelatie,
+      administratie_id: adminId,
+      snelstart_relatie_id: null,
+      snelstart_synced_at: null,
+    })
     const { error: relatieErr } = await admin.from('relaties').upsert(relatieRij, { onConflict: 'id' })
     if (relatieErr) return { error: `Relatie overzetten mislukt: ${relatieErr.message}` }
   }
   const { data: rebuContacten } = await rebu.from('contactpersonen').select('*').eq('relatie_id', rebuRelatieId)
   if (rebuContacten && rebuContacten.length > 0) {
-    const { error: contactErr } = await admin
-      .from('contactpersonen')
-      .upsert(rebuContacten.map((c: Record<string, unknown>) => ({ ...c, administratie_id: adminId })), { onConflict: 'id' })
+    const contactenRij = await Promise.all(
+      rebuContacten.map((c: Record<string, unknown>) => filterNaarKknSchema(admin, 'contactpersonen', { ...c, administratie_id: adminId }))
+    )
+    const { error: contactErr } = await admin.from('contactpersonen').upsert(contactenRij, { onConflict: 'id' })
     if (contactErr) return { error: `Contactpersonen overzetten mislukt: ${contactErr.message}` }
   }
   return {}
@@ -13234,23 +13263,25 @@ async function zorgOfferteInKkn(rebu: any, admin: any, adminId: string, rebuOffe
       const { data: rebuProject } = await rebu.from('projecten').select('*').eq('id', offerte.project_id).maybeSingle()
       if (rebuProject) {
         const medewerkerId = await mapMedewerker(rebuProject.medewerker_id)
-        const { error: projectErr } = await admin
-          .from('projecten')
-          .upsert({ ...rebuProject, administratie_id: adminId, medewerker_id: medewerkerId }, { onConflict: 'id' })
+        const projectRij = await filterNaarKknSchema(admin, 'projecten', { ...rebuProject, administratie_id: adminId, medewerker_id: medewerkerId })
+        const { error: projectErr } = await admin.from('projecten').upsert(projectRij, { onConflict: 'id' })
         if (projectErr) return { error: `Verkoopkans overzetten mislukt: ${projectErr.message}` }
       }
     }
   }
 
   // ---------- offerte zelf ----------
-  const offerteRij = { ...offerte, administratie_id: adminId }
+  const offerteRij = await filterNaarKknSchema(admin, 'offertes', { ...offerte, administratie_id: adminId })
   const { error: offerteUpsertErr } = await admin.from('offertes').upsert(offerteRij, { onConflict: 'id' })
   if (offerteUpsertErr) return { error: `Offerte overzetten mislukt: ${offerteUpsertErr.message}` }
 
   // ---------- offerte_regels ----------
   const { data: rebuRegels } = await rebu.from('offerte_regels').select('*').eq('offerte_id', rebuOfferteId)
   if (rebuRegels && rebuRegels.length > 0) {
-    const regelsRij = rebuRegels.map((r: Record<string, unknown>) => ({ ...r, product_id: null })) // KKN heeft andere product-id's
+    const regelsRij = await Promise.all(
+      // KKN heeft andere product-id's
+      rebuRegels.map((r: Record<string, unknown>) => filterNaarKknSchema(admin, 'offerte_regels', { ...r, product_id: null }))
+    )
     const { error: regelsErr } = await admin.from('offerte_regels').upsert(regelsRij, { onConflict: 'id' })
     if (regelsErr) return { error: `Offerteregels overzetten mislukt: ${regelsErr.message}` }
   }
@@ -13263,7 +13294,9 @@ async function zorgOfferteInKkn(rebu: any, admin: any, adminId: string, rebuOffe
     .eq('entiteit_id', rebuOfferteId)
     .in('entiteit_type', offerteDocTypes)
   if (rebuDocs && rebuDocs.length > 0) {
-    const docsRij = rebuDocs.map((d: Record<string, unknown>) => ({ ...d, administratie_id: adminId }))
+    const docsRij = await Promise.all(
+      rebuDocs.map((d: Record<string, unknown>) => filterNaarKknSchema(admin, 'documenten', { ...d, administratie_id: adminId }))
+    )
     const { error: docsErr } = await admin.from('documenten').upsert(docsRij, { onConflict: 'id' })
     if (docsErr) return { error: `Documenten overzetten mislukt: ${docsErr.message}` }
 
@@ -13312,13 +13345,15 @@ async function zorgOrderInKkn(rebu: any, admin: any, adminId: string, rebuOrderI
     if (relatieRes.error) return { error: relatieRes.error }
   }
 
-  const orderRij = { ...rebuOrder, administratie_id: adminId }
+  const orderRij = await filterNaarKknSchema(admin, 'orders', { ...rebuOrder, administratie_id: adminId })
   const { error: orderErr } = await admin.from('orders').upsert(orderRij, { onConflict: 'id' })
   if (orderErr) return { error: `Order overzetten mislukt: ${orderErr.message}` }
 
   const { data: rebuOrderRegels } = await rebu.from('order_regels').select('*').eq('order_id', rebuOrderId)
   if (rebuOrderRegels && rebuOrderRegels.length > 0) {
-    const regelsRij = rebuOrderRegels.map((r: Record<string, unknown>) => ({ ...r, product_id: null }))
+    const regelsRij = await Promise.all(
+      rebuOrderRegels.map((r: Record<string, unknown>) => filterNaarKknSchema(admin, 'order_regels', { ...r, product_id: null }))
+    )
     const { error: regelsErr } = await admin.from('order_regels').upsert(regelsRij, { onConflict: 'id' })
     if (regelsErr) return { error: `Orderregels overzetten mislukt: ${regelsErr.message}` }
   }
@@ -13495,20 +13530,22 @@ export async function importeerRebuFactuur(rebuFactuurId: string) {
   // Rébu's eigen Mollie-account — als een klant daarop zou betalen, komt het
   // geld op Rebu's rekening terecht, niet op die van KKN. zorgVoorBetaallink()
   // hieronder genereert een verse, aan KKN gekoppelde link.
-  const factuurRij = {
+  const factuurRij = await filterNaarKknSchema(admin, 'facturen', {
     ...factuur,
     administratie_id: adminId,
     order_id: orderId,
     gerelateerde_factuur_id: gerelateerdeFactuurId,
     mollie_payment_id: null,
     betaal_link: null,
-  }
+  })
   const { error: factuurUpsertErr } = await admin.from('facturen').upsert(factuurRij, { onConflict: 'id' })
   if (factuurUpsertErr) return { error: `Factuur overzetten mislukt: ${factuurUpsertErr.message}` }
 
   const { data: rebuRegels } = await rebu.from('factuur_regels').select('*').eq('factuur_id', rebuFactuurId)
   if (rebuRegels && rebuRegels.length > 0) {
-    const regelsRij = rebuRegels.map((r: Record<string, unknown>) => ({ ...r, product_id: null }))
+    const regelsRij = await Promise.all(
+      rebuRegels.map((r: Record<string, unknown>) => filterNaarKknSchema(admin, 'factuur_regels', { ...r, product_id: null }))
+    )
     const { error: regelsErr } = await admin.from('factuur_regels').upsert(regelsRij, { onConflict: 'id' })
     if (regelsErr) return { error: `Factuurregels overzetten mislukt: ${regelsErr.message}` }
   }
