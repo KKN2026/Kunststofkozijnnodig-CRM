@@ -1,5 +1,10 @@
 import nodemailer from 'nodemailer'
 import { Resend } from 'resend'
+// waitUntil: laat de Gmail-'Verzonden'-archivering na de return van sendEmail()
+// afronden i.p.v. de aanroeper (offerte/factuur-verzending) erop te laten
+// wachten. Zonder dit wordt een kale 'void bewaarInVerzonden(...)' direct
+// gekilled door de serverless runtime en komt er nooit een kopie in Gmail.
+import { waitUntil } from '@vercel/functions'
 
 // Verzendlaag. Voorkeur = Resend (betere deliverability: domein-DKIM/SPF, en je
 // mag vanuit elk geverifieerd @kunststofkozijnnodig.nl-adres versturen — geen Gmail
@@ -175,8 +180,16 @@ export async function sendEmail(options: {
       throw new Error(`Resend: ${error.message || JSON.stringify(error)}`)
     }
     // Resend komt niet langs Gmail, dus zonder dit blijft de Verzonden-map leeg.
+    // Puur best-effort spiegeling — niets in de aanroeper hangt hiervan af —
+    // dus niet awaiten: dit IMAP-archiveren naar Gmail duurt in de praktijk
+    // vaak 1-3s maar soms tientallen tot zelfs 170+ seconden (trage/trage
+    // Gmail-IMAP-respons op een groeiende Verzonden-map), en blokkeerde
+    // daarmee tot nu toe elke offerte/factuur-verzending onnodig lang.
     const { bewaarInVerzonden } = await import('@/lib/mail-archief')
-    await bewaarInVerzonden({ from, to, bcc, replyTo, subject: options.subject, html: options.html, text, attachments: options.attachments })
+    waitUntil(
+      bewaarInVerzonden({ from, to, bcc, replyTo, subject: options.subject, html: options.html, text, attachments: options.attachments })
+        .catch(err => console.error('Archiveren in Verzonden-map mislukt (async, niet kritiek):', err))
+    )
     return
   }
 
