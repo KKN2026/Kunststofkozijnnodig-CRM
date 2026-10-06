@@ -13389,13 +13389,14 @@ export async function getRebuTeImporterenFacturen() {
   const rebu = await createRebuClient()
   if (!rebu) return { error: 'REBU_SUPABASE_* env ontbreekt — Rebu-koppeling staat uit', facturen: [] }
 
-  // Niet alleen concepten: ook al-verzonden en vervallen facturen die nog
-  // open staan (nog niet betaald/gecrediteerd) horen hier — "openstaand" in
-  // Rebu, moet ook in KKN openstaand blijven, anders loopt er geld mis.
+  // Alleen concepten: facturen die al verstuurd zijn vanuit Rebu ('verzonden'/
+  // 'vervallen') blijven bewust in Rebu — die worden daar afgehandeld/geïnd,
+  // de klant heeft al die (Rebu-)betaallink. Alleen wat nog nooit de deur uit
+  // is geweest, hoort hier.
   const { data: openstaand, error: rebuErr } = await rebu
     .from('facturen')
     .select('id, factuurnummer, onderwerp, totaal, betaald_bedrag, status, vervaldatum, created_at, relatie:relaties(bedrijfsnaam)')
-    .in('status', ['concept', 'verzonden', 'vervallen'])
+    .eq('status', 'concept')
     .order('created_at', { ascending: false })
     .limit(200)
   if (rebuErr) return { error: `Rebu-DB onbereikbaar: ${rebuErr.message}`, facturen: [] }
@@ -13443,8 +13444,8 @@ export async function importeerRebuFactuur(rebuFactuurId: string) {
     .eq('id', rebuFactuurId)
     .maybeSingle()
   if (factuurErr || !factuur) return { error: factuurErr?.message || 'Factuur niet gevonden in Rebu' }
-  if (!['concept', 'verzonden', 'vervallen'].includes(factuur.status)) {
-    return { error: 'Factuur staat in Rebu niet (meer) open — mogelijk al betaald of gecrediteerd' }
+  if (factuur.status !== 'concept') {
+    return { error: 'Factuur staat in Rebu niet (meer) op concept — die blijft in Rebu' }
   }
 
   const admin = createAdminClient()
@@ -13532,9 +13533,5 @@ export async function importeerRebuFactuur(rebuFactuurId: string) {
   revalidatePath('/facturatie')
   revalidatePath('/instellingen')
   revalidatePath('/')
-  // Was de factuur in Rebu al naar de klant verstuurd? Dan moet 'm ook
-  // opnieuw vanuit KKN verstuurd worden — anders heeft de klant alleen de
-  // oude (Rebu-)link/PDF, niet de nieuwe KKN-betaallink.
-  const moetOpnieuwVerstuurd = factuur.status === 'verzonden' || factuur.status === 'vervallen'
-  return { success: true, factuurnummer: factuur.factuurnummer as string, moetOpnieuwVerstuurd }
+  return { success: true, factuurnummer: factuur.factuurnummer as string }
 }

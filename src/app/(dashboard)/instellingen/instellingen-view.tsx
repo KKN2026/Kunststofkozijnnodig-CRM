@@ -74,7 +74,7 @@ const BEHEER_TABS = [
   // Tijdelijk tijdens de overstap van Rebu-CRM naar KKN — mag weer weg zodra
   // Rebu definitief dicht gaat (zie rebu-acceptaties-tab.tsx / rebu-facturen-tab.tsx).
   { key: 'rebu' as const, label: 'Rebu-acceptaties' },
-  { key: 'rebu-facturen' as const, label: 'Rebu-openstaande-facturen' },
+  { key: 'rebu-facturen' as const, label: 'Rebu-concept-facturen' },
 ]
 
 export function InstellingenView({
