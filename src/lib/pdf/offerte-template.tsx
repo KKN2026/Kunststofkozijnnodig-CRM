@@ -22,6 +22,8 @@ interface Relatie {
   adres?: string | null
   postcode?: string | null
   plaats?: string | null
+  kvk_nummer?: string | null
+  btw_nummer?: string | null
 }
 
 export interface KozijnElement {
@@ -187,6 +189,8 @@ export function OfferteDocument({ offerte, hidePrices }: { offerte: OfferteData;
                 {(relatie.postcode || relatie.plaats) && (
                   <Text style={s.clientDetail}>{[relatie.postcode, relatie.plaats].filter(Boolean).join(' ')}</Text>
                 )}
+                {relatie.kvk_nummer && <Text style={s.clientDetail}>KVK: {relatie.kvk_nummer}</Text>}
+                {relatie.btw_nummer && <Text style={s.clientDetail}>BTW: {relatie.btw_nummer}</Text>}
               </>
             )}
           </View>
