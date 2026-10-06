@@ -13459,6 +13459,92 @@ export async function getRebuTeImporterenFacturen() {
   return { facturen }
 }
 
+// Spiegelbeeld van getRebuTeImporterenFacturen(): concept-facturen die nog in
+// Rebu staan MAAR al (op id) in KKN bestaan — dus al overgezet, klaar om uit
+// Rebu opgeruimd te worden voor een overzichtelijke boel daar.
+export async function getRebuOpteRuimenFacturen() {
+  const supabase = await createClient()
+  const adminId = await getAdministratieId()
+  if (!adminId) return { error: 'Niet ingelogd' }
+  const { rol } = await getRolEnEigenMedewerker(supabase, adminId)
+  if (rol !== 'admin') return { error: 'Alleen een beheerder kan Rebu-facturen opruimen' }
+
+  const rebu = await createRebuClient()
+  if (!rebu) return { error: 'REBU_SUPABASE_* env ontbreekt — Rebu-koppeling staat uit', facturen: [] }
+
+  const { data: concepten, error: rebuErr } = await rebu
+    .from('facturen')
+    .select('id, factuurnummer, onderwerp, totaal, created_at, relatie:relaties(bedrijfsnaam)')
+    .eq('status', 'concept')
+    .order('created_at', { ascending: false })
+    .limit(200)
+  if (rebuErr) return { error: `Rebu-DB onbereikbaar: ${rebuErr.message}`, facturen: [] }
+  if (!concepten || concepten.length === 0) return { facturen: [] }
+
+  const ids = concepten.map((f: { id: string }) => f.id)
+  const { data: bestaandeKkn } = await supabase.from('facturen').select('id').in('id', ids)
+  const bestaandeIds = new Set((bestaandeKkn || []).map(f => f.id))
+
+  const facturen = concepten
+    .filter((f: { id: string }) => bestaandeIds.has(f.id))
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .map((f: any) => ({
+      id: f.id as string,
+      factuurnummer: f.factuurnummer as string,
+      onderwerp: f.onderwerp as string | null,
+      totaal: f.totaal as number,
+      klantNaam: (Array.isArray(f.relatie) ? f.relatie[0] : f.relatie)?.bedrijfsnaam || null,
+      aangemaaktOp: f.created_at as string,
+    }))
+
+  return { facturen }
+}
+
+// Verwijdert een al-overgezette concept-factuur uit Rébu (factuur_regels gaan
+// automatisch mee via CASCADE in Rebu's eigen schema). Weigert als de factuur
+// niet (meer) exact zo in KKN terug te vinden is — een verwijdering mag nooit
+// data kwijtraken die nergens anders meer bestaat.
+export async function verwijderRebuFactuurNaOverzetten(rebuFactuurId: string) {
+  const supabase = await createClient()
+  const adminId = await getAdministratieId()
+  if (!adminId) return { error: 'Niet ingelogd' }
+  const { rol } = await getRolEnEigenMedewerker(supabase, adminId)
+  if (rol !== 'admin') return { error: 'Alleen een beheerder kan Rebu-facturen opruimen' }
+
+  const rebu = await createRebuClient()
+  if (!rebu) return { error: 'REBU_SUPABASE_* env ontbreekt — Rebu-koppeling staat uit' }
+
+  const { data: rebuFactuur, error: rebuErr } = await rebu
+    .from('facturen')
+    .select('id, factuurnummer, status, totaal')
+    .eq('id', rebuFactuurId)
+    .maybeSingle()
+  if (rebuErr || !rebuFactuur) return { error: rebuErr?.message || 'Factuur niet (meer) gevonden in Rebu' }
+  if (rebuFactuur.status !== 'concept') return { error: 'Factuur staat in Rebu niet (meer) op concept — niet opruimen' }
+
+  const { data: kknFactuur } = await supabase.from('facturen').select('id, factuurnummer, totaal').eq('id', rebuFactuurId).maybeSingle()
+  if (!kknFactuur) return { error: 'Staat niet (meer) in KKN — eerst overzetten voordat je deze uit Rebu verwijdert' }
+  if (Math.abs(Number(kknFactuur.totaal) - Number(rebuFactuur.totaal)) > 0.01) {
+    return { error: `Bedrag in KKN (€ ${kknFactuur.totaal}) wijkt af van Rebu (€ ${rebuFactuur.totaal}) — niet automatisch opruimen` }
+  }
+
+  const { error: deleteErr } = await rebu.from('facturen').delete().eq('id', rebuFactuurId)
+  if (deleteErr) return { error: `Verwijderen uit Rebu mislukt: ${deleteErr.message}` }
+
+  try {
+    const admin = createAdminClient()
+    await admin.from('audit_log').insert({
+      administratie_id: adminId,
+      actie: 'factuur.verwijderd_uit_rebu_na_overzetten',
+      entiteit_type: 'factuur',
+      entiteit_id: rebuFactuurId,
+      details: { factuurnummer: rebuFactuur.factuurnummer },
+    })
+  } catch { /* audit niet-blokkerend */ }
+
+  return { success: true, factuurnummer: rebuFactuur.factuurnummer as string }
+}
+
 export async function importeerRebuFactuur(rebuFactuurId: string) {
   const supabase = await createClient()
   const adminId = await getAdministratieId()

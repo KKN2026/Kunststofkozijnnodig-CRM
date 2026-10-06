@@ -10,6 +10,7 @@ import { Dialog } from '@/components/ui/dialog'
 import { getRebuTeImporterenFacturen, importeerRebuFactuur } from '@/lib/actions'
 import { formatCurrency, formatDateShort } from '@/lib/utils'
 import { ArrowRightLeft, Loader2, RefreshCw, Inbox, Search, Layers } from 'lucide-react'
+import { RebuFacturenOpruimen } from './rebu-facturen-opruimen'
 
 interface RebuFactuur {
   id: string
@@ -247,6 +248,8 @@ export function RebuFacturenTab() {
       <p className="text-xs text-gray-400 mt-3">
         Na overzetten vind je de factuur terug onder <Link href="/facturatie" className="text-primary underline">Facturatie</Link>.
       </p>
+
+      <RebuFacturenOpruimen />
     </div>
   )
 }
