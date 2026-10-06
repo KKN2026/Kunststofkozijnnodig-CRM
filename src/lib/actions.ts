@@ -13389,20 +13389,23 @@ export async function getRebuTeImporterenFacturen() {
   const rebu = await createRebuClient()
   if (!rebu) return { error: 'REBU_SUPABASE_* env ontbreekt — Rebu-koppeling staat uit', facturen: [] }
 
-  const { data: concepten, error: rebuErr } = await rebu
+  // Niet alleen concepten: ook al-verzonden en vervallen facturen die nog
+  // open staan (nog niet betaald/gecrediteerd) horen hier — "openstaand" in
+  // Rebu, moet ook in KKN openstaand blijven, anders loopt er geld mis.
+  const { data: openstaand, error: rebuErr } = await rebu
     .from('facturen')
-    .select('id, factuurnummer, onderwerp, totaal, created_at, relatie:relaties(bedrijfsnaam)')
-    .eq('status', 'concept')
+    .select('id, factuurnummer, onderwerp, totaal, betaald_bedrag, status, vervaldatum, created_at, relatie:relaties(bedrijfsnaam)')
+    .in('status', ['concept', 'verzonden', 'vervallen'])
     .order('created_at', { ascending: false })
     .limit(200)
   if (rebuErr) return { error: `Rebu-DB onbereikbaar: ${rebuErr.message}`, facturen: [] }
-  if (!concepten || concepten.length === 0) return { facturen: [] }
+  if (!openstaand || openstaand.length === 0) return { facturen: [] }
 
-  const ids = concepten.map((f: { id: string }) => f.id)
+  const ids = openstaand.map((f: { id: string }) => f.id)
   const { data: bestaandeKkn } = await supabase.from('facturen').select('id').in('id', ids)
   const bestaandeIds = new Set((bestaandeKkn || []).map(f => f.id))
 
-  const facturen = concepten
+  const facturen = openstaand
     .filter((f: { id: string }) => !bestaandeIds.has(f.id))
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     .map((f: any) => ({
@@ -13410,6 +13413,9 @@ export async function getRebuTeImporterenFacturen() {
       factuurnummer: f.factuurnummer as string,
       onderwerp: f.onderwerp as string | null,
       totaal: f.totaal as number,
+      openstaandBedrag: Number(f.totaal || 0) - Number(f.betaald_bedrag || 0),
+      status: f.status as string,
+      vervaldatum: f.vervaldatum as string | null,
       klantNaam: (Array.isArray(f.relatie) ? f.relatie[0] : f.relatie)?.bedrijfsnaam || null,
       aangemaaktOp: f.created_at as string,
     }))
@@ -13437,7 +13443,9 @@ export async function importeerRebuFactuur(rebuFactuurId: string) {
     .eq('id', rebuFactuurId)
     .maybeSingle()
   if (factuurErr || !factuur) return { error: factuurErr?.message || 'Factuur niet gevonden in Rebu' }
-  if (factuur.status !== 'concept') return { error: 'Factuur staat in Rebu niet (meer) op concept' }
+  if (!['concept', 'verzonden', 'vervallen'].includes(factuur.status)) {
+    return { error: 'Factuur staat in Rebu niet (meer) open — mogelijk al betaald of gecrediteerd' }
+  }
 
   const admin = createAdminClient()
 
@@ -13482,7 +13490,18 @@ export async function importeerRebuFactuur(rebuFactuurId: string) {
     if (!gerelateerdeBestaat) gerelateerdeFactuurId = null
   }
 
-  const factuurRij = { ...factuur, administratie_id: adminId, order_id: orderId, gerelateerde_factuur_id: gerelateerdeFactuurId }
+  // KRITIEK: mollie_payment_id/betaal_link NOOIT overnemen. Die horen bij
+  // Rébu's eigen Mollie-account — als een klant daarop zou betalen, komt het
+  // geld op Rebu's rekening terecht, niet op die van KKN. zorgVoorBetaallink()
+  // hieronder genereert een verse, aan KKN gekoppelde link.
+  const factuurRij = {
+    ...factuur,
+    administratie_id: adminId,
+    order_id: orderId,
+    gerelateerde_factuur_id: gerelateerdeFactuurId,
+    mollie_payment_id: null,
+    betaal_link: null,
+  }
   const { error: factuurUpsertErr } = await admin.from('facturen').upsert(factuurRij, { onConflict: 'id' })
   if (factuurUpsertErr) return { error: `Factuur overzetten mislukt: ${factuurUpsertErr.message}` }
 
@@ -13493,13 +13512,19 @@ export async function importeerRebuFactuur(rebuFactuurId: string) {
     if (regelsErr) return { error: `Factuurregels overzetten mislukt: ${regelsErr.message}` }
   }
 
+  // Alvast een verse KKN-betaallink klaarzetten (zelfde mechanisme als een
+  // normale factuur-wijziging) — scheelt een handmatige stap, maar het
+  // (opnieuw) VERSTUREN naar de klant blijft bewust een eigen, zichtbare
+  // handeling vanuit Facturatie, niet iets dat deze import zelf doet.
+  await zorgVoorBetaallink(rebuFactuurId)
+
   try {
     const { logAudit } = await import('@/lib/audit')
     await logAudit({
       actie: 'factuur.overgezet_uit_rebu',
       entiteitType: 'factuur',
       entiteitId: rebuFactuurId,
-      details: { factuurnummer: factuur.factuurnummer },
+      details: { factuurnummer: factuur.factuurnummer, rebuStatus: factuur.status },
       administratieId: adminId,
     })
   } catch { /* audit niet-blokkerend */ }
@@ -13507,5 +13532,9 @@ export async function importeerRebuFactuur(rebuFactuurId: string) {
   revalidatePath('/facturatie')
   revalidatePath('/instellingen')
   revalidatePath('/')
-  return { success: true, factuurnummer: factuur.factuurnummer as string }
+  // Was de factuur in Rebu al naar de klant verstuurd? Dan moet 'm ook
+  // opnieuw vanuit KKN verstuurd worden — anders heeft de klant alleen de
+  // oude (Rebu-)link/PDF, niet de nieuwe KKN-betaallink.
+  const moetOpnieuwVerstuurd = factuur.status === 'verzonden' || factuur.status === 'vervallen'
+  return { success: true, factuurnummer: factuur.factuurnummer as string, moetOpnieuwVerstuurd }
 }

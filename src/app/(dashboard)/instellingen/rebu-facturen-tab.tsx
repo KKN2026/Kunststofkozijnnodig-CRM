@@ -6,29 +6,36 @@ import Link from 'next/link'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Badge } from '@/components/ui/badge'
 import { getRebuTeImporterenFacturen, importeerRebuFactuur } from '@/lib/actions'
 import { formatCurrency, formatDateShort } from '@/lib/utils'
-import { ArrowRightLeft, Loader2, RefreshCw, Inbox, Search } from 'lucide-react'
+import { ArrowRightLeft, Loader2, RefreshCw, Inbox, Search, AlertTriangle } from 'lucide-react'
 
 interface RebuFactuur {
   id: string
   factuurnummer: string
   onderwerp: string | null
   totaal: number
+  openstaandBedrag: number
+  status: string
+  vervaldatum: string | null
   klantNaam: string | null
   aangemaaktOp: string
 }
 
 // Tijdelijk tijdens de overstap van Rebu-CRM naar KKN — zie rebu-acceptaties-tab.tsx
-// voor de toelichting. Dit tabblad doet hetzelfde maar dan voor concept-facturen:
-// niets gaat automatisch, alleen via de knop per factuur.
+// voor de toelichting. Dit tabblad doet hetzelfde maar dan voor openstaande
+// (concept/verzonden/vervallen) facturen: niets gaat automatisch, alleen via
+// de knop per factuur. mollie_payment_id/betaal_link worden bij het overzetten
+// NOOIT overgenomen (die horen bij Rebu's eigen Mollie-account) — importeerRebuFactuur
+// zet meteen een verse, aan KKN gekoppelde betaallink klaar.
 export function RebuFacturenTab() {
   const router = useRouter()
   const [facturen, setFacturen] = useState<RebuFactuur[] | null>(null)
   const [error, setError] = useState('')
   const [laden, setLaden] = useState(false)
   const [bezigId, setBezigId] = useState<string | null>(null)
-  const [succesmelding, setSuccesmelding] = useState('')
+  const [succesmelding, setSuccesmelding] = useState<{ tekst: string; waarschuwing: boolean } | null>(null)
   const [zoek, setZoek] = useState('')
 
   async function laadLijst() {
@@ -59,14 +66,21 @@ export function RebuFacturenTab() {
 
   async function handleOverzetten(factuur: RebuFactuur) {
     setBezigId(factuur.id)
-    setSuccesmelding('')
+    setSuccesmelding(null)
     const res = await importeerRebuFactuur(factuur.id)
     setBezigId(null)
     if (res.error) {
       setError(res.error)
       return
     }
-    setSuccesmelding(`Factuur ${res.factuurnummer} staat nu in KKN.`)
+    setSuccesmelding(
+      res.moetOpnieuwVerstuurd
+        ? {
+            waarschuwing: true,
+            tekst: `Factuur ${res.factuurnummer} staat nu in KKN met een nieuwe betaallink — LET OP: was al verstuurd vanuit Rebu, dus stuur 'm ook opnieuw vanuit Facturatie zodat de klant niet per ongeluk de oude (Rebu-)link gebruikt.`,
+          }
+        : { waarschuwing: false, tekst: `Factuur ${res.factuurnummer} staat nu in KKN.` }
+    )
     setFacturen(prev => (prev || []).filter(f => f.id !== factuur.id))
     router.refresh()
   }
@@ -78,8 +92,9 @@ export function RebuFacturenTab() {
     <div>
       <div className="flex items-start justify-between mb-4 gap-4">
         <p className="text-sm text-gray-500">
-          Concept-facturen die nog in Rebu-CRM staan, verschijnen hier. Zet ze met één klik over naar KKN
-          zodat ze daar op naam van KKN (de nieuwe bedrijfsnaam) verder afgehandeld en verzonden kunnen worden.
+          Openstaande facturen (concept, al verstuurd, of vervallen) die nog in Rebu-CRM staan, verschijnen hier.
+          Zet ze met één klik over naar KKN zodat ze daar op naam van KKN (de nieuwe bedrijfsnaam) verder
+          afgehandeld worden — met een verse, bij KKN horende betaallink.
         </p>
         <Button variant="secondary" size="sm" onClick={laadLijst} disabled={laden}>
           {laden ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
@@ -87,7 +102,12 @@ export function RebuFacturenTab() {
         </Button>
       </div>
 
-      {succesmelding && <div className="bg-green-50 text-green-700 text-sm p-3 rounded-md mb-4">{succesmelding}</div>}
+      {succesmelding && (
+        <div className={`flex items-start gap-2 text-sm p-3 rounded-md mb-4 ${succesmelding.waarschuwing ? 'bg-amber-50 text-amber-800' : 'bg-green-50 text-green-700'}`}>
+          {succesmelding.waarschuwing && <AlertTriangle className="h-4 w-4 flex-shrink-0 mt-0.5" />}
+          <span>{succesmelding.tekst}</span>
+        </div>
+      )}
       {error && <div className="bg-red-50 text-red-600 text-sm p-3 rounded-md mb-4">{error}</div>}
 
       {facturen && facturen.length > 0 && (
@@ -108,7 +128,7 @@ export function RebuFacturenTab() {
         <Card>
           <CardContent className="py-10 text-center">
             <Inbox className="h-8 w-8 text-gray-200 mx-auto mb-2" />
-            <p className="text-sm text-gray-400">Geen openstaande Rebu-concept-facturen — niets om over te zetten.</p>
+            <p className="text-sm text-gray-400">Geen openstaande Rebu-facturen — niets om over te zetten.</p>
           </CardContent>
         </Card>
       ) : gefilterd.length === 0 ? (
@@ -125,10 +145,11 @@ export function RebuFacturenTab() {
                 <thead>
                   <tr className="border-b border-gray-100 text-left text-gray-500">
                     <th className="px-4 py-2.5 font-medium">Factuurnummer</th>
+                    <th className="px-4 py-2.5 font-medium">Status</th>
                     <th className="px-4 py-2.5 font-medium">Klant</th>
                     <th className="px-4 py-2.5 font-medium">Onderwerp</th>
-                    <th className="px-4 py-2.5 font-medium text-right">Bedrag</th>
-                    <th className="px-4 py-2.5 font-medium">Aangemaakt op</th>
+                    <th className="px-4 py-2.5 font-medium text-right">Openstaand</th>
+                    <th className="px-4 py-2.5 font-medium">Vervaldatum</th>
                     <th className="px-4 py-2.5 font-medium text-right">Actie</th>
                   </tr>
                 </thead>
@@ -136,10 +157,11 @@ export function RebuFacturenTab() {
                   {gefilterd.map(f => (
                     <tr key={f.id} className="border-b border-gray-50 last:border-0">
                       <td className="px-4 py-2.5 font-mono text-xs">{f.factuurnummer}</td>
+                      <td className="px-4 py-2.5"><Badge status={f.status} /></td>
                       <td className="px-4 py-2.5">{f.klantNaam || '-'}</td>
                       <td className="px-4 py-2.5 text-gray-500 truncate max-w-[220px]">{f.onderwerp || '-'}</td>
-                      <td className="px-4 py-2.5 text-right">{formatCurrency(f.totaal || 0)}</td>
-                      <td className="px-4 py-2.5 text-gray-500">{formatDateShort(f.aangemaaktOp)}</td>
+                      <td className="px-4 py-2.5 text-right">{formatCurrency(f.openstaandBedrag ?? f.totaal ?? 0)}</td>
+                      <td className="px-4 py-2.5 text-gray-500">{f.vervaldatum ? formatDateShort(f.vervaldatum) : '-'}</td>
                       <td className="px-4 py-2.5 text-right">
                         <Button size="sm" onClick={() => handleOverzetten(f)} disabled={bezigId === f.id}>
                           {bezigId === f.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ArrowRightLeft className="h-3.5 w-3.5" />}
