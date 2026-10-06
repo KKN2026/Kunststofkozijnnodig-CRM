@@ -7,9 +7,10 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import { Dialog } from '@/components/ui/dialog'
 import { getRebuTeImporterenFacturen, importeerRebuFactuur } from '@/lib/actions'
 import { formatCurrency, formatDateShort } from '@/lib/utils'
-import { ArrowRightLeft, Loader2, RefreshCw, Inbox, Search, AlertTriangle } from 'lucide-react'
+import { ArrowRightLeft, Loader2, RefreshCw, Inbox, Search, AlertTriangle, Layers } from 'lucide-react'
 
 interface RebuFactuur {
   id: string
@@ -37,6 +38,13 @@ export function RebuFacturenTab() {
   const [bezigId, setBezigId] = useState<string | null>(null)
   const [succesmelding, setSuccesmelding] = useState<{ tekst: string; waarschuwing: boolean } | null>(null)
   const [zoek, setZoek] = useState('')
+  const [bevestigBulk, setBevestigBulk] = useState(false)
+  const [bulkBezig, setBulkBezig] = useState(false)
+  const [bulkVoortgang, setBulkVoortgang] = useState<{ huidig: number; totaal: number } | null>(null)
+  const [bulkResultaat, setBulkResultaat] = useState<{
+    ok: { nr: string; opnieuwVersturen: boolean }[]
+    fout: { nr: string; reden: string }[]
+  } | null>(null)
 
   async function laadLijst() {
     setLaden(true)
@@ -85,6 +93,37 @@ export function RebuFacturenTab() {
     router.refresh()
   }
 
+  // Zet alle (gefilterde) facturen één voor één over — serieel, niet
+  // parallel, zodat elke overdracht de normale, al-geteste server action
+  // doorloopt (incl. de Mollie-betaallink-fix) en 1 mislukte factuur de rest
+  // niet blokkeert. Na afloop een financiële controle: niets mag missen.
+  async function handleAllesOverzetten() {
+    setBevestigBulk(false)
+    setBulkBezig(true)
+    setBulkResultaat(null)
+    setError('')
+    const teDoen = [...gefilterd]
+    const ok: { nr: string; opnieuwVersturen: boolean }[] = []
+    const fout: { nr: string; reden: string }[] = []
+
+    for (let i = 0; i < teDoen.length; i++) {
+      const f = teDoen[i]
+      setBulkVoortgang({ huidig: i + 1, totaal: teDoen.length })
+      const res = await importeerRebuFactuur(f.id)
+      if (res.error) {
+        fout.push({ nr: f.factuurnummer, reden: res.error })
+      } else {
+        ok.push({ nr: res.factuurnummer || f.factuurnummer, opnieuwVersturen: !!res.moetOpnieuwVerstuurd })
+        setFacturen(prev => (prev || []).filter(x => x.id !== f.id))
+      }
+    }
+
+    setBulkVoortgang(null)
+    setBulkBezig(false)
+    setBulkResultaat({ ok, fout })
+    router.refresh()
+  }
+
   const zoekLc = zoek.trim().toLowerCase()
   const gefilterd = (facturen || []).filter(f => !zoekLc || [f.factuurnummer, f.klantNaam, f.onderwerp].some(v => v?.toLowerCase().includes(zoekLc)))
 
@@ -96,11 +135,69 @@ export function RebuFacturenTab() {
           Zet ze met één klik over naar KKN zodat ze daar op naam van KKN (de nieuwe bedrijfsnaam) verder
           afgehandeld worden — met een verse, bij KKN horende betaallink.
         </p>
-        <Button variant="secondary" size="sm" onClick={laadLijst} disabled={laden}>
-          {laden ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-          Vernieuwen
-        </Button>
+        <div className="flex gap-2 flex-shrink-0">
+          <Button variant="secondary" size="sm" onClick={laadLijst} disabled={laden || bulkBezig}>
+            {laden ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+            Vernieuwen
+          </Button>
+          {facturen && facturen.length > 0 && (
+            <Button size="sm" onClick={() => setBevestigBulk(true)} disabled={bulkBezig || bezigId !== null}>
+              {bulkBezig ? <Loader2 className="h-4 w-4 animate-spin" /> : <Layers className="h-4 w-4" />}
+              Alles overzetten ({gefilterd.length})
+            </Button>
+          )}
+        </div>
       </div>
+
+      <Dialog open={bevestigBulk} onClose={() => setBevestigBulk(false)} title="Alle openstaande facturen overzetten?">
+        <div className="p-4 space-y-3 text-sm text-gray-700">
+          <p>
+            Dit zet alle {gefilterd.length} {zoek ? 'gefilterde' : 'openstaande'} facturen hierboven één voor één
+            over naar KKN (samen € {gefilterd.reduce((s, f) => s + (f.openstaandBedrag ?? f.totaal ?? 0), 0).toLocaleString('nl-NL', { minimumFractionDigits: 2 })}).
+            Elke factuur krijgt een verse, bij KKN horende betaallink.
+          </p>
+          <p className="text-amber-700 bg-amber-50 rounded-md p-2.5">
+            Facturen die al verstuurd waren vanuit Rebu moet je daarna zelf opnieuw versturen vanuit Facturatie —
+            dat gebeurt niet automatisch. Na afloop zie je precies welke dat zijn.
+          </p>
+        </div>
+        <div className="flex justify-end gap-2 p-4 border-t border-gray-100">
+          <Button variant="secondary" onClick={() => setBevestigBulk(false)}>Annuleren</Button>
+          <Button onClick={handleAllesOverzetten}>Ja, allemaal overzetten</Button>
+        </div>
+      </Dialog>
+
+      {bulkVoortgang && (
+        <div className="bg-blue-50 text-blue-700 text-sm p-3 rounded-md mb-4 flex items-center gap-2">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Bezig: factuur {bulkVoortgang.huidig} van {bulkVoortgang.totaal}…
+        </div>
+      )}
+
+      {bulkResultaat && (
+        <div className="mb-4 space-y-2">
+          <div className="bg-green-50 text-green-700 text-sm p-3 rounded-md">
+            {bulkResultaat.ok.length} van de {bulkResultaat.ok.length + bulkResultaat.fout.length} facturen overgezet.
+          </div>
+          {bulkResultaat.ok.some(r => r.opnieuwVersturen) && (
+            <div className="flex items-start gap-2 bg-amber-50 text-amber-800 text-sm p-3 rounded-md">
+              <AlertTriangle className="h-4 w-4 flex-shrink-0 mt-0.5" />
+              <span>
+                Opnieuw versturen vanuit <Link href="/facturatie" className="underline">Facturatie</Link> (waren al
+                verstuurd vanuit Rebu): {bulkResultaat.ok.filter(r => r.opnieuwVersturen).map(r => r.nr).join(', ')}
+              </span>
+            </div>
+          )}
+          {bulkResultaat.fout.length > 0 && (
+            <div className="bg-red-50 text-red-700 text-sm p-3 rounded-md">
+              <p className="font-medium mb-1">Mislukt — deze {bulkResultaat.fout.length} controleren:</p>
+              <ul className="list-disc list-inside space-y-0.5">
+                {bulkResultaat.fout.map(f => <li key={f.nr}>{f.nr}: {f.reden}</li>)}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
 
       {succesmelding && (
         <div className={`flex items-start gap-2 text-sm p-3 rounded-md mb-4 ${succesmelding.waarschuwing ? 'bg-amber-50 text-amber-800' : 'bg-green-50 text-green-700'}`}>
@@ -163,7 +260,7 @@ export function RebuFacturenTab() {
                       <td className="px-4 py-2.5 text-right">{formatCurrency(f.openstaandBedrag ?? f.totaal ?? 0)}</td>
                       <td className="px-4 py-2.5 text-gray-500">{f.vervaldatum ? formatDateShort(f.vervaldatum) : '-'}</td>
                       <td className="px-4 py-2.5 text-right">
-                        <Button size="sm" onClick={() => handleOverzetten(f)} disabled={bezigId === f.id}>
+                        <Button size="sm" onClick={() => handleOverzetten(f)} disabled={bezigId === f.id || bulkBezig}>
                           {bezigId === f.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ArrowRightLeft className="h-3.5 w-3.5" />}
                           Overzetten naar KKN
                         </Button>
