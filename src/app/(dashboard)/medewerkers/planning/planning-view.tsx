@@ -7,6 +7,7 @@ import { PageHeader } from '@/components/ui/page-header'
 import { ChevronLeft, ChevronRight, ArrowLeft } from 'lucide-react'
 import { getMedewerkerPlanning } from '@/lib/actions'
 import Link from 'next/link'
+import { getISOWeek } from 'date-fns'
 
 interface Medewerker {
   id: string
@@ -72,7 +73,7 @@ export function PlanningView({ medewerkers }: { medewerkers: Medewerker[] }) {
     const start = days[0]
     const end = days[6]
     const maanden = ['jan', 'feb', 'mrt', 'apr', 'mei', 'jun', 'jul', 'aug', 'sep', 'okt', 'nov', 'dec']
-    return `${start.getDate()} ${maanden[start.getMonth()]} — ${end.getDate()} ${maanden[end.getMonth()]} ${end.getFullYear()}`
+    return `Week ${getISOWeek(start)} · ${start.getDate()} ${maanden[start.getMonth()]} — ${end.getDate()} ${maanden[end.getMonth()]} ${end.getFullYear()}`
   })()
 
   return (

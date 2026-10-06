@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useTransition } from 'react'
+import { useState, useMemo, useTransition, Fragment } from 'react'
 import { useRouter } from 'next/navigation'
 import { PageHeader } from '@/components/ui/page-header'
 import { Button } from '@/components/ui/button'
@@ -14,7 +14,7 @@ import {
 } from 'lucide-react'
 import {
   startOfMonth, endOfMonth, startOfWeek, endOfWeek,
-  addMonths, subMonths, eachDayOfInterval, format, isSameMonth, isSameDay, isToday,
+  addMonths, subMonths, eachDayOfInterval, format, isSameMonth, isSameDay, isToday, getISOWeek,
 } from 'date-fns'
 import { nl } from 'date-fns/locale'
 
@@ -111,6 +111,13 @@ export function AgendaView({
     const calEnd = endOfWeek(monthEnd, { weekStartsOn: 1 })
     return eachDayOfInterval({ start: calStart, end: calEnd })
   }, [currentMonth])
+
+  // Weeknummers: per rij (7 dagen) het ISO-weeknummer van de maandag tonen.
+  const weekRows = useMemo(() => {
+    const rows: Date[][] = []
+    for (let i = 0; i < days.length; i += 7) rows.push(days.slice(i, i + 7))
+    return rows
+  }, [days])
 
   const selectedDateStr = selectedDate ? format(selectedDate, 'yyyy-MM-dd') : null
   const selectedItems = selectedDateStr ? (itemsByDate.get(selectedDateStr) || []) : []
@@ -233,80 +240,94 @@ export function AgendaView({
         })}
       </div>
 
-      {/* Calendar header */}
-      <div className="flex items-center justify-between mb-2">
-        <h2 className="text-lg font-semibold text-gray-900 capitalize">
-          {format(currentMonth, 'MMMM yyyy', { locale: nl })}
-        </h2>
-        <div className="flex items-center gap-1">
-          <Button variant="ghost" size="sm" onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}>
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <Button variant="ghost" size="sm" onClick={() => { setCurrentMonth(new Date()); setSelectedDate(new Date()) }}>
-            Vandaag
-          </Button>
-          <Button variant="ghost" size="sm" onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}>
-            <ChevronRight className="h-4 w-4" />
-          </Button>
+      {/* Maandkop + weekdag-header blijven zichtbaar tijdens het scrollen,
+          vlak onder de vaste hoofdheader (die is h-14/sticky top-0 z-30) —
+          anders weet je bij een lange geselecteerde-dag-lijst eronder niet
+          meer in welke maand je aan het scrollen bent. */}
+      <div className="sticky top-14 z-20 bg-white pt-1 pb-0">
+        {/* Calendar header */}
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="text-lg font-semibold text-gray-900 capitalize">
+            {format(currentMonth, 'MMMM yyyy', { locale: nl })}
+          </h2>
+          <div className="flex items-center gap-1">
+            <Button variant="ghost" size="sm" onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}>
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => { setCurrentMonth(new Date()); setSelectedDate(new Date()) }}>
+              Vandaag
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}>
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+
+        {/* Weekday headers — eerste, smalle kolom is voor het weeknummer */}
+        <div className="grid grid-cols-[2.25rem_repeat(7,1fr)] gap-px bg-gray-200 rounded-t-lg overflow-hidden">
+          <div className="bg-gray-50 py-2 text-center text-[10px] font-medium text-gray-400">Wk</div>
+          {['Ma', 'Di', 'Wo', 'Do', 'Vr', 'Za', 'Zo'].map(dag => (
+            <div key={dag} className="bg-gray-50 py-2 text-center text-xs font-medium text-gray-500">
+              {dag}
+            </div>
+          ))}
         </div>
       </div>
 
-      {/* Weekday headers */}
-      <div className="grid grid-cols-7 gap-px bg-gray-200 rounded-t-lg overflow-hidden">
-        {['Ma', 'Di', 'Wo', 'Do', 'Vr', 'Za', 'Zo'].map(dag => (
-          <div key={dag} className="bg-gray-50 py-2 text-center text-xs font-medium text-gray-500">
-            {dag}
-          </div>
-        ))}
-      </div>
-
       {/* Calendar grid */}
-      <div className="grid grid-cols-7 gap-px bg-gray-200 rounded-b-lg overflow-hidden">
-        {days.map(day => {
-          const dayStr = format(day, 'yyyy-MM-dd')
-          const dayItems = itemsByDate.get(dayStr) || []
-          const isCurrentMonth = isSameMonth(day, currentMonth)
-          const isSelected = selectedDate && isSameDay(day, selectedDate)
-          const today = isToday(day)
+      <div className="grid grid-cols-[2.25rem_repeat(7,1fr)] gap-px bg-gray-200 rounded-b-lg overflow-hidden">
+        {weekRows.map(week => (
+          <Fragment key={week[0].toISOString()}>
+            <div className="bg-gray-50 flex items-center justify-center text-[11px] font-medium text-gray-400">
+              {getISOWeek(week[0])}
+            </div>
+            {week.map(day => {
+              const dayStr = format(day, 'yyyy-MM-dd')
+              const dayItems = itemsByDate.get(dayStr) || []
+              const isCurrentMonth = isSameMonth(day, currentMonth)
+              const isSelected = selectedDate && isSameDay(day, selectedDate)
+              const today = isToday(day)
 
-          return (
-            <div
-              key={dayStr}
-              onClick={() => setSelectedDate(day)}
-              className={`
-                min-h-[80px] bg-white p-1.5 cursor-pointer transition-colors
-                ${!isCurrentMonth ? 'bg-gray-50' : ''}
-                ${isSelected ? 'ring-2 ring-primary ring-inset' : ''}
-                hover:bg-gray-50
-              `}
-            >
-              <div className={`
-                text-xs font-medium mb-1 w-6 h-6 flex items-center justify-center rounded-full
-                ${today ? 'bg-primary text-white' : ''}
-                ${!isCurrentMonth ? 'text-gray-300' : 'text-gray-700'}
-              `}>
-                {format(day, 'd')}
-              </div>
-              {dayItems.length > 0 && isCurrentMonth && (
-                <div className="space-y-0.5">
-                  {dayItems.slice(0, 3).map(item => {
-                    const cfg = typeConfig[item.type]
-                    return (
-                      <div key={`${item.type}-${item.id}`} className={`text-[10px] leading-tight px-1 py-0.5 rounded ${cfg.bg} ${cfg.text} truncate`}>
-                        {item.titel}
-                      </div>
-                    )
-                  })}
-                  {dayItems.length > 3 && (
-                    <div className="text-[10px] text-gray-400 px-1">
-                      +{dayItems.length - 3} meer
+              return (
+                <div
+                  key={dayStr}
+                  onClick={() => setSelectedDate(day)}
+                  className={`
+                    min-h-[80px] bg-white p-1.5 cursor-pointer transition-colors
+                    ${!isCurrentMonth ? 'bg-gray-50' : ''}
+                    ${isSelected ? 'ring-2 ring-primary ring-inset' : ''}
+                    hover:bg-gray-50
+                  `}
+                >
+                  <div className={`
+                    text-xs font-medium mb-1 w-6 h-6 flex items-center justify-center rounded-full
+                    ${today ? 'bg-primary text-white' : ''}
+                    ${!isCurrentMonth ? 'text-gray-300' : 'text-gray-700'}
+                  `}>
+                    {format(day, 'd')}
+                  </div>
+                  {dayItems.length > 0 && isCurrentMonth && (
+                    <div className="space-y-0.5">
+                      {dayItems.slice(0, 3).map(item => {
+                        const cfg = typeConfig[item.type]
+                        return (
+                          <div key={`${item.type}-${item.id}`} className={`text-[10px] leading-tight px-1 py-0.5 rounded ${cfg.bg} ${cfg.text} truncate`}>
+                            {item.titel}
+                          </div>
+                        )
+                      })}
+                      {dayItems.length > 3 && (
+                        <div className="text-[10px] text-gray-400 px-1">
+                          +{dayItems.length - 3} meer
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
-              )}
-            </div>
-          )
-        })}
+              )
+            })}
+          </Fragment>
+        ))}
       </div>
 
       {/* Selected date detail */}

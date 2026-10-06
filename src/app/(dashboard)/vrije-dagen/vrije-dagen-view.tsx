@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { Fragment, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -16,7 +16,7 @@ import {
 } from 'lucide-react'
 import {
   format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, addMonths, subMonths,
-  eachDayOfInterval, isSameMonth, isSameDay, isToday,
+  eachDayOfInterval, isSameMonth, isSameDay, isToday, getISOWeek,
 } from 'date-fns'
 import { nl } from 'date-fns/locale'
 
@@ -215,6 +215,13 @@ export function VrijeDagenView({ items, rol, magGoedkeuren, eigenMedewerkerId, m
     return eachDayOfInterval({ start: calStart, end: calEnd })
   }, [kalenderMaand])
 
+  // Weeknummers: per rij (7 dagen) het ISO-weeknummer van de maandag tonen.
+  const kalenderWeekRijen = useMemo(() => {
+    const rows: Date[][] = []
+    for (let i = 0; i < kalenderDagen.length; i += 7) rows.push(kalenderDagen.slice(i, i + 7))
+    return rows
+  }, [kalenderDagen])
+
   const gekozenDagStr = gekozenDag ? format(gekozenDag, 'yyyy-MM-dd') : null
   const gekozenDagItems = gekozenDagStr ? (kalenderPerDag.get(gekozenDagStr) || []) : []
 
@@ -350,60 +357,74 @@ export function VrijeDagenView({ items, rol, magGoedkeuren, eigenMedewerkerId, m
       {/* Kalender/agenda-weergave */}
       <Card>
         <CardContent className="p-5">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-base font-semibold text-gray-900 capitalize">{format(kalenderMaand, 'MMMM yyyy', { locale: nl })}</h2>
-            <div className="flex items-center gap-1">
-              <Button variant="ghost" size="sm" onClick={() => setKalenderMaand(m => subMonths(m, 1))}>
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-              <Button variant="ghost" size="sm" onClick={() => { setKalenderMaand(new Date()); setGekozenDag(new Date()) }}>
-                Vandaag
-              </Button>
-              <Button variant="ghost" size="sm" onClick={() => setKalenderMaand(m => addMonths(m, 1))}>
-                <ChevronRight className="h-4 w-4" />
-              </Button>
+          {/* Maandkop + weekdag-header blijven zichtbaar tijdens het scrollen,
+              vlak onder de vaste hoofdheader (h-14/sticky top-0 z-30) — anders
+              weet je bij een lange dag-detaillijst eronder niet meer in welke
+              maand je aan het scrollen bent. */}
+          <div className="sticky top-14 z-20 bg-white pb-0">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-base font-semibold text-gray-900 capitalize">{format(kalenderMaand, 'MMMM yyyy', { locale: nl })}</h2>
+              <div className="flex items-center gap-1">
+                <Button variant="ghost" size="sm" onClick={() => setKalenderMaand(m => subMonths(m, 1))}>
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => { setKalenderMaand(new Date()); setGekozenDag(new Date()) }}>
+                  Vandaag
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => setKalenderMaand(m => addMonths(m, 1))}>
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-[2.25rem_repeat(7,1fr)] gap-px bg-gray-200 rounded-t-lg overflow-hidden">
+              <div className="bg-gray-50 py-2 text-center text-[10px] font-medium text-gray-400">Wk</div>
+              {['Ma', 'Di', 'Wo', 'Do', 'Vr', 'Za', 'Zo'].map(dag => (
+                <div key={dag} className="bg-gray-50 py-2 text-center text-xs font-medium text-gray-500">{dag}</div>
+              ))}
             </div>
           </div>
-
-          <div className="grid grid-cols-7 gap-px bg-gray-200 rounded-t-lg overflow-hidden">
-            {['Ma', 'Di', 'Wo', 'Do', 'Vr', 'Za', 'Zo'].map(dag => (
-              <div key={dag} className="bg-gray-50 py-2 text-center text-xs font-medium text-gray-500">{dag}</div>
-            ))}
-          </div>
-          <div className="grid grid-cols-7 gap-px bg-gray-200 rounded-b-lg overflow-hidden">
-            {kalenderDagen.map(dag => {
-              const dagStr = format(dag, 'yyyy-MM-dd')
-              const dagItems = kalenderPerDag.get(dagStr) || []
-              const isCurrentMonth = isSameMonth(dag, kalenderMaand)
-              const isSelected = gekozenDag && isSameDay(dag, gekozenDag)
-              const vandaag = isToday(dag)
-              return (
-                <div
-                  key={dagStr}
-                  onClick={() => setGekozenDag(dag)}
-                  className={`min-h-[76px] bg-white p-1.5 cursor-pointer transition-colors hover:bg-gray-50 ${!isCurrentMonth ? 'bg-gray-50' : ''} ${isSelected ? 'ring-2 ring-primary ring-inset' : ''}`}
-                >
-                  <div className={`text-xs font-medium mb-1 w-6 h-6 flex items-center justify-center rounded-full ${vandaag ? 'bg-primary text-white' : ''} ${!isCurrentMonth ? 'text-gray-300' : 'text-gray-700'}`}>
-                    {format(dag, 'd')}
-                  </div>
-                  {isCurrentMonth && dagItems.length > 0 && (
-                    <div className="space-y-0.5">
-                      {dagItems.slice(0, 3).map((it, i) => (
-                        <div
-                          key={`${it.id}-${i}`}
-                          className={`text-[10px] leading-tight px-1 py-0.5 rounded truncate text-white ${it.status === 'aangevraagd' ? 'opacity-50' : ''}`}
-                          style={{ backgroundColor: it.kleur }}
-                          title={`${it.naam} — ${TYPE_LABEL[it.type] || it.type}${it.uren ? ` (${it.uren}u)` : ''}`}
-                        >
-                          {initialen(it.naam)}{it.uren ? ` ${it.uren}u` : ''}
-                        </div>
-                      ))}
-                      {dagItems.length > 3 && <div className="text-[10px] text-gray-400 px-1">+{dagItems.length - 3} meer</div>}
-                    </div>
-                  )}
+          <div className="grid grid-cols-[2.25rem_repeat(7,1fr)] gap-px bg-gray-200 rounded-b-lg overflow-hidden">
+            {kalenderWeekRijen.map(week => (
+              <Fragment key={week[0].toISOString()}>
+                <div className="bg-gray-50 flex items-center justify-center text-[11px] font-medium text-gray-400">
+                  {getISOWeek(week[0])}
                 </div>
-              )
-            })}
+                {week.map(dag => {
+                  const dagStr = format(dag, 'yyyy-MM-dd')
+                  const dagItems = kalenderPerDag.get(dagStr) || []
+                  const isCurrentMonth = isSameMonth(dag, kalenderMaand)
+                  const isSelected = gekozenDag && isSameDay(dag, gekozenDag)
+                  const vandaag = isToday(dag)
+                  return (
+                    <div
+                      key={dagStr}
+                      onClick={() => setGekozenDag(dag)}
+                      className={`min-h-[76px] bg-white p-1.5 cursor-pointer transition-colors hover:bg-gray-50 ${!isCurrentMonth ? 'bg-gray-50' : ''} ${isSelected ? 'ring-2 ring-primary ring-inset' : ''}`}
+                    >
+                      <div className={`text-xs font-medium mb-1 w-6 h-6 flex items-center justify-center rounded-full ${vandaag ? 'bg-primary text-white' : ''} ${!isCurrentMonth ? 'text-gray-300' : 'text-gray-700'}`}>
+                        {format(dag, 'd')}
+                      </div>
+                      {isCurrentMonth && dagItems.length > 0 && (
+                        <div className="space-y-0.5">
+                          {dagItems.slice(0, 3).map((it, i) => (
+                            <div
+                              key={`${it.id}-${i}`}
+                              className={`text-[10px] leading-tight px-1 py-0.5 rounded truncate text-white ${it.status === 'aangevraagd' ? 'opacity-50' : ''}`}
+                              style={{ backgroundColor: it.kleur }}
+                              title={`${it.naam} — ${TYPE_LABEL[it.type] || it.type}${it.uren ? ` (${it.uren}u)` : ''}`}
+                            >
+                              {initialen(it.naam)}{it.uren ? ` ${it.uren}u` : ''}
+                            </div>
+                          ))}
+                          {dagItems.length > 3 && <div className="text-[10px] text-gray-400 px-1">+{dagItems.length - 3} meer</div>}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </Fragment>
+            ))}
           </div>
 
           {/* Legenda */}
