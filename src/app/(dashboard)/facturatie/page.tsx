@@ -2,7 +2,6 @@ import { getFacturen, getOrdersMetFactuurStatus } from '@/lib/actions'
 import { snelstartSleutelStatus } from '@/lib/snelstart-sleutel'
 import { mollieHerstelSignaal } from '@/lib/mollie-herstel-signaal'
 import { FactuurList } from './factuur-list'
-import { RebuFacturenBanner } from './rebu-facturen-banner'
 
 export const revalidate = 15
 
@@ -16,7 +15,6 @@ export default async function FacturatiePage() {
   const sleutel = snelstartSleutelStatus()
   return (
     <>
-      <RebuFacturenBanner />
       <FactuurList
         facturen={facturen}
         ordersMetStatus={ordersMetStatus}

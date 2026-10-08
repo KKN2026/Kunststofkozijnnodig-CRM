@@ -21,7 +21,6 @@ import {
   type InstellingWaarden,
 } from '@/lib/instellingen'
 import { Save, RotateCcw, Loader2, Lock, Plus, Trash2, UserPlus, Pencil, KeyRound } from 'lucide-react'
-import { RebuFacturenTab } from './rebu-facturen-tab'
 
 interface Administratie {
   id: string
@@ -70,11 +69,6 @@ const BEHEER_TABS = [
   { key: 'bedrijf' as const, label: 'Bedrijfsgegevens' },
   { key: 'gebruikers' as const, label: 'Gebruikers' },
   { key: 'nummering' as const, label: 'Nummering' },
-  // Tijdelijk tijdens de overstap van Rebu-CRM naar KKN — mag weer weg zodra
-  // Rebu definitief dicht gaat (zie rebu-facturen-tab.tsx). De vergelijkbare
-  // tab voor offertes ("Rebu-acceptaties") is verwijderd — overgezette data
-  // blijft gewoon staan, alleen de UI is weg.
-  { key: 'rebu-facturen' as const, label: 'Rebu-concept-facturen' },
 ]
 
 export function InstellingenView({
@@ -481,8 +475,6 @@ export function InstellingenView({
           )}
         </div>
       )}
-
-      {tab === 'rebu-facturen' && <RebuFacturenTab />}
 
       {actieveGroep && (() => {
         const items = INSTELLINGEN.filter(d => d.groep === actieveGroep.key)
