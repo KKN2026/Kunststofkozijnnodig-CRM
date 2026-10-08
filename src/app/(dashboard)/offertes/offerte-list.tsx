@@ -10,7 +10,6 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/empty-state'
-import { RebuOffertesOpruimen } from '../instellingen/rebu-offertes-opruimen'
 import { formatCurrency, formatDateShort } from '@/lib/utils'
 import { offerteStatussen, statusKleuren } from '@/lib/constants'
 import { Plus, FileText, Download, X, Trash2, AlertTriangle, Loader2 } from 'lucide-react'
@@ -192,8 +191,6 @@ export function OfferteList({ offertes, valmaand }: { offertes: Offerte[]; valma
           </div>
         }
       />
-
-      <RebuOffertesOpruimen />
 
       {/* Mini-dashboard bovenaan de sectie. Tegels zijn klikbaar en filteren de
           tabel eronder — zelfde statusFilter-mechanisme als de pill-rij, dus

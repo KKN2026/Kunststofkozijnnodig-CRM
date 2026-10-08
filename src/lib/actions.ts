@@ -13104,15 +13104,13 @@ export async function resetInstellingen(sleutels: string[]) {
   return { success: true }
 }
 
-// === REBU-ACCEPTATIES (OVERGANG) ===
-// Tijdens de overstap van Rebu-CRM naar KKN staan er nog offertes in Rebu die
-// nog niet beslist zijn. Zodra een klant die ALSNOG in Rebu accepteert, wil je
-// 'm met één klik overzetten naar KKN — zodat de order/factuur op naam van
-// KKN (nieuwe bedrijfsnaam) loopt i.p.v. Rebu. Dit is bewust GEEN bulk-import
-// van alles: alleen offertes met status 'geaccepteerd' in Rebu die nog niet
-// (op id) in KKN bestaan komen in de lijst. Zet REBU_SUPABASE_* env-vars om
-// uit te schakelen zodra Rebu definitief dicht gaat (zelfde schakelaar als de
-// rebu-acceptaties-cron).
+// === REBU-OVERGANG (concept-facturen) ===
+// Tijdens de overstap van Rebu-CRM naar KKN zet deze sectie concept-facturen
+// uit Rebu over naar KKN (zie importeerRebuFactuur hieronder). De vergelijkbare
+// functie voor offertes ("Rebu-acceptaties") is uit de KKN-interface gehaald —
+// die offertes staan al over, zie de opruim-functies verderop om de Rebu-kant
+// leeg te maken. Zet REBU_SUPABASE_* env-vars om deze hele sectie uit te
+// schakelen zodra Rebu definitief dicht gaat.
 //
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function createRebuClient(): Promise<any | null> {
@@ -13144,46 +13142,6 @@ async function filterNaarKknSchema(admin: any, tabel: string, rij: Record<string
     if (kolommen.has(k)) gefilterd[k] = v
   }
   return gefilterd
-}
-
-export async function getRebuTeImporterenOffertes() {
-  const supabase = await createClient()
-  const adminId = await getAdministratieId()
-  if (!adminId) return { error: 'Niet ingelogd' }
-  const { rol } = await getRolEnEigenMedewerker(supabase, adminId)
-  if (rol !== 'admin') return { error: 'Alleen een beheerder kan Rebu-offertes overzetten' }
-
-  const rebu = await createRebuClient()
-  if (!rebu) return { error: 'REBU_SUPABASE_* env ontbreekt — Rebu-koppeling staat uit', offertes: [] }
-
-  const { data: geaccepteerd, error: rebuErr } = await rebu
-    .from('offertes')
-    .select('id, offertenummer, onderwerp, totaal, updated_at, relatie:relaties(bedrijfsnaam)')
-    .eq('status', 'geaccepteerd')
-    .order('updated_at', { ascending: false })
-    .limit(200)
-  if (rebuErr) return { error: `Rebu-DB onbereikbaar: ${rebuErr.message}`, offertes: [] }
-  if (!geaccepteerd || geaccepteerd.length === 0) return { offertes: [] }
-
-  // Eruit filteren wat al in KKN staat (op zelfde UUID — zo migreert het
-  // bulkscript ook, en zo blijft dit idempotent/geen dubbele import).
-  const ids = geaccepteerd.map((o: { id: string }) => o.id)
-  const { data: bestaandeKkn } = await supabase.from('offertes').select('id').in('id', ids)
-  const bestaandeIds = new Set((bestaandeKkn || []).map(o => o.id))
-
-  const offertes = geaccepteerd
-    .filter((o: { id: string }) => !bestaandeIds.has(o.id))
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    .map((o: any) => ({
-      id: o.id as string,
-      offertenummer: o.offertenummer as string,
-      onderwerp: o.onderwerp as string | null,
-      totaal: o.totaal as number,
-      klantNaam: (Array.isArray(o.relatie) ? o.relatie[0] : o.relatie)?.bedrijfsnaam || null,
-      geaccepteerdOp: o.updated_at as string,
-    }))
-
-  return { offertes }
 }
 
 // Zorgt dat een Rebu-relatie (+ contactpersonen) in KKN staat — idempotent,
@@ -13221,9 +13179,9 @@ async function zorgRelatieInKkn(rebu: any, admin: any, adminId: string, rebuRela
 
 // Zorgt dat een Rebu-offerte (+ regels, project, relatie/contactpersonen,
 // leverancier-documenten) in KKN staat — idempotent, doet niets als de
-// offerte (op id) al bestaat. Gedeeld door importeerRebuOfferte() en de
-// factuur-import hieronder (een concept-factuur hangt bijna altijd aan een
-// offerte die zelf nog niet per se al is overgezet).
+// offerte (op id) al bestaat. Gebruikt door de factuur-import hieronder (een
+// concept-factuur hangt bijna altijd aan een offerte die zelf nog niet per
+// se al is overgezet).
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function zorgOfferteInKkn(rebu: any, admin: any, adminId: string, rebuOfferteId: string): Promise<{ error?: string; offertenummer?: string }> {
   const { data: bestaat } = await admin.from('offertes').select('id, offertenummer').eq('id', rebuOfferteId).maybeSingle()
@@ -13359,158 +13317,6 @@ async function zorgOrderInKkn(rebu: any, admin: any, adminId: string, rebuOrderI
   }
 
   return { orderId: rebuOrderId }
-}
-
-export async function importeerRebuOfferte(rebuOfferteId: string) {
-  const supabase = await createClient()
-  const adminId = await getAdministratieId()
-  if (!adminId) return { error: 'Niet ingelogd' }
-  const { rol } = await getRolEnEigenMedewerker(supabase, adminId)
-  if (rol !== 'admin') return { error: 'Alleen een beheerder kan Rebu-offertes overzetten' }
-
-  const rebu = await createRebuClient()
-  if (!rebu) return { error: 'REBU_SUPABASE_* env ontbreekt — Rebu-koppeling staat uit' }
-
-  // Defensief opnieuw checken — voorkomt dat een KKN-offerte per ongeluk
-  // overschreven wordt (bv. dubbelklik, of verouderde lijst in de browser).
-  const { data: bestaat } = await supabase.from('offertes').select('id').eq('id', rebuOfferteId).maybeSingle()
-  if (bestaat) return { error: 'Deze offerte staat al in KKN' }
-
-  const { data: offerteCheck, error: offerteErr } = await rebu
-    .from('offertes')
-    .select('status, offertenummer')
-    .eq('id', rebuOfferteId)
-    .maybeSingle()
-  if (offerteErr || !offerteCheck) return { error: offerteErr?.message || 'Offerte niet gevonden in Rebu' }
-  if (offerteCheck.status !== 'geaccepteerd') return { error: 'Offerte staat in Rebu niet (meer) op geaccepteerd' }
-
-  const admin = createAdminClient()
-  const res = await zorgOfferteInKkn(rebu, admin, adminId, rebuOfferteId)
-  if (res.error) return { error: res.error }
-
-  // ---------- order aanmaken (zelfde stap als een interne acceptatie) ----------
-  try {
-    await createOrderFromOfferte(rebuOfferteId, supabase, adminId)
-  } catch (e) {
-    // Offerte staat al over in KKN; order kan alsnog handmatig aangemaakt
-    // worden vanaf de offerte-detailpagina — dit mag de import niet terugdraaien.
-    console.error('Order aanmaken na Rebu-import mislukt:', e instanceof Error ? e.message : e)
-  }
-
-  try {
-    const { logAudit } = await import('@/lib/audit')
-    await logAudit({
-      actie: 'offerte.overgezet_uit_rebu',
-      entiteitType: 'offerte',
-      entiteitId: rebuOfferteId,
-      details: { offertenummer: res.offertenummer },
-      administratieId: adminId,
-    })
-  } catch { /* audit niet-blokkerend */ }
-
-  revalidatePath('/offertes')
-  revalidatePath('/instellingen')
-  revalidatePath('/')
-  return { success: true, offertenummer: res.offertenummer as string }
-}
-
-// Spiegelbeeld van getRebuTeImporterenOffertes(): geaccepteerde offertes die
-// nog in Rebu staan MAAR al (op id) in KKN bestaan — klaar om uit Rebu
-// opgeruimd te worden voor overzicht daar.
-export async function getRebuOpteRuimenOffertes() {
-  const supabase = await createClient()
-  const adminId = await getAdministratieId()
-  if (!adminId) return { error: 'Niet ingelogd' }
-  const { rol } = await getRolEnEigenMedewerker(supabase, adminId)
-  if (rol !== 'admin') return { error: 'Alleen een beheerder kan Rebu-offertes opruimen' }
-
-  const rebu = await createRebuClient()
-  if (!rebu) return { error: 'REBU_SUPABASE_* env ontbreekt — Rebu-koppeling staat uit', offertes: [] }
-
-  const { data: geaccepteerd, error: rebuErr } = await rebu
-    .from('offertes')
-    .select('id, offertenummer, onderwerp, totaal, relatie:relaties(bedrijfsnaam)')
-    .eq('status', 'geaccepteerd')
-    .order('updated_at', { ascending: false })
-    .limit(200)
-  if (rebuErr) return { error: `Rebu-DB onbereikbaar: ${rebuErr.message}`, offertes: [] }
-  if (!geaccepteerd || geaccepteerd.length === 0) return { offertes: [] }
-
-  const ids = geaccepteerd.map((o: { id: string }) => o.id)
-  const { data: bestaandeKkn } = await supabase.from('offertes').select('id').in('id', ids)
-  const bestaandeIds = new Set((bestaandeKkn || []).map(o => o.id))
-
-  const offertes = geaccepteerd
-    .filter((o: { id: string }) => bestaandeIds.has(o.id))
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    .map((o: any) => ({
-      id: o.id as string,
-      offertenummer: o.offertenummer as string,
-      onderwerp: o.onderwerp as string | null,
-      totaal: o.totaal as number,
-      klantNaam: (Array.isArray(o.relatie) ? o.relatie[0] : o.relatie)?.bedrijfsnaam || null,
-    }))
-
-  return { offertes }
-}
-
-// Verwijdert een al-overgezette offerte uit Rébu — incl. een eventueel
-// gekoppelde Rebu-order (die inmiddels overbodig is: de KKN-kant heeft z'n
-// eigen order, met hetzelfde of een nieuw UUID, zie zorgOrderInKkn/
-// createOrderFromOfferte). Weigert als het bedrag niet exact overeenkomt met
-// KKN, en laat de database zelf blokkeren (foreign key) als er in Rebu nog
-// iets anders (facturen, faalkosten) aan de order/offerte hangt dat niet is
-// meeverhuisd — zo'n fout komt gewoon terug als nette melding i.p.v. dat er
-// stilzwijgend data verloren gaat.
-export async function verwijderRebuOfferteNaOverzetten(rebuOfferteId: string) {
-  const supabase = await createClient()
-  const adminId = await getAdministratieId()
-  if (!adminId) return { error: 'Niet ingelogd' }
-  const { rol } = await getRolEnEigenMedewerker(supabase, adminId)
-  if (rol !== 'admin') return { error: 'Alleen een beheerder kan Rebu-offertes opruimen' }
-
-  const rebu = await createRebuClient()
-  if (!rebu) return { error: 'REBU_SUPABASE_* env ontbreekt — Rebu-koppeling staat uit' }
-
-  const { data: rebuOfferte, error: rebuErr } = await rebu
-    .from('offertes')
-    .select('id, offertenummer, status, totaal')
-    .eq('id', rebuOfferteId)
-    .maybeSingle()
-  if (rebuErr || !rebuOfferte) return { error: rebuErr?.message || 'Offerte niet (meer) gevonden in Rebu' }
-  if (rebuOfferte.status !== 'geaccepteerd') return { error: 'Offerte staat in Rebu niet (meer) op geaccepteerd — niet opruimen' }
-
-  const { data: kknOfferte } = await supabase.from('offertes').select('id, totaal').eq('id', rebuOfferteId).maybeSingle()
-  if (!kknOfferte) return { error: 'Staat niet (meer) in KKN — eerst overzetten voordat je deze uit Rebu verwijdert' }
-  if (Math.abs(Number(kknOfferte.totaal) - Number(rebuOfferte.totaal)) > 0.01) {
-    return { error: `Bedrag in KKN (€ ${kknOfferte.totaal}) wijkt af van Rebu (€ ${rebuOfferte.totaal}) — niet automatisch opruimen` }
-  }
-
-  // Gekoppelde Rebu-order eerst (offertes.orders heeft NO ACTION in Rebu —
-  // zonder dit zou de offerte-delete hieronder meteen falen als er een order is).
-  const { data: rebuOrders } = await rebu.from('orders').select('id, ordernummer').eq('offerte_id', rebuOfferteId)
-  for (const order of rebuOrders || []) {
-    const { error: orderDeleteErr } = await rebu.from('orders').delete().eq('id', order.id)
-    if (orderDeleteErr) {
-      return { error: `Order ${order.ordernummer} in Rebu kon niet verwijderd worden (${orderDeleteErr.message}) — offerte blijft staan` }
-    }
-  }
-
-  const { error: deleteErr } = await rebu.from('offertes').delete().eq('id', rebuOfferteId)
-  if (deleteErr) return { error: `Verwijderen uit Rebu mislukt: ${deleteErr.message}` }
-
-  try {
-    const admin = createAdminClient()
-    await admin.from('audit_log').insert({
-      administratie_id: adminId,
-      actie: 'offerte.verwijderd_uit_rebu_na_overzetten',
-      entiteit_type: 'offerte',
-      entiteit_id: rebuOfferteId,
-      details: { offertenummer: rebuOfferte.offertenummer, ordersVerwijderd: rebuOrders?.length || 0 },
-    })
-  } catch { /* audit niet-blokkerend */ }
-
-  return { success: true, offertenummer: rebuOfferte.offertenummer as string }
 }
 
 export async function getRebuTeImporterenFacturen() {
