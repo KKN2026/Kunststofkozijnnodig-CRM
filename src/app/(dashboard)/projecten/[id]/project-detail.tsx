@@ -4,7 +4,7 @@ import { EmailBijlageKnop } from '@/components/ui/email-bijlage-knop'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { useState } from 'react'
-import { saveProject, deleteProject, duplicateOfferte, deleteOfferte, deleteTaak, deleteFactuur, deleteEmailLog, updateOfferteOnderwerp, getEmailBody, getDocumentUrl, setProjectStatus, factureerVerkoopkans, updateProjectMedewerker, setVerkoopkansVerwachteMaand } from '@/lib/actions'
+import { saveProject, deleteProject, duplicateOfferte, deleteOfferte, deleteTaak, deleteFactuur, deleteEmailLog, updateOfferteOnderwerp, getEmailBody, getDocumentUrl, setProjectStatus, factureerVerkoopkans, updateProjectMedewerker } from '@/lib/actions'
 import type { TimelineItem } from '@/lib/actions'
 import { EmailLogDialog } from '@/components/email-log-dialog'
 import { Receipt } from 'lucide-react'
@@ -20,7 +20,7 @@ import { Dialog } from '@/components/ui/dialog'
 import { Pipeline } from '@/components/verkoopkans/pipeline'
 import { Timeline } from '@/components/verkoopkans/timeline'
 import { formatCurrency, formatDateShort } from '@/lib/utils'
-import { Save, Trash2, ArrowLeft, Plus, Pencil, X, User, UserCog, CalendarDays, CalendarClock, Banknote, TrendingUp, Mail, Paperclip, ArrowDownLeft, ArrowUpRight, FileText, Download } from 'lucide-react'
+import { Save, Trash2, ArrowLeft, Plus, Pencil, X, User, UserCog, CalendarDays, Banknote, TrendingUp, Mail, Paperclip, ArrowDownLeft, ArrowUpRight, FileText, Download } from 'lucide-react'
 import { RecentTracker } from '@/components/layout/recent-tracker'
 
 interface ProjectEmail {
@@ -102,7 +102,6 @@ export function ProjectDetail({ timeline, relaties, isNew, emails = [], document
   const searchParams = useSearchParams()
   const [loading, setLoading] = useState(false)
   const [medewerkerBezig, setMedewerkerBezig] = useState(false)
-  const [valmaandBezig, setValmaandBezig] = useState(false)
   const [error, setError] = useState('')
   const [editing, setEditing] = useState(false)
   // Bewust geen navigateBack()/globale nav-stack hier: die kreeg bij elke
@@ -385,27 +384,6 @@ export function ProjectDetail({ timeline, relaties, isNew, emails = [], document
                         <option key={m.id} value={m.id}>{m.naam}</option>
                       ))}
                     </select>
-                  </div>
-
-                  {/* Prognosemaand — verwachte maand waarin deze verkoopkans
-                      valt, inline aanpasbaar. Voedt de maand-prognose in
-                      Rapportages en het verkoopkansen-pipeline-bord. */}
-                  <div className="flex items-center gap-2 text-sm" title="Verwachte maand waarin deze verkoopkans valt — voedt de maand-prognose">
-                    <CalendarClock className="h-4 w-4 text-gray-400 shrink-0" />
-                    <input
-                      type="month"
-                      value={project.verwachte_valmaand ? (project.verwachte_valmaand as string).slice(0, 7) : ''}
-                      disabled={valmaandBezig}
-                      onChange={async (e) => {
-                        const maand = e.target.value || null
-                        setValmaandBezig(true)
-                        const res = await setVerkoopkansVerwachteMaand(project.id as string, maand)
-                        setValmaandBezig(false)
-                        if (res?.error) showToast(res.error, 'error')
-                        else { showToast(maand ? 'Prognosemaand opgeslagen' : 'Prognosemaand gewist', 'success'); router.refresh() }
-                      }}
-                      className={`flex-1 min-w-0 bg-transparent border-0 p-0 text-sm rounded cursor-pointer focus:outline-none focus:ring-1 focus:ring-primary hover:text-primary disabled:opacity-50 ${project.verwachte_valmaand ? 'text-gray-700' : 'text-gray-500'}`}
-                    />
                   </div>
 
                   {/* Afwijkend factuuradres */}

@@ -2,7 +2,7 @@
 
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
-import { saveTaak, deleteTaak, saveTaakNotitie, deleteTaakNotitie, completeTaak, uncompleteTaak } from '@/lib/actions'
+import { saveTaak, deleteTaak, saveTaakNotitie, deleteTaakNotitie, completeTaak, uncompleteTaak, setVerkoopkansVerwachteMaand } from '@/lib/actions'
 import { useBackNav } from '@/lib/hooks/use-back-nav'
 import { PageHeader } from '@/components/ui/page-header'
 import { Card, CardContent, CardFooter } from '@/components/ui/card'
@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Button } from '@/components/ui/button'
 import { SearchSelect } from '@/components/ui/search-select'
-import { Save, Trash2, ArrowLeft, MessageSquare, Plus, Check, CheckCircle2, RotateCcw, Pencil, Phone, Mail, User, FileText, Paperclip, Send } from 'lucide-react'
+import { Save, Trash2, ArrowLeft, MessageSquare, Plus, Check, CheckCircle2, RotateCcw, Pencil, Phone, Mail, User, FileText, Paperclip, Send, CalendarClock } from 'lucide-react'
 import Link from 'next/link'
 import { format } from 'date-fns'
 import { nl } from 'date-fns/locale'
@@ -18,6 +18,7 @@ import { RecentTracker } from '@/components/layout/recent-tracker'
 import { EmailLogDialog } from '@/components/email-log-dialog'
 import { formatCurrency } from '@/lib/utils'
 import { CopyablePhone } from '@/components/ui/copyable-phone'
+import { showToast } from '@/components/ui/toast'
 
 type Notitie = {
   id: string
@@ -28,7 +29,7 @@ type Notitie = {
 
 export function TaakForm({ taak, projecten, medewerkers, relaties, offertes, notities: initialNotities = [], defaultRelatieId, defaultProjectId, currentMedewerkerId, offerteStatus, offerteEmails = [] }: {
   taak: Record<string, unknown> | null
-  projecten: { id: string; naam: string; relatie_id?: string; laatste_offerte_bedrag?: number | null }[]
+  projecten: { id: string; naam: string; relatie_id?: string; laatste_offerte_bedrag?: number | null; verwachte_valmaand?: string | null }[]
   medewerkers: { id: string; naam: string; type: string; actief: boolean }[]
   relaties: { id: string; bedrijfsnaam: string; email?: string | null; telefoon?: string | null; contactpersoon?: string | null }[]
   offertes: { id: string; offertenummer: string; relatie_id: string }[]
@@ -49,6 +50,7 @@ export function TaakForm({ taak, projecten, medewerkers, relaties, offertes, not
   const [selectedMedewerkerId, setSelectedMedewerkerId] = useState((taak?.medewerker_id as string) || (taak ? '' : currentMedewerkerId || ''))
   const [selectedOfferteId, setSelectedOfferteId] = useState((taak?.offerte_id as string) || '')
   const [selectedCategorie, setSelectedCategorie] = useState((taak?.categorie as string) || '')
+  const [valmaandBezig, setValmaandBezig] = useState(false)
   // 'Bellen' = nabel-/lead-taak (bv. nieuwe klant nog zonder verkoopkans): dan is
   // de verkoopkans niet verplicht, een klant volstaat. Andere types vereisen wél
   // een verkoopkans zodat opvolg-/offertewerk netjes in de pipeline staat.
@@ -332,6 +334,33 @@ export function TaakForm({ taak, projecten, medewerkers, relaties, offertes, not
                 </p>
               ) : null
             })()}
+            {/* Prognosemaand van de gekoppelde verkoopkans — stond eerder bij de
+                verkoopkans zelf, nu hier bij de taken verplaatst. Blijft data
+                van de verkoopkans (voedt de maand-prognose in Rapportages en
+                het dashboard), alleen het instelpunt is verhuisd. */}
+            {selectedProjectId && (
+              <div className="flex items-center gap-2 text-sm -mt-2" title="Verwachte maand waarin deze verkoopkans valt — voedt de maand-prognose">
+                <CalendarClock className="h-4 w-4 text-gray-400 shrink-0" />
+                <span className="text-gray-500">Prognosemaand:</span>
+                <input
+                  type="month"
+                  value={(() => {
+                    const v = projecten.find(p => p.id === selectedProjectId)?.verwachte_valmaand
+                    return v ? v.slice(0, 7) : ''
+                  })()}
+                  disabled={valmaandBezig}
+                  onChange={async (e) => {
+                    const maand = e.target.value || null
+                    setValmaandBezig(true)
+                    const res = await setVerkoopkansVerwachteMaand(selectedProjectId, maand)
+                    setValmaandBezig(false)
+                    if (res?.error) showToast(res.error, 'error')
+                    else { showToast(maand ? 'Prognosemaand opgeslagen' : 'Prognosemaand gewist', 'success'); router.refresh() }
+                  }}
+                  className="flex-1 min-w-0 bg-transparent border-0 p-0 text-sm rounded cursor-pointer focus:outline-none focus:ring-1 focus:ring-primary hover:text-primary disabled:opacity-50 text-gray-700"
+                />
+              </div>
+            )}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <SearchSelect
                 id="medewerker_id"

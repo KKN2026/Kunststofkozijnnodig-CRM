@@ -11,9 +11,8 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/empty-state'
 import { formatCurrency, formatDate } from '@/lib/utils'
-import { deleteProject, setVerkoopkansVerwachteMaand } from '@/lib/actions'
-import { Plus, FolderKanban, Trash2, FileText, CalendarClock } from 'lucide-react'
-import { showToast } from '@/components/ui/toast'
+import { deleteProject } from '@/lib/actions'
+import { Plus, FolderKanban, Trash2, FileText } from 'lucide-react'
 
 interface Project {
   id: string
@@ -99,16 +98,6 @@ export function ProjectList({ projecten }: { projecten: Project[] }) {
     waarde: perMedewerkerPerMaand.reduce((s, r) => s + r.maanden[i].waarde, 0),
   })), [perMedewerkerPerMaand, laatste6Maanden])
 
-  const [savingValmaandId, setSavingValmaandId] = useState<string | null>(null)
-  async function handleValmaand(projectId: string, maand: string | null) {
-    setSavingValmaandId(projectId)
-    const res = await setVerkoopkansVerwachteMaand(projectId, maand)
-    setSavingValmaandId(null)
-    if (res?.error) { showToast(res.error, 'error'); return }
-    showToast(maand ? 'Prognosemaand opgeslagen' : 'Prognosemaand gewist', 'success')
-    router.refresh()
-  }
-
   async function handleDelete(e: React.MouseEvent, project: Project) {
     e.stopPropagation()
     if (!confirm(`Weet u zeker dat u "${project.naam}" wilt verwijderen?`)) return
@@ -143,30 +132,6 @@ export function ProjectList({ projecten }: { projecten: Project[] }) {
               <span className="text-sm text-gray-500">{formatCurrency(laatste_offerte_bedrag)}</span>
             )}
           </div>
-        )
-      },
-    },
-    {
-      id: 'prognosemaand',
-      header: 'Prognosemaand',
-      accessorFn: (row) => row.verwachte_valmaand || '',
-      cell: ({ row }) => {
-        const p = row.original
-        return (
-          <span
-            className="relative inline-flex items-center gap-1"
-            onClick={(e) => e.stopPropagation()}
-            title="Verwachte maand waarin deze verkoopkans valt — voedt de maand-prognose in Rapportages"
-          >
-            <CalendarClock className="h-3.5 w-3.5 text-gray-400 shrink-0" />
-            <input
-              type="month"
-              value={p.verwachte_valmaand ? p.verwachte_valmaand.slice(0, 7) : ''}
-              disabled={savingValmaandId === p.id}
-              onChange={(e) => handleValmaand(p.id, e.target.value || null)}
-              className={`bg-transparent border-0 p-0 text-sm focus:outline-none focus:ring-1 focus:ring-primary rounded cursor-pointer disabled:opacity-50 ${p.verwachte_valmaand ? 'text-gray-700' : 'text-gray-400'}`}
-            />
-          </span>
         )
       },
     },

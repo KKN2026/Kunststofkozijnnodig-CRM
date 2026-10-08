@@ -1,14 +1,12 @@
 'use client'
 
 import Link from 'next/link'
-import { useMemo, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useMemo } from 'react'
 import { PageHeader } from '@/components/ui/page-header'
 import { Button } from '@/components/ui/button'
-import { LayoutGrid, List, FolderKanban, Building2, CalendarClock } from 'lucide-react'
+import { LayoutGrid, List, FolderKanban, Building2 } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
-import { setVerkoopkansVerwachteMaand, type PipelineFase } from '@/lib/actions'
-import { showToast } from '@/components/ui/toast'
+import { type PipelineFase } from '@/lib/actions'
 
 interface Item {
   id: string
@@ -40,18 +38,6 @@ const FASES: { key: PipelineFase; label: string; kleur: string; icoonkleur: stri
 // vereisen op offerte/project status); voor nu: leesbaar overzicht met
 // totaal-bedrag per kolom + klikbare cards naar het project.
 export function PipelineKanban({ items }: { items: Item[] }) {
-  const router = useRouter()
-  const [savingId, setSavingId] = useState<string | null>(null)
-
-  async function handleMaand(id: string, maand: string) {
-    setSavingId(id)
-    const res = await setVerkoopkansVerwachteMaand(id, maand || null)
-    setSavingId(null)
-    if (res?.error) { showToast(res.error, 'error'); return }
-    showToast(maand ? 'Verwachte valmaand opgeslagen' : 'Valmaand gewist', 'success')
-    router.refresh()
-  }
-
   const grouped = useMemo(() => {
     const m = new Map<PipelineFase, Item[]>()
     for (const f of FASES) m.set(f.key, [])
@@ -107,10 +93,7 @@ export function PipelineKanban({ items }: { items: Item[] }) {
                 {cards.length === 0 ? (
                   <div className="text-[11px] text-gray-400 text-center py-4 italic">geen items</div>
                 ) : (
-                  cards.map(c => {
-                    // Geen valmaand-kiezer voor afgehandelde fases (afgerond/verloren).
-                    const toonMaand = f.key !== 'afgerond' && f.key !== 'verloren'
-                    return (
+                  cards.map(c => (
                     <div
                       key={c.id}
                       className="bg-white border border-gray-200 rounded hover:shadow-sm transition-shadow"
@@ -128,21 +111,8 @@ export function PipelineKanban({ items }: { items: Item[] }) {
                           <span className="text-xs font-medium text-gray-900">{c.bedrag > 0 ? formatCurrency(c.bedrag) : '—'}</span>
                         </div>
                       </Link>
-                      {toonMaand && (
-                        <div className="px-2 pb-1.5 -mt-0.5 flex items-center gap-1" title="Verwachte valmaand — voedt de prognose">
-                          <CalendarClock className="h-2.5 w-2.5 text-gray-400 flex-shrink-0" />
-                          <input
-                            type="month"
-                            value={c.verwachteValmaand ? c.verwachteValmaand.slice(0, 7) : ''}
-                            disabled={savingId === c.id}
-                            onChange={(e) => handleMaand(c.id, e.target.value)}
-                            className={`w-full bg-transparent border-0 p-0 text-[10px] focus:outline-none focus:ring-1 focus:ring-[#00a66e] rounded cursor-pointer ${c.verwachteValmaand ? 'text-gray-600' : 'text-gray-400'}`}
-                          />
-                        </div>
-                      )}
                     </div>
-                    )
-                  })
+                  ))
                 )}
               </div>
             </div>

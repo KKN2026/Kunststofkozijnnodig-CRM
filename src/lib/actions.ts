@@ -5159,7 +5159,7 @@ export async function getTaken() {
   const taken = await fetchAllRows<any>((from, to) => {
     let query = supabase
       .from('taken')
-      .select('*, categorie, project:projecten(naam, offertes:offertes(subtotaal, totaal, datum, versie_nummer, created_at)), toegewezen:profielen(naam), medewerker:medewerkers(naam), offerte:offertes(id, offertenummer, status, totaal, subtotaal), relatie:relaties(bedrijfsnaam), taak_notities(tekst, created_at)')
+      .select('*, categorie, project:projecten(naam, verwachte_valmaand, offertes:offertes(subtotaal, totaal, datum, versie_nummer, created_at)), toegewezen:profielen(naam), medewerker:medewerkers(naam), offerte:offertes(id, offertenummer, status, totaal, subtotaal), relatie:relaties(bedrijfsnaam), taak_notities(tekst, created_at)')
       .order('created_at', { ascending: true })
       .range(from, to)
     if (rol === 'medewerker') {

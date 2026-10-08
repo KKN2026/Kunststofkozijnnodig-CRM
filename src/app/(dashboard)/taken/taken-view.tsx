@@ -11,10 +11,10 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/empty-state'
 import { formatDateShort, formatCurrency } from '@/lib/utils'
-import { completeTaak, uncompleteTaak, updateTaakDeadline, updateTaakMedewerker, acceptOfferte, rejectOfferte, convertToFactuur } from '@/lib/actions'
+import { completeTaak, uncompleteTaak, updateTaakDeadline, updateTaakMedewerker, acceptOfferte, rejectOfferte, convertToFactuur, setVerkoopkansVerwachteMaand } from '@/lib/actions'
 import { Dialog } from '@/components/ui/dialog'
 import { showToast } from '@/components/ui/toast'
-import { Plus, CheckSquare, X, Phone, FileText, ListTodo, ThumbsUp, ThumbsDown, ArrowRight, StickyNote } from 'lucide-react'
+import { Plus, CheckSquare, X, Phone, FileText, ListTodo, ThumbsUp, ThumbsDown, ArrowRight, StickyNote, CalendarClock } from 'lucide-react'
 
 interface Taak {
   id: string
@@ -29,7 +29,8 @@ interface Taak {
   categorie: string | null
   toegewezen_aan: string | null
   medewerker_id: string | null
-  project: { naam: string; laatste_offerte_bedrag?: number | null } | null
+  project_id: string | null
+  project: { naam: string; laatste_offerte_bedrag?: number | null; verwachte_valmaand?: string | null } | null
   toegewezen: { naam: string } | null
   medewerker: { naam: string } | null
   offerte: { id?: string; offertenummer?: string | null; status?: string; totaal: number; subtotaal: number | null } | null
@@ -106,6 +107,8 @@ function getColumns(
   onDeadlineChange: (id: string, newDeadline: string | null) => void,
   alleMedewerkers: MedewerkerOptie[],
   onMedewerkerChange: (id: string, medewerkerId: string | null) => void,
+  savingValmaandId: string | null,
+  onValmaandChange: (projectId: string, maand: string | null) => void,
 ): ColumnDef<Taak, unknown>[] {
   const cols: ColumnDef<Taak, unknown>[] = [
     {
@@ -155,6 +158,32 @@ function getColumns(
         </div>
       )
     } },
+    {
+      id: 'prognosemaand',
+      header: 'Prognosemaand',
+      accessorFn: (row) => row.project?.verwachte_valmaand || '',
+      cell: ({ row }) => {
+        const projectId = row.original.project_id
+        if (!projectId) return <span className="text-gray-300">-</span>
+        const maand = row.original.project?.verwachte_valmaand
+        return (
+          <span
+            className="relative inline-flex items-center gap-1"
+            onClick={(e) => e.stopPropagation()}
+            title="Verwachte maand waarin deze verkoopkans valt — voedt de maand-prognose in Rapportages"
+          >
+            <CalendarClock className="h-3.5 w-3.5 text-gray-400 shrink-0" />
+            <input
+              type="month"
+              value={maand ? maand.slice(0, 7) : ''}
+              disabled={savingValmaandId === projectId}
+              onChange={(e) => onValmaandChange(projectId, e.target.value || null)}
+              className={`bg-transparent border-0 p-0 text-sm focus:outline-none focus:ring-1 focus:ring-primary rounded cursor-pointer disabled:opacity-50 ${maand ? 'text-gray-700' : 'text-gray-400'}`}
+            />
+          </span>
+        )
+      },
+    },
     { id: 'bedrag', header: 'Bedrag excl.', cell: ({ row }) => {
       const off = row.original.offerte
       if (!off) return '-'
@@ -255,6 +284,7 @@ export function TakenView({ taken, isAdmin, currentUserId, alleMedewerkers = [] 
 
   // Medewerker-filter + tab persisteren in localStorage, default medewerker = ingelogde gebruiker
   const [filterMedewerker, setFilterMedewerker] = useState<string>('')
+  const [savingValmaandId, setSavingValmaandId] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<TabType>('alle')
 
   // Laad opgeslagen waarden na mount
@@ -513,6 +543,15 @@ export function TakenView({ taken, isAdmin, currentUserId, alleMedewerkers = [] 
     }
   }
 
+  async function handleValmaandChange(projectId: string, maand: string | null) {
+    setSavingValmaandId(projectId)
+    const res = await setVerkoopkansVerwachteMaand(projectId, maand)
+    setSavingValmaandId(null)
+    if (res?.error) { showToast(res.error, 'error'); return }
+    showToast(maand ? 'Prognosemaand opgeslagen' : 'Prognosemaand gewist', 'success')
+    router.refresh()
+  }
+
   async function handleDeadlineChange(id: string, newDeadline: string | null) {
     // Optimistic update — direct UI bijwerken zodat het responsief voelt.
     setTakenLijst(prev => prev.map(t => t.id === id ? { ...t, deadline: newDeadline } : t))
@@ -693,7 +732,7 @@ export function TakenView({ taken, isAdmin, currentUserId, alleMedewerkers = [] 
         <EmptyState icon={CheckSquare} title="Geen taken" description={activeTab === 'afgerond' ? 'Geen afgeronde taken.' : 'Geen taken in deze categorie.'} action={<Button onClick={() => router.push('/taken/nieuw')}><Plus className="h-4 w-4" />Taak aanmaken</Button>} />
       ) : (
         <DataTable
-          columns={getColumns(isAdmin, handleToggle, handleDeadlineChange, alleMedewerkers, handleMedewerkerChange)}
+          columns={getColumns(isAdmin, handleToggle, handleDeadlineChange, alleMedewerkers, handleMedewerkerChange, savingValmaandId, handleValmaandChange)}
           data={takenLijst}
           searchPlaceholder="Zoek taak..."
           onRowClick={(row) => {
