@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input'
 import { getRebuTeImporterenOffertes, importeerRebuOfferte } from '@/lib/actions'
 import { formatCurrency, formatDateShort } from '@/lib/utils'
 import { ArrowRightLeft, Loader2, RefreshCw, Inbox, Search } from 'lucide-react'
+import { RebuOffertesOpruimen } from './rebu-offertes-opruimen'
 
 interface RebuOfferte {
   id: string
@@ -161,6 +162,8 @@ export function RebuAcceptatiesTab() {
       <p className="text-xs text-gray-400 mt-3">
         Na overzetten vind je de offerte terug onder <Link href="/offertes" className="text-primary underline">Offertes &amp; Orders</Link>.
       </p>
+
+      <RebuOffertesOpruimen />
     </div>
   )
 }
