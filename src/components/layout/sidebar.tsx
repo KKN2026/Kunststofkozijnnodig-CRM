@@ -9,9 +9,12 @@ import { cn } from '@/lib/utils'
 import { GripVertical, Settings2, RotateCcw, X } from 'lucide-react'
 
 const SIDEBAR_ORDER_KEY = 'rebu-sidebar-order'
+// Standaardonderdelen: altijd bereikbaar voor elke medewerker (eigen data).
+// Alles daarbuiten moet een admin per medewerker expliciet aanzetten via
+// Medewerkers → account → Toegang (profielen.toegestane_modules).
 const medewerkerNavHrefs = ['/', '/agenda', '/taken', '/uren', '/productiviteit']
 
-export function Sidebar({ rol, mobileOpen, onMobileClose }: { rol?: string; mobileOpen?: boolean; onMobileClose?: () => void }) {
+export function Sidebar({ rol, modules, mobileOpen, onMobileClose }: { rol?: string; modules?: string[]; mobileOpen?: boolean; onMobileClose?: () => void }) {
   const pathname = usePathname()
   const [editMode, setEditMode] = useState(false)
   const [order, setOrder] = useState<string[]>([])
@@ -25,7 +28,7 @@ export function Sidebar({ rol, mobileOpen, onMobileClose }: { rol?: string; mobi
   }, [pathname])
 
   const baseItems = rol === 'medewerker'
-    ? navigationItems.filter(item => medewerkerNavHrefs.includes(item.href))
+    ? navigationItems.filter(item => medewerkerNavHrefs.includes(item.href) || (modules || []).includes(item.href))
     : navigationItems
 
   useEffect(() => {

@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation'
 import { getOfferteDashboard } from '@/lib/actions'
+import { vereisModuleToegang } from '@/lib/rechten'
 import { PageHeader } from '@/components/ui/page-header'
 import { Lock } from 'lucide-react'
 import { OfferteDashboardView } from './dashboard-view'
@@ -9,6 +10,7 @@ import { OfferteDashboardView } from './dashboard-view'
 export const revalidate = 15
 
 export default async function OfferteDashboardPage() {
+  await vereisModuleToegang('/offerte-dashboard')
   const data = await getOfferteDashboard()
 
   if (!data.magZien) {

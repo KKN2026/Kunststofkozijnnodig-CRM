@@ -9,9 +9,10 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Dialog } from '@/components/ui/dialog'
 import { PageHeader } from '@/components/ui/page-header'
-import { saveMedewerker, deleteMedewerker, createMedewerkerAccount } from '@/lib/actions'
+import { saveMedewerker, deleteMedewerker, createMedewerkerAccount, updateMedewerkerModuleToegang } from '@/lib/actions'
+import { TOEGEEFBARE_MODULES } from '@/lib/module-constants'
 import { useBackNav } from '@/lib/hooks/use-back-nav'
-import { ArrowLeft, Trash2, KeyRound, ExternalLink } from 'lucide-react'
+import { ArrowLeft, Trash2, KeyRound, ExternalLink, ShieldCheck } from 'lucide-react'
 import Link from 'next/link'
 
 interface OrderToewijzing {
@@ -83,6 +84,17 @@ export function MedewerkerDetail({
   }
 
   const hasProfiel = !!(medewerker?.profiel_id)
+  const profiel = medewerker?.profiel as { rol?: string; toegestane_modules?: string[] } | null | undefined
+  const [moduleToegang, setModuleToegang] = useState<string[]>(profiel?.toegestane_modules || [])
+  const [toegangOpslaan, setToegangOpslaan] = useState(false)
+
+  async function handleToggleModule(key: string, checked: boolean) {
+    const nieuw = checked ? [...moduleToegang, key] : moduleToegang.filter(m => m !== key)
+    setModuleToegang(nieuw)
+    setToegangOpslaan(true)
+    await updateMedewerkerModuleToegang(medewerker?.profiel_id as string, nieuw)
+    setToegangOpslaan(false)
+  }
 
   return (
     <div>
@@ -266,6 +278,39 @@ export function MedewerkerDetail({
           </CardContent>
         </Card>
       </form>
+
+      {/* Toegang tot onderdelen — alleen relevant voor een medewerker-account;
+          een beheerder ziet altijd alles. */}
+      {hasProfiel && profiel?.rol === 'medewerker' && (
+        <Card className="mt-6">
+          <CardHeader>
+            <h2 className="text-lg font-semibold flex items-center gap-2">
+              <ShieldCheck className="h-5 w-5 text-gray-400" />
+              Toegang
+            </h2>
+            <p className="text-sm text-gray-500 mt-1">
+              Dashboard, Agenda, Taken, Uren en Productiviteit zijn altijd bereikbaar (met eigen data).
+              Vink hieronder aan welke extra onderdelen deze medewerker mag zien.
+            </p>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+              {TOEGEEFBARE_MODULES.map(mod => (
+                <label key={mod.key} className="flex items-center gap-2 text-sm text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={moduleToegang.includes(mod.key)}
+                    onChange={(e) => handleToggleModule(mod.key, e.target.checked)}
+                    className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                  />
+                  {mod.label}
+                </label>
+              ))}
+            </div>
+            {toegangOpslaan && <p className="text-xs text-gray-400 mt-3">Opslaan...</p>}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Toegewezen klussen */}
       {!isNew && orders.length > 0 && (

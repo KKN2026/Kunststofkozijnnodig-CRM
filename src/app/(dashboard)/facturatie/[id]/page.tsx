@@ -1,4 +1,5 @@
 import { getFactuur, getRelaties, getProducten, getVolgendeNummerPreview } from '@/lib/actions'
+import { vereisModuleToegang } from '@/lib/rechten'
 import { FactuurForm } from './factuur-form'
 
 // De verzend-actie (sendFactuurEmail) rendert een PDF, praat met Mollie en
@@ -13,6 +14,7 @@ export default async function FactuurDetailPage({ params, searchParams }: {
   params: Promise<{ id: string }>
   searchParams: Promise<{ relatie_id?: string }>
 }) {
+  await vereisModuleToegang('/facturatie')
   const { id } = await params
   const { relatie_id: relatie } = await searchParams
   const isNew = id === 'nieuw'

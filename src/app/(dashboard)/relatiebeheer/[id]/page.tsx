@@ -1,8 +1,10 @@
 import { getRelatieDetail, getNotities, getKlantAccounts, getTakenByRelatie, getEmailsByRelatie, getContactpersonen, getEmailLogByRelatie } from '@/lib/actions'
+import { vereisModuleToegang } from '@/lib/rechten'
 import { RelatieForm } from './relatie-form'
 import { RelatieDetail } from './relatie-detail'
 
 export default async function RelatieDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  await vereisModuleToegang('/relatiebeheer')
   const { id } = await params
 
   if (id === 'nieuw') {

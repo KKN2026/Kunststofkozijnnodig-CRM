@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getRolEnModules, heeftModuleToegang, TOEGEEFBARE_MODULES } from '@/lib/rechten'
 
 // Medewerkers met een eigen mailbox: bij offerte/factuur-verzending komt
 // de mail uit hun eigen adres en reacties komen daar terecht. Alle andere
@@ -137,6 +138,8 @@ async function getVolgendTaaknummer(supabaseClient: ReturnType<typeof createAdmi
 
 // === RELATIES ===
 export async function getRelaties() {
+  const { rol, modules } = await getRolEnModules()
+  if (!heeftModuleToegang(rol, modules, '/relatiebeheer')) return []
   const supabase = await createClient()
 
   const relaties = await fetchAllRows((from, to) =>
@@ -723,6 +726,8 @@ export async function deleteRelaties(ids: string[], forceer = false) {
 
 // === PRODUCTEN ===
 export async function getProducten() {
+  const { rol, modules } = await getRolEnModules()
+  if (!heeftModuleToegang(rol, modules, '/producten')) return []
   const supabase = await createClient()
   const { data } = await supabase
     .from('producten')
@@ -782,6 +787,8 @@ export async function deleteProduct(id: string) {
 
 // === OFFERTES ===
 export async function getOffertes(includeArchief = false) {
+  const { rol, modules } = await getRolEnModules()
+  if (!heeftModuleToegang(rol, modules, '/offertes')) return []
   const supabase = await createClient()
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const data = await fetchAllRows<any>((from, to) => {
@@ -805,6 +812,8 @@ export async function getOffertes(includeArchief = false) {
 }
 
 export async function getArchiefOffertes() {
+  const { rol, modules } = await getRolEnModules()
+  if (!heeftModuleToegang(rol, modules, '/archief')) return []
   const supabase = await createClient()
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const data = await fetchAllRows<any>((from, to) =>
@@ -885,6 +894,8 @@ export async function getJaarCijfers() {
 }
 
 export async function getArchiefFacturen() {
+  const { rol, modules } = await getRolEnModules()
+  if (!heeftModuleToegang(rol, modules, '/archief')) return []
   const adminId = await getAdministratieId()
   if (!adminId) return []
   const supabase = await createClient()
@@ -995,6 +1006,8 @@ export async function autoArchiveerAfgerondeVerkoopkansen(administratieId?: stri
 
 // Afgeronde verkoopkansen voor in archief-overzicht
 export async function getArchiefVerkoopkansen() {
+  const { rol, modules } = await getRolEnModules()
+  if (!heeftModuleToegang(rol, modules, '/archief')) return []
   const adminId = await getAdministratieId()
   if (!adminId) return []
   const supabase = await createClient()
@@ -1024,6 +1037,8 @@ export async function getArchiefVerkoopkansen() {
 }
 
 export async function getConceptOffertes() {
+  const { rol, modules } = await getRolEnModules()
+  if (!heeftModuleToegang(rol, modules, '/offertes/concepten')) return []
   const supabase = await createClient()
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const data = await fetchAllRows<any>((from, to) =>
@@ -2397,6 +2412,8 @@ async function _getEindafrekeningenLegacy() {
 
 // === FACTUREN ===
 export async function getFacturen() {
+  const { rol, modules } = await getRolEnModules()
+  if (!heeftModuleToegang(rol, modules, '/facturatie') && !heeftModuleToegang(rol, modules, '/rapportages')) return []
   const supabase = await createClient()
   const { data } = await supabase
     .from('facturen')
@@ -2406,6 +2423,8 @@ export async function getFacturen() {
 }
 
 export async function getOrdersMetFactuurStatus() {
+  const { rol, modules } = await getRolEnModules()
+  if (!heeftModuleToegang(rol, modules, '/facturatie')) return []
   const supabase = await createClient()
   // Alle orders behalve geannuleerd — die hebben geen factuur-actie nodig.
   const { data: orders } = await supabase
@@ -3914,6 +3933,8 @@ export async function generateBetaallink(factuurId: string) {
 
 // === INKOOP ===
 export async function getInkoopfacturen() {
+  const { rol, modules } = await getRolEnModules()
+  if (!heeftModuleToegang(rol, modules, '/rapportages')) return []
   const supabase = await createClient()
   const { data } = await supabase
     .from('inkoopfacturen')
@@ -4066,6 +4087,8 @@ export async function saveBoeking(formData: FormData) {
 
 // === PROJECTEN ===
 export async function getProjecten() {
+  const { rol, modules } = await getRolEnModules()
+  if (!heeftModuleToegang(rol, modules, '/projecten')) return []
   const supabase = await createClient()
   // Supabase limiteert tot 1000 rijen per request; we pagineren door alles heen
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -4252,6 +4275,8 @@ export async function getNotificaties() {
 // Dashboard-stijl funnel met klikbare lijsten — voor zowel dashboard als rapportages.
 // Voert eigen, minimale queries uit (geen volledige getDashboardData).
 export async function getConversieFunnelDashboard() {
+  const { rol, modules } = await getRolEnModules()
+  if (!heeftModuleToegang(rol, modules, '/rapportages')) return null
   const supabase = await createClient()
   const adminId = await getAdministratieId()
   if (!adminId) return null
@@ -5043,10 +5068,23 @@ export async function updateProjectMedewerker(id: string, medewerkerId: string |
 // === UREN ===
 export async function getUren() {
   const supabase = await createClient()
-  const { data } = await supabase
+  const { rol, modules } = await getRolEnModules()
+  let query = supabase
     .from('uren')
     .select('*, project:projecten(naam), gebruiker:profielen(naam)')
     .order('datum', { ascending: false })
+  // Uren is een basisonderdeel (altijd bereikbaar), maar toont voor een
+  // medewerker standaard alleen de eigen uren — tenzij de module
+  // 'Rapportages' is toegekend, want dan heeft de rapportage de volledige
+  // uren-set nodig om bedrijfsbreed te kunnen tellen.
+  if (rol === 'medewerker' && !heeftModuleToegang(rol, modules, '/rapportages')) {
+    const { data: { user } } = await supabase.auth.getUser()
+    const adminId = await getAdministratieId()
+    const { data: eigenMw } = await supabase.from('medewerkers').select('id')
+      .eq('administratie_id', adminId || '').eq('profiel_id', user?.id || '').maybeSingle()
+    query = query.eq('medewerker_id', eigenMw?.id || '00000000-0000-0000-0000-000000000000')
+  }
+  const { data } = await query
   return data || []
 }
 
@@ -5500,6 +5538,8 @@ export async function uncompleteTaak(id: string) {
 
 // === BEHEER ===
 export async function getAdministratie() {
+  const { rol, modules } = await getRolEnModules()
+  if (!heeftModuleToegang(rol, modules, '/instellingen')) return null
   const supabase = await createClient()
   const adminId = await getAdministratieId()
   if (!adminId) return null
@@ -6606,6 +6646,8 @@ export async function saveOmzetdoelen(formData: FormData) {
 
 // === FAALKOSTEN ===
 export async function getFaalkosten() {
+  const { rol, modules } = await getRolEnModules()
+  if (!heeftModuleToegang(rol, modules, '/faalkosten')) return []
   const supabase = await createClient()
   const adminId = await getAdministratieId()
   if (!adminId) return []
@@ -6669,6 +6711,8 @@ export async function deleteFaalkost(id: string) {
 
 // === E-MAILS ===
 export async function getEmails(page = 1, filter: 'alle' | 'inkomend' | 'uitgaand' = 'alle', zoekterm = '', toonIrrelevant = false, imapFolder?: string) {
+  const { rol, modules } = await getRolEnModules()
+  if (!heeftModuleToegang(rol, modules, '/email')) return { emails: [], total: 0 }
   const adminId = await getAdministratieId()
   if (!adminId) return { emails: [], total: 0 }
 
@@ -7584,6 +7628,8 @@ export async function saveNummering(formData: FormData) {
 
 // === GEBRUIKERSBEHEER ===
 export async function getGebruikers() {
+  const { rol, modules } = await getRolEnModules()
+  if (!heeftModuleToegang(rol, modules, '/instellingen')) return []
   const supabase = await createClient()
   const adminId = await getAdministratieId()
   if (!adminId) return []
@@ -10918,6 +10964,8 @@ export async function deleteLeverancierPdf(offerteId: string) {
 
 // === LEADS ===
 export async function getLeads(filter?: string) {
+  const { rol, modules } = await getRolEnModules()
+  if (!heeftModuleToegang(rol, modules, '/leads')) return []
   const supabase = await createClient()
   let query = supabase
     .from('leads')
@@ -11583,7 +11631,16 @@ export async function getMedewerkers() {
   let query = supabase.from('medewerkers').select('*')
   if (adminId) query = query.eq('administratie_id', adminId)
   const { data } = await query.order('naam')
-  return data || []
+  if (!data) return []
+
+  // De meeste basisonderdelen (Taken, Agenda) hebben een medewerkerslijst
+  // nodig om iemand te kunnen toewijzen — die lijst blijft dus altijd
+  // beschikbaar. Gevoelige HR-velden (uurtarief, kvk/btw, opmerkingen) gaan
+  // er alleen in mee voor wie de module 'Medewerkers' mag zien.
+  const { rol, modules } = await getRolEnModules()
+  if (heeftModuleToegang(rol, modules, '/medewerkers')) return data
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return data.map(({ uurtarief: _uurtarief, kvk_nummer: _kvk, btw_nummer: _btw, opmerkingen: _opm, ...veilig }: any) => veilig)
 }
 
 // === VRIJE DAGEN ===
@@ -11591,16 +11648,17 @@ export async function getMedewerkers() {
 // medewerker alleen eigen vrije dagen ziet/aanvraagt en de admin alles ziet.
 async function getRolEnEigenMedewerker(supabase: Awaited<ReturnType<typeof createClient>>, adminId: string) {
   const { data: { user } } = await supabase.auth.getUser()
-  const { data: profiel } = await supabase.from('profielen').select('rol, mag_vrije_dagen_goedkeuren').eq('id', user?.id || '').maybeSingle()
+  const { data: profiel } = await supabase.from('profielen').select('rol, mag_vrije_dagen_goedkeuren, toegestane_modules').eq('id', user?.id || '').maybeSingle()
   const rol = (profiel?.rol as string) || 'medewerker'
   // Losstaand van de rol: alleen Nick Burgers mag vrije dagen goedkeuren (zie
   // migratie 078) — andere admins (Jordy, Jimmy, etc.) kunnen wel aanvragen
   // aanmaken/beheren, maar niet zelf goedkeuren.
   const magGoedkeuren = profiel?.mag_vrije_dagen_goedkeuren === true
+  const modules = (profiel?.toegestane_modules as string[]) || []
   const { data: eigenMw } = await supabase
     .from('medewerkers').select('id')
     .eq('administratie_id', adminId).eq('profiel_id', user?.id || '').maybeSingle()
-  return { userId: user?.id || null, rol, magGoedkeuren, eigenMedewerkerId: (eigenMw?.id as string) || null }
+  return { userId: user?.id || null, rol, magGoedkeuren, modules, eigenMedewerkerId: (eigenMw?.id as string) || null }
 }
 
 export async function getVrijeDagen() {
@@ -11834,7 +11892,7 @@ export async function getMedewerker(id: string) {
   const supabase = await createClient()
   const { data } = await supabase
     .from('medewerkers')
-    .select('*, profiel:profielen(naam, email, rol)')
+    .select('*, profiel:profielen(naam, email, rol, toegestane_modules)')
     .eq('id', id)
     .single()
   return data
@@ -11954,6 +12012,8 @@ export async function createMedewerkerAccount(medewerkerId: string, formData: Fo
   const supabase = await createClient()
   const adminId = await getAdministratieId()
   if (!adminId) return { error: 'Niet ingelogd' }
+  const { rol: eigenRol } = await getRolEnEigenMedewerker(supabase, adminId)
+  if (eigenRol !== 'admin') return { error: 'Alleen een beheerder kan een inlog-account aanmaken' }
 
   const email = formData.get('email') as string
   const wachtwoord = formData.get('wachtwoord') as string
@@ -12004,6 +12064,29 @@ Wij raden u aan uw wachtwoord na de eerste login te wijzigen.`
     }
   }
 
+  revalidatePath('/medewerkers')
+  return { success: true }
+}
+
+// Admin bepaalt per medewerker-account welke onderdelen (buiten de vaste
+// basisonderdelen) zichtbaar/bereikbaar zijn. Geldt alleen voor rol
+// 'medewerker' — bij een andere rol wordt deze lijst genegeerd.
+export async function updateMedewerkerModuleToegang(profielId: string, modules: string[]) {
+  const supabase = await createClient()
+  const adminId = await getAdministratieId()
+  if (!adminId) return { error: 'Niet ingelogd' }
+  const { rol: eigenRol } = await getRolEnEigenMedewerker(supabase, adminId)
+  if (eigenRol !== 'admin') return { error: 'Alleen een beheerder kan toegang wijzigen' }
+
+  const supabaseAdmin = createAdminClient()
+  const geldig = new Set(TOEGEEFBARE_MODULES.map(m => m.key))
+  const gefilterd = modules.filter(m => geldig.has(m))
+  const { error } = await supabaseAdmin
+    .from('profielen')
+    .update({ toegestane_modules: gefilterd })
+    .eq('id', profielId)
+    .eq('administratie_id', adminId)
+  if (error) return { error: error.message }
   revalidatePath('/medewerkers')
   return { success: true }
 }
@@ -12752,8 +12835,8 @@ export async function getLogboekOffertes(): Promise<{ rijen: LogboekOfferteRij[]
   const supabase = await createClient()
   const adminId = await getAdministratieId()
   if (!adminId) return { rijen: [], magZien: false }
-  const { rol } = await getRolEnEigenMedewerker(supabase, adminId)
-  if (rol !== 'admin') return { rijen: [], magZien: false }
+  const { rol, modules } = await getRolEnEigenMedewerker(supabase, adminId)
+  if (rol !== 'admin' && !heeftModuleToegang(rol, modules, '/logboek')) return { rijen: [], magZien: false }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: offertes } = await supabase
@@ -12829,8 +12912,8 @@ export async function getLogboekActiviteiten(): Promise<{ items: LogboekActivite
   const supabase = await createClient()
   const adminId = await getAdministratieId()
   if (!adminId) return { items: [], magZien: false }
-  const { rol } = await getRolEnEigenMedewerker(supabase, adminId)
-  if (rol !== 'admin') return { items: [], magZien: false }
+  const { rol, modules } = await getRolEnEigenMedewerker(supabase, adminId)
+  if (rol !== 'admin' && !heeftModuleToegang(rol, modules, '/logboek')) return { items: [], magZien: false }
 
   const { data } = await supabase
     .from('audit_log')
@@ -13047,6 +13130,8 @@ export async function setOfferteVerkoper(offerteId: string, verkoperId: string |
 // default) staan in lib/instellingen.ts; hier alleen lezen en opslaan.
 
 export async function getInstellingenVoorUI() {
+  const { rol: moduleRol, modules } = await getRolEnModules()
+  if (!heeftModuleToegang(moduleRol, modules, '/instellingen')) return { waarden: {}, magBewerken: false }
   const supabase = await createClient()
   const adminId = await getAdministratieId()
   if (!adminId) return { waarden: {}, magBewerken: false }

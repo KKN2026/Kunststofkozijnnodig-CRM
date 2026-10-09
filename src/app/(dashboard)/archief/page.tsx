@@ -1,9 +1,11 @@
 import { getArchiefOffertes, getArchiefFacturen, getArchiefVerkoopkansen, autoArchiveerAfgerondeVerkoopkansen, getJaarCijfers } from '@/lib/actions'
+import { vereisModuleToegang } from '@/lib/rechten'
 import { ArchiefView } from './archief-view'
 
 export const revalidate = 30
 
 export default async function ArchiefPage() {
+  await vereisModuleToegang('/archief')
   // Probeer nog niet-gearchiveerde afgeronde verkoopkansen alsnog op te ruimen
   // voor we de lijst tonen.
   try { await autoArchiveerAfgerondeVerkoopkansen() } catch { /* ignore */ }

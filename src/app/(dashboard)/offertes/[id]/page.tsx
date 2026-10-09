@@ -1,4 +1,5 @@
 import { getOfferte, getRelaties, getProducten, getOrderByOfferteId, getOfferteEmailLog, getOpenTakenVoorOfferte } from '@/lib/actions'
+import { vereisModuleToegang } from '@/lib/rechten'
 import { OfferteForm } from './offerte-form'
 
 // De verzend-actie (sendOfferteEmail) draait vanuit deze pagina en doet veel
@@ -16,6 +17,7 @@ export default async function OfferteDetailPage({
   params: Promise<{ id: string }>
   searchParams: Promise<{ relatie_id?: string; wizard?: string }>
 }) {
+  await vereisModuleToegang('/offertes')
   const { id } = await params
   const { relatie_id, wizard } = await searchParams
   const [offerte, relaties, producten, linkedOrder, emailLog, openTaken] = await Promise.all([

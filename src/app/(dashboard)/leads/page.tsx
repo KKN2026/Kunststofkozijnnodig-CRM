@@ -1,8 +1,10 @@
 import { getLeads, getAdministratieId } from '@/lib/actions'
+import { vereisModuleToegang } from '@/lib/rechten'
 import { createClient } from '@/lib/supabase/server'
 import { LeadsView } from './leads-view'
 
 export default async function LeadsPage() {
+  await vereisModuleToegang('/leads')
   const [leads, adminId] = await Promise.all([
     getLeads(),
     getAdministratieId(),

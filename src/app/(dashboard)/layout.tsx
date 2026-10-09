@@ -18,20 +18,22 @@ export default async function DashboardLayout({
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   let rol = 'gebruiker'
+  let modules: string[] = []
   if (user) {
     const supabaseAdmin = createAdminClient()
     const { data: profiel } = await supabaseAdmin
       .from('profielen')
-      .select('rol')
+      .select('rol, toegestane_modules')
       .eq('id', user.id)
       .single()
     if (profiel?.rol) rol = profiel.rol
+    modules = (profiel?.toegestane_modules as string[]) || []
   }
 
   return (
     <Suspense fallback={null}>
       <NavHistoryProvider>
-        <DashboardShell rol={rol}>{children}</DashboardShell>
+        <DashboardShell rol={rol} modules={modules}>{children}</DashboardShell>
         <MobileBottomNav rol={rol} />
         <ToastContainer />
       </NavHistoryProvider>

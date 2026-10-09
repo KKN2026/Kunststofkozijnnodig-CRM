@@ -1,7 +1,9 @@
 import { getProjectTimeline, getRelaties, getEmailsForProject, getProjectDocumenten, getEmailLogByProject, getMedewerkers } from '@/lib/actions'
+import { vereisModuleToegang } from '@/lib/rechten'
 import { ProjectDetail } from './project-detail'
 
 export default async function ProjectDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  await vereisModuleToegang('/projecten')
   const { id } = await params
   const isNew = id === 'nieuw'
 
