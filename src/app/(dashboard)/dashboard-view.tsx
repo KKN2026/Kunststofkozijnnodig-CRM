@@ -16,6 +16,7 @@ import { DeliveryPlanningDialog, type PlanOrder } from './delivery-planning-dial
 import { type FunnelData } from '@/components/dashboard/conversie-funnel-dashboard'
 import { ConversiePerMaandDialog } from '@/components/dashboard/conversie-per-maand-dialog'
 import { VerwachteOmzetChart } from '@/components/dashboard/verwachte-omzet-chart'
+import { RebuAcceptatiesBanner } from './rebu-acceptaties-banner'
 
 interface TePlannenOrder {
   id: string
@@ -643,6 +644,8 @@ export function DashboardView({ data, verkoopkansenPerMedewerker = [], verkoopka
           </Button>
         </Link>
       </div>
+
+      <RebuAcceptatiesBanner />
 
       {/* Notificatiebalk — subtiele info-pill, alleen als er meldingen zijn */}
       {notifications.length > 0 && (
