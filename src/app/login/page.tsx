@@ -11,6 +11,7 @@ export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [code, setCode] = useState('')
+  const [tfaEmail, setTfaEmail] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const router = useRouter()
@@ -25,7 +26,7 @@ export default function LoginPage() {
     setLoading(false)
     if (result.error) { setError(result.error); return }
     if (result.klant) { router.push('/portaal'); router.refresh(); return }
-    if (result.twofa) { setStep(2); return }
+    if (result.twofa) { setTfaEmail(result.tfaEmail || email); setStep(2); return }
     // Fallback: als 2FA is uitgeschakeld via env-var, krijgen we success en
     // moeten we direct doorsturen.
     if (result.success) { router.push('/'); router.refresh(); return }
@@ -50,7 +51,7 @@ export default function LoginPage() {
     const result = await loginStep1(fd)
     setLoading(false)
     if (result.error) setError(result.error)
-    else setError('Nieuwe code verstuurd')
+    else { setTfaEmail(result.tfaEmail || email); setError('Nieuwe code verstuurd') }
   }
 
   return (
@@ -87,7 +88,7 @@ export default function LoginPage() {
             <form onSubmit={handleStep2} className="space-y-4">
               <div className="text-sm text-gray-600 bg-blue-50 border border-blue-200 rounded-md p-3 flex items-start gap-2">
                 <Mail className="h-4 w-4 text-blue-600 flex-shrink-0 mt-0.5" />
-                <span>We hebben een 6-cijferige code gestuurd naar <strong>{email}</strong>. De code is 5 minuten geldig.</span>
+                <span>We hebben een 6-cijferige code gestuurd naar <strong>{tfaEmail}</strong>. De code is 5 minuten geldig.</span>
               </div>
               {error && <div className={`${error === 'Nieuwe code verstuurd' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'} text-sm p-3 rounded-md`}>{error}</div>}
               <div>

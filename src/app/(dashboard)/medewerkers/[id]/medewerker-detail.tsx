@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Dialog } from '@/components/ui/dialog'
 import { PageHeader } from '@/components/ui/page-header'
-import { saveMedewerker, deleteMedewerker, createMedewerkerAccount, updateMedewerkerModuleToegang } from '@/lib/actions'
+import { saveMedewerker, deleteMedewerker, createMedewerkerAccount, updateMedewerkerModuleToegang, updateMedewerkerTfaEmail } from '@/lib/actions'
 import { TOEGEEFBARE_MODULES } from '@/lib/module-constants'
 import { useBackNav } from '@/lib/hooks/use-back-nav'
 import { ArrowLeft, Trash2, KeyRound, ExternalLink, ShieldCheck } from 'lucide-react'
@@ -84,9 +84,11 @@ export function MedewerkerDetail({
   }
 
   const hasProfiel = !!(medewerker?.profiel_id)
-  const profiel = medewerker?.profiel as { rol?: string; toegestane_modules?: string[] } | null | undefined
+  const profiel = medewerker?.profiel as { rol?: string; toegestane_modules?: string[]; tfa_email?: string | null } | null | undefined
   const [moduleToegang, setModuleToegang] = useState<string[]>(profiel?.toegestane_modules || [])
   const [toegangOpslaan, setToegangOpslaan] = useState(false)
+  const [tfaEmail, setTfaEmail] = useState(profiel?.tfa_email || '')
+  const [tfaOpslaan, setTfaOpslaan] = useState(false)
 
   async function handleToggleModule(key: string, checked: boolean) {
     const nieuw = checked ? [...moduleToegang, key] : moduleToegang.filter(m => m !== key)
@@ -94,6 +96,12 @@ export function MedewerkerDetail({
     setToegangOpslaan(true)
     await updateMedewerkerModuleToegang(medewerker?.profiel_id as string, nieuw)
     setToegangOpslaan(false)
+  }
+
+  async function handleTfaEmailBlur() {
+    setTfaOpslaan(true)
+    await updateMedewerkerTfaEmail(medewerker?.profiel_id as string, tfaEmail)
+    setTfaOpslaan(false)
   }
 
   return (
@@ -308,6 +316,25 @@ export function MedewerkerDetail({
               ))}
             </div>
             {toegangOpslaan && <p className="text-xs text-gray-400 mt-3">Opslaan...</p>}
+
+            <div className="mt-5 pt-5 border-t border-gray-100">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                2FA e-mailadres (optioneel)
+              </label>
+              <p className="text-xs text-gray-500 mb-2">
+                Alleen invullen als het inlog-e-mailadres zelf geen werkende mailbox heeft.
+                De inlogcode gaat dan naar dit adres in plaats van naar het inlog-e-mailadres.
+              </p>
+              <input
+                type="email"
+                value={tfaEmail}
+                onChange={(e) => setTfaEmail(e.target.value)}
+                onBlur={handleTfaEmailBlur}
+                placeholder="bv. verkoop@kunststofkozijnnodig.nl"
+                className="w-full max-w-sm px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+              />
+              {tfaOpslaan && <p className="text-xs text-gray-400 mt-1">Opslaan...</p>}
+            </div>
           </CardContent>
         </Card>
       )}

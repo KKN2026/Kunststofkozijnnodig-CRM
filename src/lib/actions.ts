@@ -11892,7 +11892,7 @@ export async function getMedewerker(id: string) {
   const supabase = await createClient()
   const { data } = await supabase
     .from('medewerkers')
-    .select('*, profiel:profielen(naam, email, rol, toegestane_modules)')
+    .select('*, profiel:profielen(naam, email, rol, toegestane_modules, tfa_email)')
     .eq('id', id)
     .single()
   return data
@@ -12084,6 +12084,26 @@ export async function updateMedewerkerModuleToegang(profielId: string, modules: 
   const { error } = await supabaseAdmin
     .from('profielen')
     .update({ toegestane_modules: gefilterd })
+    .eq('id', profielId)
+    .eq('administratie_id', adminId)
+  if (error) return { error: error.message }
+  revalidatePath('/medewerkers')
+  return { success: true }
+}
+
+// Stelt een afwijkend e-mailadres in voor de 2FA-inlogcode, bv. wanneer het
+// inlog-adres zelf geen werkende mailbox heeft (zie login/actions.ts).
+export async function updateMedewerkerTfaEmail(profielId: string, tfaEmail: string) {
+  const supabase = await createClient()
+  const adminId = await getAdministratieId()
+  if (!adminId) return { error: 'Niet ingelogd' }
+  const { rol: eigenRol } = await getRolEnEigenMedewerker(supabase, adminId)
+  if (eigenRol !== 'admin') return { error: 'Alleen een beheerder kan dit wijzigen' }
+
+  const supabaseAdmin = createAdminClient()
+  const { error } = await supabaseAdmin
+    .from('profielen')
+    .update({ tfa_email: tfaEmail.trim() || null })
     .eq('id', profielId)
     .eq('administratie_id', adminId)
   if (error) return { error: error.message }

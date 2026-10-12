@@ -37,7 +37,7 @@ async function getUserAgent(): Promise<string> {
  * (fire-and-forget) zodat de server action direct terugkomt en de 2FA-pagina
  * binnen 1-2 seconden verschijnt. De mail arriveert meestal binnen 3-5s.
  */
-export async function loginStep1(formData: FormData): Promise<{ error?: string; twofa?: boolean; klant?: boolean; success?: boolean }> {
+export async function loginStep1(formData: FormData): Promise<{ error?: string; twofa?: boolean; klant?: boolean; success?: boolean; tfaEmail?: string }> {
   const email = (formData.get('email') as string || '').trim().toLowerCase()
   const password = formData.get('password') as string || ''
   const supabase = await createClient()
@@ -51,10 +51,14 @@ export async function loginStep1(formData: FormData): Promise<{ error?: string; 
   }
 
   // Klant? Geen 2FA, direct inloggen
-  const { data: profiel } = await admin.from('profielen').select('rol').eq('id', data.user.id).single()
+  const { data: profiel } = await admin.from('profielen').select('rol, tfa_email').eq('id', data.user.id).single()
   if (profiel?.rol === 'klant') {
     return { klant: true }
   }
+
+  // Gebruik desgewenst een afwijkend adres voor de 2FA-code, bv. wanneer het
+  // inlog-adres zelf geen werkende mailbox heeft.
+  const tfaEmail = profiel?.tfa_email || email
 
   // Review-omgeving zonder e-mailconfiguratie: 2FA overslaan als expliciet
   // uitgezet via env. Zet dezelfde cookies als een geslaagde stap 2, zodat de
@@ -91,7 +95,7 @@ Kunststofkozijnnodig.nl`
   // Vercel houdt de function levend tot de mail écht verzonden is.
   // Vereist @vercel/functions ≥ 1.5; fallback wordt gewoon await.
   const mailPromise = sendEmail({
-    to: email,
+    to: tfaEmail,
     subject: `Kunststofkozijnnodig CRM inlogcode: ${code}`,
     html: buildRebuEmailHtml(body),
     fromName: 'Kunststofkozijnnodig.nl',
@@ -108,7 +112,7 @@ Kunststofkozijnnodig.nl`
     waitUntil(mailPromise.catch(err => console.error('2FA mail async fail:', err)))
   }
 
-  return { twofa: true }
+  return { twofa: true, tfaEmail }
 }
 
 /** Stap 2: code valideren, cookies zetten. */
