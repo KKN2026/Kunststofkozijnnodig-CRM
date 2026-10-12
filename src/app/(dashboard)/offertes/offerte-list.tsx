@@ -16,6 +16,7 @@ import { Plus, FileText, Download, X, Trash2, AlertTriangle, Loader2 } from 'luc
 import { deleteOffertes } from '@/lib/actions'
 import { Dialog } from '@/components/ui/dialog'
 import { showToast } from '@/components/ui/toast'
+import { RebuOffertesOpruimen } from '../instellingen/rebu-offertes-opruimen'
 
 const statusLabels: Record<string, string> = {
   concept: 'Concept', verzonden: 'Verzonden', geaccepteerd: 'Geaccepteerd',
@@ -191,6 +192,8 @@ export function OfferteList({ offertes, valmaand }: { offertes: Offerte[]; valma
           </div>
         }
       />
+
+      <RebuOffertesOpruimen />
 
       {/* Mini-dashboard bovenaan de sectie. Tegels zijn klikbaar en filteren de
           tabel eronder — zelfde statusFilter-mechanisme als de pill-rij, dus
