@@ -7658,8 +7658,8 @@ export async function createGebruiker(formData: FormData) {
   const naam = formData.get('naam') as string
   const email = formData.get('email') as string
   const wachtwoord = formData.get('wachtwoord') as string
-  const rolRaw = formData.get('rol') as string || 'gebruiker'
-  const rol = GELDIGE_ROLLEN.has(rolRaw) ? rolRaw : 'gebruiker'
+  const rolRaw = formData.get('rol') as string || 'medewerker'
+  const rol = GELDIGE_ROLLEN.has(rolRaw) ? rolRaw : 'medewerker'
 
   const supabaseAdmin = createAdminClient()
   const { data: userData, error: authError } = await supabaseAdmin.auth.admin.createUser({

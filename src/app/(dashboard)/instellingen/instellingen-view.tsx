@@ -420,8 +420,9 @@ export function InstellingenView({
                   id="new-rol"
                   name="rol"
                   label="Rol"
-                  defaultValue="gebruiker"
+                  defaultValue="medewerker"
                   options={[
+                    { value: 'medewerker', label: 'Medewerker' },
                     { value: 'admin', label: 'Admin' },
                     { value: 'gebruiker', label: 'Gebruiker' },
                     { value: 'readonly', label: 'Alleen lezen' },
