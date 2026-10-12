@@ -13261,22 +13261,32 @@ export async function getRebuTeImporterenOffertes() {
   const rebu = await createRebuClient()
   if (!rebu) return { error: 'REBU_SUPABASE_* env ontbreekt — Rebu-koppeling staat uit', offertes: [] }
 
+  // Zelfde definitie als Rebu's eigen dashboard-widget "Geaccepteerde
+  // offertes" (en de KKN-tegenhanger): status geaccepteerd, niet gearchiveerd,
+  // en nog GEEN factuur. Zonder de laatste twee filters kwamen hier ook
+  // allang-afgehandelde offertes in mee (al gefactureerd in Rebu zelf, of
+  // oude gearchiveerde migratie-bulkrecords) — die horen niet in deze lijst.
   const { data: geaccepteerd, error: rebuErr } = await rebu
     .from('offertes')
-    .select('id, offertenummer, onderwerp, totaal, updated_at, relatie:relaties(bedrijfsnaam)')
+    .select('id, offertenummer, onderwerp, totaal, updated_at, relatie:relaties(bedrijfsnaam), facturen:facturen(id)')
     .eq('status', 'geaccepteerd')
+    .or('gearchiveerd.is.null,gearchiveerd.eq.false')
     .order('updated_at', { ascending: false })
-    .limit(200)
+    .limit(500)
   if (rebuErr) return { error: `Rebu-DB onbereikbaar: ${rebuErr.message}`, offertes: [] }
   if (!geaccepteerd || geaccepteerd.length === 0) return { offertes: [] }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const zonderFactuur = geaccepteerd.filter((o: any) => !o.facturen || o.facturen.length === 0)
+  if (zonderFactuur.length === 0) return { offertes: [] }
+
   // Eruit filteren wat al in KKN staat (op zelfde UUID — zo migreert het
   // bulkscript ook, en zo blijft dit idempotent/geen dubbele import).
-  const ids = geaccepteerd.map((o: { id: string }) => o.id)
+  const ids = zonderFactuur.map((o: { id: string }) => o.id)
   const { data: bestaandeKkn } = await supabase.from('offertes').select('id').in('id', ids)
   const bestaandeIds = new Set((bestaandeKkn || []).map(o => o.id))
 
-  const offertes = geaccepteerd
+  const offertes = zonderFactuur
     .filter((o: { id: string }) => !bestaandeIds.has(o.id))
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     .map((o: any) => ({
