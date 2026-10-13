@@ -9489,6 +9489,20 @@ export async function factureerVerkoopkans(
   return { success: true, factuurId: factuur.id, factuurnummer: nummer }
 }
 
+// Bij een gesplitste conversie (aanbetaling + restbetaling, of 3 termijnen)
+// mag er nooit een halve set overblijven: een aanbetaling zonder
+// restbetaling betekent dat de klant de rest nooit gefactureerd krijgt. Dit
+// waren losse .insert()-calls zonder transactie — liep er ergens eentje
+// mis (dubbel factuurnummer, netwerkblip, timeout), dan bleef de al
+// aangemaakte aanbetaling gewoon staan. Daarom hieronder alles in een
+// try/catch: bij elke mislukking worden de in déze poging aangemaakte
+// facturen weer verwijderd, zodat het resultaat altijd alles-of-niets is.
+async function rolBackFacturen(supabase: Awaited<ReturnType<typeof createClient>>, ids: string[]) {
+  if (ids.length === 0) return
+  await supabase.from('factuur_regels').delete().in('factuur_id', ids)
+  await supabase.from('facturen').delete().in('id', ids)
+}
+
 export async function convertToFactuur(
   offerteId: string,
   splitType: 'volledig' | 'split' | 'split3' = 'volledig',
@@ -9586,78 +9600,91 @@ export async function convertToFactuur(
     const restBtw = offerte.btw_totaal - aanbetalingBtw
     const restTotaal = restSubtotaal + restBtw
 
-    const { data: factuur1, error: err1 } = await supabase
-      .from('facturen')
-      .insert({
-        administratie_id: adminId,
-        relatie_id: offerte.relatie_id,
-        offerte_id: offerteId,
-        order_id: orderId,
-        factuur_type: 'aanbetaling',
-        factuurnummer: nummer1,
-        datum: null,
-        vervaldatum: null,
-        status: 'concept',
-        onderwerp: `Aanbetaling ${aanbetalingPercentage}% - ${offerte.onderwerp || offerte.offertenummer}`,
-        subtotaal: aanbetalingSubtotaal,
-        btw_totaal: aanbetalingBtw,
-        totaal: aanbetalingTotaal,
+    const aangemaaktIds: string[] = []
+    try {
+      const { data: factuur1, error: err1 } = await supabase
+        .from('facturen')
+        .insert({
+          administratie_id: adminId,
+          relatie_id: offerte.relatie_id,
+          offerte_id: offerteId,
+          order_id: orderId,
+          factuur_type: 'aanbetaling',
+          factuurnummer: nummer1,
+          datum: null,
+          vervaldatum: null,
+          status: 'concept',
+          onderwerp: `Aanbetaling ${aanbetalingPercentage}% - ${offerte.onderwerp || offerte.offertenummer}`,
+          subtotaal: aanbetalingSubtotaal,
+          btw_totaal: aanbetalingBtw,
+          totaal: aanbetalingTotaal,
+        })
+        .select('id')
+        .single()
+
+      if (err1 || !factuur1) throw new Error(err1?.message || 'Aanbetaling kon niet worden aangemaakt')
+      aangemaaktIds.push(factuur1.id)
+
+      const { error: regelErr1 } = await supabase.from('factuur_regels').insert({
+        factuur_id: factuur1.id,
+        omschrijving: `Aanbetaling ${aanbetalingPercentage}% offerte ${offerte.offertenummer}`,
+        aantal: 1,
+        prijs: aanbetalingSubtotaal,
+        btw_percentage: 21,
+        totaal: aanbetalingSubtotaal,
+        volgorde: 0,
       })
-      .select('id')
-      .single()
+      if (regelErr1) throw new Error(regelErr1.message)
 
-    if (err1) return { error: err1.message }
+      const { data: factuur2, error: err2 } = await supabase
+        .from('facturen')
+        .insert({
+          administratie_id: adminId,
+          relatie_id: offerte.relatie_id,
+          offerte_id: offerteId,
+          order_id: orderId,
+          factuur_type: 'restbetaling',
+          gerelateerde_factuur_id: factuur1.id,
+          factuurnummer: nummer2,
+          datum: null,
+          vervaldatum: null,
+          status: 'concept',
+          onderwerp: `Restbetaling ${100 - aanbetalingPercentage}% - ${offerte.onderwerp || offerte.offertenummer}`,
+          subtotaal: restSubtotaal,
+          btw_totaal: restBtw,
+          totaal: restTotaal,
+        })
+        .select('id')
+        .single()
 
-    await supabase.from('factuur_regels').insert({
-      factuur_id: factuur1.id,
-      omschrijving: `Aanbetaling ${aanbetalingPercentage}% offerte ${offerte.offertenummer}`,
-      aantal: 1,
-      prijs: aanbetalingSubtotaal,
-      btw_percentage: 21,
-      totaal: aanbetalingSubtotaal,
-      volgorde: 0,
-    })
+      if (err2 || !factuur2) throw new Error(err2?.message || 'Restbetaling kon niet worden aangemaakt')
+      aangemaaktIds.push(factuur2.id)
 
-    const { data: factuur2, error: err2 } = await supabase
-      .from('facturen')
-      .insert({
-        administratie_id: adminId,
-        relatie_id: offerte.relatie_id,
-        offerte_id: offerteId,
-        order_id: orderId,
-        factuur_type: 'restbetaling',
-        gerelateerde_factuur_id: factuur1.id,
-        factuurnummer: nummer2,
-        datum: null,
-        vervaldatum: null,
-        status: 'concept',
-        onderwerp: `Restbetaling ${100 - aanbetalingPercentage}% - ${offerte.onderwerp || offerte.offertenummer}`,
-        subtotaal: restSubtotaal,
-        btw_totaal: restBtw,
-        totaal: restTotaal,
+      // Link factuur1 terug naar factuur2
+      const { error: linkErr } = await supabase.from('facturen').update({ gerelateerde_factuur_id: factuur2.id }).eq('id', factuur1.id)
+      if (linkErr) throw new Error(linkErr.message)
+
+      const { error: regelErr2 } = await supabase.from('factuur_regels').insert({
+        factuur_id: factuur2.id,
+        omschrijving: `Restbetaling ${100 - aanbetalingPercentage}% offerte ${offerte.offertenummer}`,
+        aantal: 1,
+        prijs: restSubtotaal,
+        btw_percentage: 21,
+        totaal: restSubtotaal,
+        volgorde: 0,
       })
-      .select('id')
-      .single()
+      if (regelErr2) throw new Error(regelErr2.message)
 
-    if (err2) return { error: err2.message }
+      await zorgVoorBetaallink(factuur1.id)
+      await zorgVoorBetaallink(factuur2.id)
 
-    // Link factuur1 terug naar factuur2
-    await supabase.from('facturen').update({ gerelateerde_factuur_id: factuur2.id }).eq('id', factuur1.id)
-
-    await supabase.from('factuur_regels').insert({
-      factuur_id: factuur2.id,
-      omschrijving: `Restbetaling ${100 - aanbetalingPercentage}% offerte ${offerte.offertenummer}`,
-      aantal: 1,
-      prijs: restSubtotaal,
-      btw_percentage: 21,
-      totaal: restSubtotaal,
-      volgorde: 0,
-    })
-    await zorgVoorBetaallink(factuur1.id)
-    await zorgVoorBetaallink(factuur2.id)
-
-    revalidatePath('/facturatie')
-    return { success: true, factuurId: factuur1.id, factuurIds: [factuur1.id, factuur2.id] }
+      revalidatePath('/facturatie')
+      return { success: true, factuurId: factuur1.id, factuurIds: [factuur1.id, factuur2.id] }
+    } catch (e) {
+      await rolBackFacturen(supabase, aangemaaktIds)
+      const melding = e instanceof Error ? e.message : 'onbekende fout'
+      return { error: `Aanbetaling + restbetaling aanmaken mislukt (${melding}) — er is niets aangemaakt, probeer het opnieuw.` }
+    }
   }
 
   if (splitType === 'split3') {
@@ -9694,46 +9721,54 @@ export async function convertToFactuur(
     ] as const
 
     const aangemaakt: { id: string }[] = []
-    for (const t of termijnen) {
-      const nummer = await getVolgendeNummer('factuur')
-      const { data: f, error } = await supabase
-        .from('facturen')
-        .insert({
-          administratie_id: adminId,
-          relatie_id: offerte.relatie_id,
-          offerte_id: offerteId,
-          order_id: orderId,
-          factuur_type: t.factuur_type,
-          factuurnummer: nummer,
-          datum: null,
-          vervaldatum: null,
-          status: 'concept',
-          onderwerp: `${t.label} - ${offerte.onderwerp || offerte.offertenummer}`,
-          subtotaal: t.sub,
-          btw_totaal: t.btw,
-          totaal: t.tot,
+    try {
+      for (const t of termijnen) {
+        const nummer = await getVolgendeNummer('factuur')
+        const { data: f, error } = await supabase
+          .from('facturen')
+          .insert({
+            administratie_id: adminId,
+            relatie_id: offerte.relatie_id,
+            offerte_id: offerteId,
+            order_id: orderId,
+            factuur_type: t.factuur_type,
+            factuurnummer: nummer,
+            datum: null,
+            vervaldatum: null,
+            status: 'concept',
+            onderwerp: `${t.label} - ${offerte.onderwerp || offerte.offertenummer}`,
+            subtotaal: t.sub,
+            btw_totaal: t.btw,
+            totaal: t.tot,
+          })
+          .select('id')
+          .single()
+        if (error || !f) throw new Error(error?.message || `Factuur voor '${t.label}' kon niet worden aangemaakt`)
+        aangemaakt.push(f as { id: string })
+
+        const { error: regelErr } = await supabase.from('factuur_regels').insert({
+          factuur_id: (f as { id: string }).id,
+          omschrijving: `${t.label} offerte ${offerte.offertenummer}`,
+          aantal: 1,
+          prijs: t.sub,
+          btw_percentage: 21,
+          totaal: t.sub,
+          volgorde: 0,
         })
-        .select('id')
-        .single()
-      if (error || !f) return { error: error?.message || 'Factuur kon niet worden aangemaakt' }
-      aangemaakt.push(f as { id: string })
+        if (regelErr) throw new Error(regelErr.message)
+      }
 
-      await supabase.from('factuur_regels').insert({
-        factuur_id: (f as { id: string }).id,
-        omschrijving: `${t.label} offerte ${offerte.offertenummer}`,
-        aantal: 1,
-        prijs: t.sub,
-        btw_percentage: 21,
-        totaal: t.sub,
-        volgorde: 0,
-      })
+      // Onderling linken: 1↔2 (gerelateerde_factuur_id is een single FK,
+      // dus we wijzen naar de "hoofdfactuur" — de eerste in de keten).
+      const { error: linkErr } = await supabase.from('facturen')
+        .update({ gerelateerde_factuur_id: aangemaakt[0].id })
+        .in('id', [aangemaakt[1].id, aangemaakt[2].id])
+      if (linkErr) throw new Error(linkErr.message)
+    } catch (e) {
+      await rolBackFacturen(supabase, aangemaakt.map(f => f.id))
+      const melding = e instanceof Error ? e.message : 'onbekende fout'
+      return { error: `Termijnfacturen aanmaken mislukt (${melding}) — er is niets aangemaakt, probeer het opnieuw.` }
     }
-
-    // Onderling linken: 1↔2 (gerelateerde_factuur_id is een single FK,
-    // dus we wijzen naar de "hoofdfactuur" — de eerste in de keten).
-    await supabase.from('facturen')
-      .update({ gerelateerde_factuur_id: aangemaakt[0].id })
-      .in('id', [aangemaakt[1].id, aangemaakt[2].id])
 
     for (const f of aangemaakt) {
       await zorgVoorBetaallink(f.id)
