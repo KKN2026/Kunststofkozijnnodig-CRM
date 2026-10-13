@@ -13486,8 +13486,11 @@ export async function importeerRebuOfferte(rebuOfferteId: string) {
 }
 
 // Spiegelbeeld van getRebuTeImporterenOffertes(): geaccepteerde offertes die
-// nog in Rebu staan MAAR al (op id) in KKN bestaan — klaar om uit Rebu
-// opgeruimd te worden voor overzicht daar.
+// nog in Rebu staan MAAR in KKN al GEFACTUREERD zijn — pas dán is de Rebu-kant
+// echt klaar en mag 'm daar uit "geaccepteerde offertes" opgeruimd worden.
+// Alleen "bestaat al in KKN" is niet genoeg: zolang KKN 'm nog niet
+// gefactureerd heeft is de order daar nog in behandeling en moet de offerte
+// in Rebu blijven staan als openstaand.
 export async function getRebuOpteRuimenOffertes() {
   const supabase = await createClient()
   const adminId = await getAdministratieId()
@@ -13508,11 +13511,15 @@ export async function getRebuOpteRuimenOffertes() {
   if (!geaccepteerd || geaccepteerd.length === 0) return { offertes: [] }
 
   const ids = geaccepteerd.map((o: { id: string }) => o.id)
-  const { data: bestaandeKkn } = await supabase.from('offertes').select('id').in('id', ids)
-  const bestaandeIds = new Set((bestaandeKkn || []).map(o => o.id))
+  const { data: bestaandeKkn } = await supabase
+    .from('offertes')
+    .select('id, facturen:facturen(id)')
+    .in('id', ids)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const gefactureerdeIds = new Set((bestaandeKkn || []).filter((o: any) => o.facturen && o.facturen.length > 0).map(o => o.id))
 
   const offertes = geaccepteerd
-    .filter((o: { id: string }) => bestaandeIds.has(o.id))
+    .filter((o: { id: string }) => gefactureerdeIds.has(o.id))
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     .map((o: any) => ({
       id: o.id as string,
@@ -13532,7 +13539,9 @@ export async function getRebuOpteRuimenOffertes() {
 // KKN, en laat de database zelf blokkeren (foreign key) als er in Rebu nog
 // iets anders (facturen, faalkosten) aan de order/offerte hangt dat niet is
 // meeverhuisd — zo'n fout komt gewoon terug als nette melding i.p.v. dat er
-// stilzwijgend data verloren gaat.
+// stilzwijgend data verloren gaat. Verwijdert pas als KKN 'm ook echt heeft
+// gefactureerd — anders is de order daar nog in behandeling en moet Rebu 'm
+// gewoon als geaccepteerd/openstaand laten staan.
 export async function verwijderRebuOfferteNaOverzetten(rebuOfferteId: string) {
   const supabase = await createClient()
   const adminId = await getAdministratieId()
@@ -13551,8 +13560,16 @@ export async function verwijderRebuOfferteNaOverzetten(rebuOfferteId: string) {
   if (rebuErr || !rebuOfferte) return { error: rebuErr?.message || 'Offerte niet (meer) gevonden in Rebu' }
   if (rebuOfferte.status !== 'geaccepteerd') return { error: 'Offerte staat in Rebu niet (meer) op geaccepteerd — niet opruimen' }
 
-  const { data: kknOfferte } = await supabase.from('offertes').select('id, totaal').eq('id', rebuOfferteId).maybeSingle()
+  const { data: kknOfferte } = await supabase
+    .from('offertes')
+    .select('id, totaal, facturen:facturen(id)')
+    .eq('id', rebuOfferteId)
+    .maybeSingle()
   if (!kknOfferte) return { error: 'Staat niet (meer) in KKN — eerst overzetten voordat je deze uit Rebu verwijdert' }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  if (!(kknOfferte as any).facturen || (kknOfferte as any).facturen.length === 0) {
+    return { error: 'Nog niet gefactureerd in KKN — pas opruimen uit Rebu zodra de factuur er is' }
+  }
   if (Math.abs(Number(kknOfferte.totaal) - Number(rebuOfferte.totaal)) > 0.01) {
     return { error: `Bedrag in KKN (€ ${kknOfferte.totaal}) wijkt af van Rebu (€ ${rebuOfferte.totaal}) — niet automatisch opruimen` }
   }
