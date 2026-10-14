@@ -1698,7 +1698,7 @@ export function DashboardView({ data, verkoopkansenPerMedewerker = [], verkoopka
           {data.recenteBetalingen && data.recenteBetalingen.length > 0 && (
             <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
               <Link
-                href="/facturatie?tab=alle"
+                href="/facturatie?tab=betaald"
                 className="px-5 py-3.5 border-b border-gray-100 flex items-center justify-between hover:bg-gray-50 transition-colors"
               >
                 <h3 className="text-sm font-semibold text-gray-900">Recente betalingen</h3>

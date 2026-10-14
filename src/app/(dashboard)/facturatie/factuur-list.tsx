@@ -35,6 +35,9 @@ interface Factuur {
   order: { id: string; ordernummer: string; status: string; onderwerp: string | null; totaal?: number; subtotaal?: number; offerte?: any } | any | null
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   offerte?: { id: string; totaal?: number; subtotaal?: number; project?: { id: string; naam: string } } | any | null
+  // Geen aparte 'betaald op'-kolom in de database — updated_at is de proxy
+  // voor 'wanneer betaald' (zie het 'betaald'-tabblad en het dashboard-widget).
+  updated_at?: string | null
 }
 
 interface OrderFactuurInfo {
@@ -242,7 +245,8 @@ function buildColumns(
   ]
 }
 
-type TabType = 'alle' | 'openstaand' | 'aanbetaling' | 'restbetaling' | 'gecrediteerd' | 'per-klus'
+type TabType = 'alle' | 'openstaand' | 'aanbetaling' | 'restbetaling' | 'betaald' | 'gecrediteerd' | 'per-klus'
+const GELDIGE_TABS: TabType[] = ['alle', 'openstaand', 'aanbetaling', 'restbetaling', 'betaald', 'gecrediteerd', 'per-klus']
 
 export function FactuurList({ facturen, ordersMetStatus, sleutelWaarschuwing, betalingSignaal }: {
   facturen: Factuur[]
@@ -258,7 +262,7 @@ export function FactuurList({ facturen, ordersMetStatus, sleutelWaarschuwing, be
   // Tab uit URL lezen zodat dashboard-KPI's direct naar 'Openstaand' (etc)
   // kunnen springen via /facturatie?tab=openstaand[&vervallen=1].
   const initialTab = (searchParams.get('tab') as TabType) || 'openstaand'
-  const [tab, setTab] = useState<TabType>(['alle', 'openstaand', 'aanbetaling', 'restbetaling', 'gecrediteerd', 'per-klus'].includes(initialTab) ? initialTab : 'openstaand')
+  const [tab, setTab] = useState<TabType>(GELDIGE_TABS.includes(initialTab) ? initialTab : 'openstaand')
   const [vervallenOnly, setVervallenOnly] = useState<boolean>(searchParams.get('vervallen') === '1')
   // ?periode=YYYY-MM (vanuit dashboard-KPI of rapportages-maandtabel): toon
   // alleen de facturen die samen de omzet van die maand vormen.
@@ -270,7 +274,7 @@ export function FactuurList({ facturen, ordersMetStatus, sleutelWaarschuwing, be
 
   useEffect(() => {
     const t = searchParams.get('tab') as TabType | null
-    if (t && ['alle', 'openstaand', 'aanbetaling', 'restbetaling', 'gecrediteerd', 'per-klus'].includes(t)) setTab(t)
+    if (t && GELDIGE_TABS.includes(t)) setTab(t)
     setVervallenOnly(searchParams.get('vervallen') === '1')
     setPeriodeFilter(leesPeriode())
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -369,6 +373,13 @@ export function FactuurList({ facturen, ordersMetStatus, sleutelWaarschuwing, be
     })
   const openstaandTeBetalen = openstaandFacturen.filter(f => f.status !== 'concept')
   const gecrediteerdeFacturen = sorted.filter(f => f.status === 'gecrediteerd' || f.factuur_type === 'credit')
+  // 'Recent betaald': zelfde data als het dashboard-widget 'Recente betalingen',
+  // maar dan als volwaardig, doorzoekbaar tabblad i.p.v. alleen de top 5 op het
+  // dashboard — anders kwam je via die link altijd in het ongefilterde 'Alle
+  // facturen' terecht. Nieuwste betaling bovenaan (updated_at is de proxy).
+  const betaaldFacturen = [...sorted]
+    .filter(f => f.status === 'betaald')
+    .sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''))
   const aanbetalingFacturen = sorted.filter(f => f.factuur_type === 'aanbetaling')
   const restbetalingFacturen = sorted.filter(f => f.factuur_type === 'restbetaling')
   // Restbetaling-segmentatie voor overzichtelijke weergave
@@ -445,6 +456,7 @@ export function FactuurList({ facturen, ordersMetStatus, sleutelWaarschuwing, be
     { key: 'openstaand', label: vervallenOnly ? 'Openstaand · alleen vervallen' : 'Openstaand', count: openstaandFacturen.length },
     { key: 'aanbetaling', label: 'Aanbetalingen', count: aanbetalingOpenAantal },
     { key: 'restbetaling', label: 'Restbetalingen', count: restbetalingOpenAantal },
+    { key: 'betaald', label: 'Recent betaald' },
     { key: 'gecrediteerd', label: 'Gecrediteerd', count: gecrediteerdeFacturen.length || undefined },
     { key: 'per-klus', label: 'Per klus', count: ordersMetActie.length > 0 ? ordersMetActie.length : undefined },
   ]
@@ -453,6 +465,7 @@ export function FactuurList({ facturen, ordersMetStatus, sleutelWaarschuwing, be
     const data = tab === 'openstaand' ? openstaandFacturen
       : tab === 'aanbetaling' ? aanbetalingFacturen
       : tab === 'restbetaling' ? restbetalingFacturen
+      : tab === 'betaald' ? betaaldFacturen
       : sortedAlle
     if (data.length === 0) return
     const rows = data.map(f => ({
@@ -796,6 +809,26 @@ export function FactuurList({ facturen, ordersMetStatus, sleutelWaarschuwing, be
             berekenStats={berekenStats}
             router={router}
           />
+        )
+      )}
+
+      {tab === 'betaald' && (
+        betaaldFacturen.length === 0 ? (
+          <EmptyState
+            icon={Receipt}
+            title="Nog geen betalingen"
+            description="Er zijn nog geen facturen betaald."
+          />
+        ) : (
+          <>
+            <StatsBar stats={berekenStats(betaaldFacturen)} />
+            <DataTable
+              columns={columns}
+              data={betaaldFacturen}
+              searchPlaceholder="Zoek betaalde factuur..."
+              onRowClick={(row) => router.push(`/facturatie/${row.id}`)}
+            />
+          </>
         )
       )}
 
