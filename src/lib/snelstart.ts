@@ -424,22 +424,19 @@ export interface BetalingBoekenInput {
 }
 
 /**
- * Boekt een ontvangen Mollie-betaling in SnelStart en lettert die af tegen de
- * openstaande verkoopboeking.
- *
- * Het brutobedrag gaat het Mollie-dagboek in, zodat de factuur volledig is
- * afgeletterd. De transactiekosten van Mollie worden hier NIET afgetrokken —
- * die komen pas in beeld bij de uitbetaling naar de bank en horen daar thuis,
- * niet bij de individuele factuur.
+ * Boekt een ontvangen betaling in SnelStart tegen een gegeven dagboek en
+ * lettert die af tegen de openstaande verkoopboeking. Gedeelde kern van
+ * boekMollieBetaling (dagboek 1104) en boekHandmatigeBankBetaling (dagboek
+ * 1101) — alleen het dagboek verschilt, de boekingsstructuur is identiek.
  *
  * De regels moeten samen precies gelijk zijn aan het ontvangen bedrag; anders
  * weigert SnelStart de boeking.
  */
-export async function boekMollieBetaling(input: BetalingBoekenInput): Promise<{ id: string }> {
-  const dagboek = await findDagboekByNummer(MOLLIE_DAGBOEK_NUMMER)
+async function boekBetalingTegenDagboek(dagboekNummer: number, dagboekNaam: string, input: BetalingBoekenInput): Promise<{ id: string }> {
+  const dagboek = await findDagboekByNummer(dagboekNummer)
   if (!dagboek) {
     throw new Error(
-      `SnelStart-dagboek ${MOLLIE_DAGBOEK_NUMMER} (Mollie) niet gevonden. ` +
+      `SnelStart-dagboek ${dagboekNummer} (${dagboekNaam}) niet gevonden. ` +
       `Zonder dat dagboek zou de betaling op de verkeerde rekening belanden.`
     )
   }
@@ -468,6 +465,33 @@ export async function boekMollieBetaling(input: BetalingBoekenInput): Promise<{ 
     method: 'POST',
     body: JSON.stringify(body),
   })
+}
+
+/**
+ * Boekt een ontvangen Mollie-betaling in SnelStart. Het brutobedrag gaat het
+ * Mollie-dagboek in, zodat de factuur volledig is afgeletterd. De
+ * transactiekosten van Mollie worden hier NIET afgetrokken — die komen pas in
+ * beeld bij de uitbetaling naar de bank en horen daar thuis, niet bij de
+ * individuele factuur.
+ */
+export async function boekMollieBetaling(input: BetalingBoekenInput): Promise<{ id: string }> {
+  return boekBetalingTegenDagboek(MOLLIE_DAGBOEK_NUMMER, 'Mollie', input)
+}
+
+// De echte zakelijke rekening (NL69INGB0119279193) — hier komen handmatige
+// overboekingen binnen, buiten Mollie om. Bewust een ander dagboek dan 1104:
+// dat geld gaat nooit via Mollie's tussenrekening, maar rechtstreeks de bank in.
+const BANK_DAGBOEK_NUMMER = 1101
+
+/**
+ * Boekt een handmatig geconstateerde overboeking (rechtstreeks naar de
+ * zakelijke rekening, buiten Mollie om) in SnelStart tegen het echte
+ * bankdagboek. Gebruikt door markeerHandmatigBetaald — een beheerder
+ * bevestigt zelf dat het geld binnen is; dit zet die bevestiging om in een
+ * echte boeking zodat SnelStart en CRM weer hetzelfde verhaal vertellen.
+ */
+export async function boekHandmatigeBankBetaling(input: BetalingBoekenInput): Promise<{ id: string }> {
+  return boekBetalingTegenDagboek(BANK_DAGBOEK_NUMMER, 'Bank', input)
 }
 
 // ---------- High-level: sync relatie + post factuur ----------

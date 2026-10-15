@@ -2,7 +2,7 @@
 
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
-import { saveFactuur, deleteFactuur, getFactuurEmailDefaults, sendFactuurEmail, generateBetaallink, crediteerFactuur } from '@/lib/actions'
+import { saveFactuur, deleteFactuur, getFactuurEmailDefaults, sendFactuurEmail, generateBetaallink, crediteerFactuur, markeerHandmatigBetaald } from '@/lib/actions'
 import { useBackNav } from '@/lib/hooks/use-back-nav'
 import { RichTextEditor, plainTextToHtml } from '@/components/ui/rich-text-editor'
 import { PageHeader } from '@/components/ui/page-header'
@@ -13,7 +13,7 @@ import { SearchSelect } from '@/components/ui/search-select'
 import { Button } from '@/components/ui/button'
 import { Dialog } from '@/components/ui/dialog'
 import { formatCurrency, handleNumberPaste } from '@/lib/utils'
-import { Save, Trash2, ArrowLeft, Plus, X, Download, Send, Paperclip, Loader2, Link2, Copy } from 'lucide-react'
+import { Save, Trash2, ArrowLeft, Plus, X, Download, Send, Paperclip, Loader2, Link2, Copy, Banknote } from 'lucide-react'
 import { EmailOntvangers, combineerOntvangers, type EmailContactOptie } from '@/components/ui/email-ontvangers'
 import { showToast } from '@/components/ui/toast'
 import { AuditLogTab } from '@/components/audit-log/audit-log-tab'
@@ -64,6 +64,14 @@ export function FactuurForm({ factuur, relaties, producten, nummerPreview = '', 
   const [showEmailResult, setShowEmailResult] = useState<string | null>(null)
   const [betaalLink, setBetaalLink] = useState<string | null>((factuur?.betaal_link as string) || null)
   const [generatingLink, setGeneratingLink] = useState(false)
+
+  // Handmatige overboeking markeren als betaald (buiten Mollie om).
+  const openstaandBedrag = Math.max(0, (Number(factuur?.totaal) || 0) - (Number(factuur?.betaald_bedrag) || 0))
+  const [showHandmatigDialog, setShowHandmatigDialog] = useState(false)
+  const [handmatigBedrag, setHandmatigBedrag] = useState('')
+  const [handmatigDatum, setHandmatigDatum] = useState(new Date().toISOString().slice(0, 10))
+  const [handmatigBezig, setHandmatigBezig] = useState(false)
+  const [handmatigError, setHandmatigError] = useState('')
 
   function addRegel() { setRegels([...regels, { omschrijving: '', aantal: 1, prijs: 0, btw_percentage: 21 }]) }
   function removeRegel(index: number) { setRegels(regels.filter((_, i) => i !== index)) }
@@ -171,6 +179,27 @@ export function FactuurForm({ factuur, relaties, producten, nummerPreview = '', 
     setGeneratingLink(false)
   }
 
+  function openHandmatigDialog() {
+    setHandmatigBedrag(openstaandBedrag > 0 ? openstaandBedrag.toFixed(2) : '')
+    setHandmatigDatum(new Date().toISOString().slice(0, 10))
+    setHandmatigError('')
+    setShowHandmatigDialog(true)
+  }
+
+  async function handleMarkeerHandmatig() {
+    if (!factuur) return
+    const bedrag = Number(handmatigBedrag.replace(',', '.'))
+    if (!(bedrag > 0)) { setHandmatigError('Vul een bedrag groter dan 0 in'); return }
+    setHandmatigBezig(true)
+    setHandmatigError('')
+    const result = await markeerHandmatigBetaald(factuur.id as string, bedrag, handmatigDatum)
+    setHandmatigBezig(false)
+    if (result.error) { setHandmatigError(result.error); return }
+    setShowHandmatigDialog(false)
+    showToast('Betaling geboekt in SnelStart en bijgewerkt', 'success')
+    router.refresh()
+  }
+
   async function handleSendEmail() {
     setSending(true)
     // Zonder try/catch: liep sendFactuurEmail stuk of over de tijdslimiet
@@ -239,6 +268,12 @@ export function FactuurForm({ factuur, relaties, producten, nummerPreview = '', 
                   <Link2 className="h-4 w-4" />
                   {generatingLink ? 'Genereren...' : betaalLink ? 'Link vernieuwen' : 'Betaallink'}
                 </Button>
+                {!['concept', 'betaald', 'gecrediteerd', 'geannuleerd'].includes(factuur?.status as string) && (
+                  <Button variant="secondary" onClick={openHandmatigDialog} disabled={loading}>
+                    <Banknote className="h-4 w-4" />
+                    Markeer betaald
+                  </Button>
+                )}
                 <Button onClick={openEmailDialog} disabled={loading}>
                   <Send className="h-4 w-4" />
                   Versturen
@@ -278,6 +313,34 @@ export function FactuurForm({ factuur, relaties, producten, nummerPreview = '', 
           </div>
         </div>
       )}
+
+      {/* Handmatige overboeking markeren als betaald */}
+      <Dialog open={showHandmatigDialog} onClose={() => setShowHandmatigDialog(false)} title="Markeer als handmatig betaald">
+        <div className="p-4 space-y-4">
+          <p className="text-sm text-gray-500">
+            Voor een overboeking die rechtstreeks op de zakelijke rekening is binnengekomen,
+            buiten Mollie om. Dit boekt de betaling in SnelStart (bankdagboek 1101) en werkt
+            daarna direct de status in het CRM bij.
+          </p>
+          <div>
+            <label htmlFor="handmatig_bedrag" className="block text-sm font-medium text-gray-700 mb-1">Ontvangen bedrag</label>
+            <Input id="handmatig_bedrag" type="text" inputMode="decimal" value={handmatigBedrag} onChange={e => setHandmatigBedrag(e.target.value)} onPaste={e => handleNumberPaste(e, setHandmatigBedrag)} />
+            {openstaandBedrag > 0 && <p className="text-xs text-gray-400 mt-1">Openstaand: {formatCurrency(openstaandBedrag)}</p>}
+          </div>
+          <div>
+            <label htmlFor="handmatig_datum" className="block text-sm font-medium text-gray-700 mb-1">Betaaldatum</label>
+            <Input id="handmatig_datum" type="date" value={handmatigDatum} onChange={e => setHandmatigDatum(e.target.value)} />
+          </div>
+          {handmatigError && <div className="bg-red-50 text-red-600 text-sm p-3 rounded-md">{handmatigError}</div>}
+        </div>
+        <div className="flex justify-end gap-2 p-4 border-t border-gray-100">
+          <Button variant="secondary" onClick={() => setShowHandmatigDialog(false)} disabled={handmatigBezig}>Annuleren</Button>
+          <Button onClick={handleMarkeerHandmatig} disabled={handmatigBezig}>
+            {handmatigBezig ? <Loader2 className="h-4 w-4 animate-spin" /> : <Banknote className="h-4 w-4" />}
+            {handmatigBezig ? 'Boeken...' : 'Boeken in SnelStart'}
+          </Button>
+        </div>
+      </Dialog>
 
       {/* Email compose dialog */}
       <Dialog open={showEmailDialog} onClose={() => setShowEmailDialog(false)} title="Factuur versturen" className="max-w-2xl">

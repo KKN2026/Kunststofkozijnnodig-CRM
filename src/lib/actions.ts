@@ -3931,6 +3931,112 @@ export async function generateBetaallink(factuurId: string) {
   }
 }
 
+// Voor overboekingen die buiten Mollie om rechtstreeks op de zakelijke
+// rekening binnenkomen: syncSnelstartBetalingen spiegelt alleen wat er al in
+// SnelStart staat, en zonder Mollie-koppeling boekt niets dat automatisch af.
+// Een beheerder bevestigt hier dat het geld binnen is; wij boeken het dan zelf
+// in SnelStart (dagboek 1101, de echte bankrekening — niet 1104/Mollie), zodat
+// SnelStart en CRM weer hetzelfde verhaal vertellen. Zelfde claim-vóór-boeken
+// aanpak als letterMollieBetalingenAf om dubbel boeken te voorkomen.
+export async function markeerHandmatigBetaald(factuurId: string, bedrag: number, datum: string) {
+  const supabase = await createClient()
+  const adminId = await getAdministratieId()
+  if (!adminId) return { error: 'Niet ingelogd' }
+  const { rol } = await getRolEnEigenMedewerker(supabase, adminId)
+  if (rol !== 'admin') return { error: 'Alleen een beheerder kan een betaling handmatig markeren' }
+
+  const { isSnelStartEnabled, boekHandmatigeBankBetaling, listAllVerkoopfacturen } = await import('@/lib/snelstart')
+  if (!isSnelStartEnabled()) return { error: 'SnelStart niet geconfigureerd' }
+
+  const { data: factuur, error: factuurErr } = await supabase
+    .from('facturen')
+    .select('id, factuurnummer, totaal, betaald_bedrag, status, snelstart_boeking_id, snelstart_betaling_id')
+    .eq('id', factuurId)
+    .eq('administratie_id', adminId)
+    .maybeSingle()
+  if (factuurErr || !factuur) return { error: 'Factuur niet gevonden' }
+  if (!factuur.snelstart_boeking_id) return { error: 'Factuur staat nog niet in SnelStart — eerst doorzetten/syncen' }
+  if (factuur.snelstart_betaling_id) return { error: 'Er is al een betaling geboekt of in behandeling voor deze factuur' }
+  if (factuur.status === 'concept') return { error: 'Concept-facturen kunnen niet als betaald gemarkeerd worden' }
+  if (factuur.status === 'betaald' || factuur.status === 'gecrediteerd' || factuur.status === 'geannuleerd') {
+    return { error: `Factuur staat al op '${factuur.status}'` }
+  }
+
+  const ingevoerdBedrag = Math.round(Number(bedrag) * 100) / 100
+  if (!(ingevoerdBedrag > 0)) return { error: 'Bedrag moet groter dan 0 zijn' }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(datum)) return { error: 'Ongeldige datum' }
+
+  // Nooit meer boeken dan er in SnelStart écht openstaat — die stand is
+  // leidend, niet wat het CRM op dit moment denkt.
+  let openstaandSS: number
+  try {
+    const lijst = await listAllVerkoopfacturen()
+    const ss = lijst.find(v => v.factuurnummer === factuur.factuurnummer)
+    if (!ss) return { error: 'Factuur niet gevonden in SnelStart' }
+    openstaandSS = ss.openstaand
+  } catch (e) {
+    return { error: 'SnelStart-saldo ophalen mislukt: ' + (e instanceof Error ? e.message : 'fout') }
+  }
+  if (openstaandSS <= 0.01) return { error: 'Factuur staat in SnelStart al op betaald — ververs de pagina' }
+  if (ingevoerdBedrag - openstaandSS > 0.01) {
+    return { error: `Bedrag (€ ${ingevoerdBedrag.toFixed(2)}) is hoger dan het openstaande bedrag in SnelStart (€ ${openstaandSS.toFixed(2)})` }
+  }
+
+  const claim = `bezig:${new Date().toISOString()}`
+  const { error: claimFout } = await supabase
+    .from('facturen')
+    .update({ snelstart_betaling_id: claim })
+    .eq('id', factuurId)
+    .is('snelstart_betaling_id', null)
+  if (claimFout) return { error: 'Claimen mislukt: ' + claimFout.message }
+
+  const omschrijving = `Handmatige overboeking factuur ${factuur.factuurnummer}`
+  try {
+    const boeking = await boekHandmatigeBankBetaling({
+      verkoopboekingId: factuur.snelstart_boeking_id as string,
+      bedrag: ingevoerdBedrag,
+      datum,
+      omschrijving,
+    })
+    await supabase.from('facturen').update({ snelstart_betaling_id: boeking.id }).eq('id', factuurId)
+
+    try {
+      const { logAudit } = await import('@/lib/audit')
+      await logAudit({
+        actie: 'factuur.handmatige_betaling_geboekt',
+        entiteitType: 'factuur',
+        entiteitId: factuurId,
+        details: { factuurnummer: factuur.factuurnummer, bedrag: ingevoerdBedrag, datum, boeking_id: boeking.id, dagboek: 'Bank (1101)' },
+      })
+    } catch { /* audit mag het boeken niet blokkeren */ }
+
+    // Direct de CRM-status bijwerken vanuit SnelStart i.p.v. op de volgende
+    // cron-ronde (max. 30 min) te wachten.
+    await syncSnelstartBetalingen(adminId)
+
+    revalidatePath('/facturatie')
+    revalidatePath(`/facturatie/${factuurId}`)
+    return { success: true, boekingId: boeking.id }
+  } catch (e) {
+    const melding = e instanceof Error ? e.message : 'onbekende fout'
+    // Zelfde vangnet als bij Mollie: pas vrijgeven voor een nieuwe poging als
+    // de boeking ook écht niet is geland.
+    let vrijgeven = false
+    try {
+      const opnieuw = await listAllVerkoopfacturen()
+      const nu = opnieuw.find(v => v.factuurnummer === factuur.factuurnummer)
+      vrijgeven = nu ? nu.openstaand > 0.01 : false
+    } catch { vrijgeven = false }
+
+    if (vrijgeven) {
+      await supabase.from('facturen').update({ snelstart_betaling_id: null }).eq('id', factuurId)
+      return { error: `Boeken mislukt: ${melding}` }
+    }
+    await supabase.from('facturen').update({ snelstart_betaling_id: `controleren:${melding.slice(0, 80)}` }).eq('id', factuurId)
+    return { error: `Boeken mislukt (${melding}) maar SnelStart meldt de factuur niet meer als openstaand — handmatig controleren of de boeking er wél in staat.` }
+  }
+}
+
 // === INKOOP ===
 export async function getInkoopfacturen() {
   const { rol, modules } = await getRolEnModules()
