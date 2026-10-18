@@ -9,9 +9,16 @@ import { logAudit } from '@/lib/audit'
 // facturen — idempotent. Als de webhook al gelopen is verandert er niks.
 //
 // Vercel cron schedule: '0 */2 * * *' (elke 2 uur).
+//
+// maxDuration was 60s — te krap zodra er veel facturen tegelijk langs moesten
+// (elke factuur = een Mollie-call + evt. een SnelStart-boeking). Een
+// afgebroken run liet een 'bezig:'-claim in snelstart-betalingen.ts voor altijd
+// vastzitten (zie de uitleg daar) — 300s geeft ruim armslag, en de
+// zelf-herstellende claims in diezelfde routine vangen een eventuele toekomstige
+// afbreking alsnog op.
 
 export const dynamic = 'force-dynamic'
-export const maxDuration = 60
+export const maxDuration = 300
 
 export async function GET(req: NextRequest) {
   const auth = req.headers.get('authorization')

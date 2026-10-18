@@ -19,7 +19,20 @@ import { createAdminClient } from '@/lib/supabase/admin'
  *      geland (openstaand gedaald) en pas als dat níét zo is geven we 'm vrij
  *      voor een nieuwe poging.
  * Alleen facturen met `snelstart_betaling_id IS NULL` komen in aanmerking.
+ *
+ * VASTGELOPEN CLAIMS (ontdekt okt. 2026): stap 3 hierboven gaat ervan uit dat
+ * de boeking altijd netjes faalt met een catchbare fout. Werd de hele request
+ * halverwege afgebroken (bv. de cron-timeout van de aanroeper) ván vóórdat de
+ * claim werd gezet, dan draait stap 3 nooit — de claim blijft voor altijd op
+ * 'bezig:' staan en de factuur wordt door de WHERE hierboven voorgoed
+ * genegeerd. Zo bleven 9 al-betaalde facturen (~€34.500, sommige al 2 maanden)
+ * in SnelStart als openstaand staan terwijl de klant allang betaald had. Elke
+ * run herstelt daarom eerst oude 'bezig:'/'controleren:'-claims (ouder dan
+ * VASTGELOPEN_GRENS_MIN) door opnieuw bij SnelStart te checken wat er écht is
+ * gebeurd, in plaats van op de oorspronkelijke eenmalige check te vertrouwen.
  */
+
+const VASTGELOPEN_GRENS_MIN = 10
 
 export interface AfletterResultaat {
   factuurnummer: string
@@ -48,8 +61,52 @@ export async function letterMollieBetalingenAf(opties: { dryRun?: boolean } = {}
     return samenvatting
   }
 
+  // Openstaand saldo uit SnelStart: alleen facturen die daar écht nog openstaan
+  // hoeven afgeletterd. Staat er al 0, dan is de betaling langs de bank
+  // binnengekomen en zouden wij dubbel boeken. Ook nodig voor het herstel van
+  // vastgelopen claims hieronder, dus vóóraf één keer ophalen.
+  let ssOpenstaand: Map<string, number>
+  try {
+    const lijst = await listAllVerkoopfacturen()
+    ssOpenstaand = new Map(lijst.map(v => [v.factuurnummer, v.openstaand]))
+  } catch (e) {
+    samenvatting.fouten.push(`SnelStart-saldi ophalen mislukt: ${e instanceof Error ? e.message : 'fout'}`)
+    return samenvatting
+  }
+
+  // Vastgelopen claims herstellen (zie uitleg bovenaan dit bestand) — vóórdat
+  // we nieuwe kandidaten selecteren, zodat net vrijgegeven facturen in dezelfde
+  // run alsnog meegenomen worden.
+  const vastgelopenGrens = new Date(Date.now() - VASTGELOPEN_GRENS_MIN * 60000).toISOString()
+  const { data: vastgelopen } = await sb
+    .from('facturen')
+    .select('id, factuurnummer')
+    .eq('status', 'betaald')
+    .not('mollie_payment_id', 'is', null)
+    .not('snelstart_boeking_id', 'is', null)
+    .or('snelstart_betaling_id.like.bezig:%,snelstart_betaling_id.like.controleren:%')
+    .lt('updated_at', vastgelopenGrens)
+
+  for (const f of vastgelopen || []) {
+    const factuurnummer = f.factuurnummer as string
+    const open = ssOpenstaand.get(factuurnummer)
+    const nooitGeland = open === undefined || open > 0.01
+    const reden = nooitGeland ? 'vastgelopen claim hersteld — vrijgegeven voor nieuwe poging' : 'vastgelopen claim hersteld — bleek al geboekt in SnelStart'
+    if (dryRun) {
+      samenvatting.regels.push({ factuurnummer, bedrag: 0, geboekt: false, reden: `zou herstellen: ${reden}` })
+      continue
+    }
+    // Nooit geland (of niet meer te vinden in SnelStart) → vrijgeven voor een
+    // nieuwe, schone poging verderop in deze run. Wél al geland, alleen de
+    // bevestiging ging verloren → niets opnieuw boeken, enkel de blijvende
+    // 'bezig'/'controleren'-status opruimen.
+    await sb.from('facturen').update({ snelstart_betaling_id: nooitGeland ? null : 'hersteld:onbekende_boeking' }).eq('id', f.id)
+    samenvatting.regels.push({ factuurnummer, bedrag: 0, geboekt: false, reden })
+  }
+
   // Kandidaten: in het CRM betaald via Mollie, wél doorgezet naar SnelStart,
-  // maar daar nog niet afgeletterd door ons.
+  // maar daar nog niet afgeletterd door ons. Ná het herstel hierboven, zodat
+  // net vrijgegeven facturen hier ook weer in beeld komen.
   const { data: kandidaten, error } = await sb
     .from('facturen')
     .select('id, factuurnummer, totaal, betaald_bedrag, status, mollie_payment_id, snelstart_boeking_id, snelstart_betaling_id')
@@ -63,18 +120,6 @@ export async function letterMollieBetalingenAf(opties: { dryRun?: boolean } = {}
     return samenvatting
   }
   if (!kandidaten || kandidaten.length === 0) return samenvatting
-
-  // Openstaand saldo uit SnelStart: alleen facturen die daar écht nog openstaan
-  // hoeven afgeletterd. Staat er al 0, dan is de betaling langs de bank
-  // binnengekomen en zouden wij dubbel boeken.
-  let ssOpenstaand: Map<string, number>
-  try {
-    const lijst = await listAllVerkoopfacturen()
-    ssOpenstaand = new Map(lijst.map(v => [v.factuurnummer, v.openstaand]))
-  } catch (e) {
-    samenvatting.fouten.push(`SnelStart-saldi ophalen mislukt: ${e instanceof Error ? e.message : 'fout'}`)
-    return samenvatting
-  }
 
   const { getMolliePaymentStatus } = await import('@/lib/mollie')
 

@@ -10,7 +10,7 @@
     },
     {
       "path": "/api/snelstart/sync",
-      "schedule": "*/30 * * * *"
+      "schedule": "*/5 * * * *"
     },
     {
       "path": "/api/admin/backup-db",
